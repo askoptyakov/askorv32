@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Module name="top" Register="18" Lut="29" T_Register="3859(18)" T_Alu="71(0)" T_Lut="2722(29)" T_Bsram="18(0)">
+    <SubModule name="gw_gao_inst_0" Register="2273" Alu="7" Lut="922" Bsram="14" T_Register="2273(2273)" T_Alu="7(7)" T_Lut="922(922)" T_Bsram="14(14)"/>
+    <SubModule name="riscv" Register="1056" Alu="64" Lut="1490" T_Register="1056(1056)" T_Alu="64(64)" T_Lut="1490(1490)"/>
+    <SubModule name="imem" Bsram="4" T_Bsram="4(4)"/>
+    <SubModule name="dmem" Register="512" Lut="281" T_Register="512(512)" T_Lut="281(281)"/>
+</Module>

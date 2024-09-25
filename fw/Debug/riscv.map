@@ -1,0 +1,49 @@
+
+Discarded input sections
+
+ .data          0x0000000000000000        0x0 ./Core/Startup/start.o
+ .bss           0x0000000000000000        0x0 ./Core/Startup/start.o
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+IMEM             0x0000000000000000 0x0000000000002000
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Linker script and memory map
+
+LOAD ./Core/Startup/start.o
+LOAD c:/gmd/toolchain/risc-v_toolchain/bin/../lib/gcc/riscv-none-embed/8.2.0/rv32i/ilp32\libgcc.a
+START GROUP
+LOAD c:/gmd/toolchain/risc-v_toolchain/bin/../lib/gcc/riscv-none-embed/8.2.0/rv32i/ilp32\libgcc.a
+LOAD c:/gmd/toolchain/risc-v_toolchain/bin/../lib/gcc/riscv-none-embed/8.2.0/../../../../riscv-none-embed/lib/rv32i/ilp32\libg.a
+LOAD c:/gmd/toolchain/risc-v_toolchain/bin/../lib/gcc/riscv-none-embed/8.2.0/../../../../riscv-none-embed/lib/rv32i/ilp32\libc.a
+END GROUP
+LOAD c:/gmd/toolchain/risc-v_toolchain/bin/../lib/gcc/riscv-none-embed/8.2.0/rv32i/ilp32\libgcc.a
+
+.text           0x0000000000000000       0x54
+                0x0000000000000000                . = ALIGN (0x4)
+ *(.text.unlikely .text.unlikely.*)
+ *(.text.startup .text.startup.*)
+ *(.text)
+ .text          0x0000000000000000       0x54 ./Core/Startup/start.o
+                0x0000000000000000                start
+ *(.text*)
+                0x0000000000000054                . = ALIGN (0x4)
+OUTPUT(riscv.elf elf32-littleriscv)
+
+.debug_line     0x0000000000000000       0xc0
+ .debug_line    0x0000000000000000       0xc0 ./Core/Startup/start.o
+
+.debug_info     0x0000000000000000       0x26
+ .debug_info    0x0000000000000000       0x26 ./Core/Startup/start.o
+
+.debug_abbrev   0x0000000000000000       0x14
+ .debug_abbrev  0x0000000000000000       0x14 ./Core/Startup/start.o
+
+.debug_aranges  0x0000000000000000       0x20
+ .debug_aranges
+                0x0000000000000000       0x20 ./Core/Startup/start.o
+
+.debug_str      0x0000000000000000       0x40
+ .debug_str     0x0000000000000000       0x40 ./Core/Startup/start.o

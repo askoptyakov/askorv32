@@ -1,0 +1,17 @@
+-d D:\GitHub\askorv32\hw\impl\gwsynthesis\riscv.vg
+-p GW1NR-9C-QFN88P-6
+-pn GW1NR-LV9QN88PC6/I5
+-cst D:\GitHub\askorv32\hw\src\riscv.cst
+-cfg D:\GitHub\askorv32\hw\impl\pnr\device.cfg
+-gao_crc 0011110010100110
+-bit
+-tr
+-ph
+-posp
+-timing
+-cst_error
+-convert_sdp32_36_to_sdp16_18
+-correct_hold 1
+-route_maxfan 23
+-global_freq 50.000
+-rtl_gao

@@ -1,0 +1,30 @@
+Reading netlist file: "D:\GitHub\askorv32\hw\impl\gwsynthesis\riscv.vg"
+Parsing netlist file "D:\GitHub\askorv32\hw\impl\gwsynthesis\riscv.vg" completed
+Processing netlist completed
+Reading constraint file: "D:\GitHub\askorv32\hw\src\riscv.cst"
+Physical Constraint parsed completed
+Running placement......
+[10%] Placement Phase 0 completed
+[20%] Placement Phase 1 completed
+[30%] Placement Phase 2 completed
+[50%] Placement Phase 3 completed
+Running routing......
+[60%] Routing Phase 0 completed
+[70%] Routing Phase 1 completed
+[80%] Routing Phase 2 completed
+[90%] Routing Phase 3 completed
+Running timing analysis......
+[95%] Timing analysis completed
+Placement and routing completed
+Bitstream generation in progress......
+Bitstream generation completed
+Running power analysis......
+[100%] Power analysis completed
+Generate file "D:\GitHub\askorv32\hw\impl\pnr\riscv.power.html" completed
+Generate file "D:\GitHub\askorv32\hw\impl\pnr\riscv.pin.html" completed
+Generate file "D:\GitHub\askorv32\hw\impl\pnr\riscv.rpt.html" completed
+Generate file "D:\GitHub\askorv32\hw\impl\pnr\riscv.rpt.txt" completed
+Generate file "D:\GitHub\askorv32\hw\impl\pnr\riscv.tr.html" completed
+Generate file "D:\GitHub\askorv32\hw\impl\pnr\riscv.posp" completed
+Wed Sep 25 09:40:07 2024
+

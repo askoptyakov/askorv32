@@ -1,0 +1,84 @@
+   1              	# 1 "../Core/Startup/start.S"
+   1              	/*
+   0              	
+   0              	
+   0              	
+   2              	 *****************************************************************************************
+   3              	 * @file		start.S
+   4              	 * @author		Alexander Koptyakov
+   5              	 * @device		AskoRV32
+   6              	 * @brief		Startup
+   7              	 ******************************************************************************************
+   8              	 */
+   9              	 
+  10              	
+  11              	
+  12              		//.section .text
+  13              	.text
+  14 0000 13000000 	.balign 16
+  14      13000000 
+  14      13000000 
+  15              	
+  16              	.globl start
+  17              	
+  18              	start:
+  19 000c 13015000 		addi x2, x0, 5      //x2 = 5
+  20 0010 9301C000 		addi x3, x0, 12     //x3 = 12
+  21 0014 938371FF 		addi x7, x3, -9     //x7 = 12  -  9   = 3
+  22 0018 33E22300 		or   x4, x7, x2     //x4 = 3  OR  5   = 7
+  23 001c B3F24100 		and  x5, x3, x4     //x5 = 12 AND 7   = 4
+  24 0020 B3824200 		add  x5, x5, x4     //x5 = 4   +  7   = 11
+  25 0024 63887202 		beq  x5, x7, end    //pc = (11 == 3)? end : pc + 4    #Ложь
+  26 0028 33224200 		slt  x4, x4, x4     //x4 = 12  <  7   = 0
+  27 002c 63040200 		beq  x4, x0, around //pc = (0 == 0)? around : pc + 4  #Истина, переход к around
+  28 0030 93020000 		addi x5, x0, 0      //!x5= 0   +  0   = 0             #Не выполняется
+  29              	around:
+  30 0034 33A22300 		slt  x4, x7, x2     //x4 = 3   <  5   = 1
+  31 0038 B3035200 		add  x7, x4, x5     //x7 = 1   +  11  = 12
+  32 003c B3832340 		sub  x7, x7, x2     //x7 = 12  -  5   = 7
+  33 0040 23AA71FE 		sw   x7, -12(x3)    //      dmem[0] <- 7
+  34 0044 03210000 		lw   x2, 0(x0)      //x2 -> dmem[0]  = 7
+  35 0048 B3045100 		add  x9, x2, x5     //x9 = 7   +  11  = 18
+  36 004c EF018000 		jal  x3, end        //pc = end, x3 = 0x44             #Переход к end
+  37 0050 13011000 		addi x2, x0, 1      //!x2= 0   +  1   = 1
+  38              	end:
+  39 0054 33019100 		add  x2, x2, x9     //x2 = 7   +  18  = 25
+  40 0058 23A021FC 		sw   x2, -64(x3)    //      dmem[4] <- 25
+  41              	done:
+  42 005c 63002100 		beq  x2, x2, done   //pc = (25 == 25)? done : pc + 4  #Истина, бесконечный цикл
+  43              	
+  44              	.end
+DEFINED SYMBOLS
+../Core/Startup/start.S:18     .text:000000000000000c start
+../Core/Startup/start.S:19     .text:000000000000000c .L0 
+../Core/Startup/start.S:20     .text:0000000000000010 .L0 
+../Core/Startup/start.S:21     .text:0000000000000014 .L0 
+../Core/Startup/start.S:22     .text:0000000000000018 .L0 
+../Core/Startup/start.S:23     .text:000000000000001c .L0 
+../Core/Startup/start.S:24     .text:0000000000000020 .L0 
+../Core/Startup/start.S:38     .text:0000000000000054 end
+../Core/Startup/start.S:25     .text:0000000000000024 .L0 
+../Core/Startup/start.S:26     .text:0000000000000028 .L0 
+../Core/Startup/start.S:29     .text:0000000000000034 around
+../Core/Startup/start.S:27     .text:000000000000002c .L0 
+../Core/Startup/start.S:28     .text:0000000000000030 .L0 
+../Core/Startup/start.S:30     .text:0000000000000034 .L0 
+../Core/Startup/start.S:31     .text:0000000000000038 .L0 
+../Core/Startup/start.S:32     .text:000000000000003c .L0 
+../Core/Startup/start.S:33     .text:0000000000000040 .L0 
+../Core/Startup/start.S:34     .text:0000000000000044 .L0 
+../Core/Startup/start.S:35     .text:0000000000000048 .L0 
+../Core/Startup/start.S:36     .text:000000000000004c .L0 
+../Core/Startup/start.S:37     .text:0000000000000050 .L0 
+../Core/Startup/start.S:39     .text:0000000000000054 .L0 
+../Core/Startup/start.S:40     .text:0000000000000058 .L0 
+../Core/Startup/start.S:41     .text:000000000000005c done
+../Core/Startup/start.S:42     .text:000000000000005c .L0 
+../Core/Startup/start.S:44     .text:0000000000000060 .L0 
+                            .text:0000000000000000 .L0 
+../Core/Startup/start.S:44     .text:0000000000000060 .L0 
+                       .debug_str:0000000000000000 .L0 
+                       .debug_str:0000000000000018 .L0 
+                       .debug_str:0000000000000036 .L0 
+
+NO UNDEFINED SYMBOLS

@@ -1,0 +1,118 @@
+
+riscv.elf:     file format elf32-littleriscv
+riscv.elf
+architecture: riscv:rv32, flags 0x00000112:
+EXEC_P, HAS_SYMS, D_PAGED
+start address 0x00000000
+
+Program Header:
+    LOAD off    0x00001000 vaddr 0x00000000 paddr 0x00000000 align 2**12
+         filesz 0x00000054 memsz 0x00000054 flags r-x
+
+Sections:
+Idx Name           Size      VMA       LMA       File off  Algn  Flags
+  0 .text          00000054  00000000  00000000  00001000  2**4  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .debug_line    000000c0  00000000  00000000  00001054  2**0  CONTENTS, READONLY, DEBUGGING
+  2 .debug_info    00000026  00000000  00000000  00001114  2**0  CONTENTS, READONLY, DEBUGGING
+  3 .debug_abbrev  00000014  00000000  00000000  0000113a  2**0  CONTENTS, READONLY, DEBUGGING
+  4 .debug_aranges 00000020  00000000  00000000  00001150  2**3  CONTENTS, READONLY, DEBUGGING
+  5 .debug_str     00000040  00000000  00000000  00001170  2**0  CONTENTS, READONLY, DEBUGGING
+SYMBOL TABLE:
+00000000 l    d  .text	00000000 .text
+00000000 l    d  .debug_line	00000000 .debug_line
+00000000 l    d  .debug_info	00000000 .debug_info
+00000000 l    d  .debug_abbrev	00000000 .debug_abbrev
+00000000 l    d  .debug_aranges	00000000 .debug_aranges
+00000000 l    d  .debug_str	00000000 .debug_str
+00000000 l    df *ABS*	00000000 ./Core/Startup/start.o
+00000048 l       .text	00000000 end
+00000028 l       .text	00000000 around
+00000050 l       .text	00000000 done
+00000000 g       .text	00000000 start
+
+
+
+Disassembly of section .text:
+
+00000000 <start>:
+start():
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:20
+
+.globl start
+
+
+start:
+	addi x2, x0, 5      //x2 = 5
+   0:	00500113          	li	sp,5
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:21
+	addi x3, x0, 12     //x3 = 12
+   4:	00c00193          	li	gp,12
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:22
+	addi x7, x3, -9     //x7 = 12  -  9   = 3
+   8:	ff718393          	addi	t2,gp,-9
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:23
+	or   x4, x7, x2     //x4 = 3  OR  5   = 7
+   c:	0023e233          	or	tp,t2,sp
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:24
+	and  x5, x3, x4     //x5 = 12 AND 7   = 4
+  10:	0041f2b3          	and	t0,gp,tp
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:25
+	add  x5, x5, x4     //x5 = 4   +  7   = 11
+  14:	004282b3          	add	t0,t0,tp
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:26
+	beq  x5, x7, end    //pc = (11 == 3)? end : pc + 4    #Ложь
+  18:	02728863          	beq	t0,t2,48 <end>
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:27
+	slt  x4, x3, x4     //x4 = 12  <  7   = 0
+  1c:	0041a233          	slt	tp,gp,tp
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:28
+	beq  x4, x0, around //pc = (0 == 0)? around : pc + 4  #Истина, переход к around
+  20:	00020463          	beqz	tp,28 <around>
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:29
+	addi x5, x0, 0      //!x5= 0   +  0   = 0             #Не выполняется
+  24:	00000293          	li	t0,0
+
+00000028 <around>:
+around():
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:31
+around:
+	slt  x4, x7, x2     //x4 = 3   <  5   = 1
+  28:	0023a233          	slt	tp,t2,sp
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:32
+	add  x7, x4, x5     //x7 = 1   +  11  = 12
+  2c:	005203b3          	add	t2,tp,t0
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:33
+	sub  x7, x7, x2     //x7 = 12  -  5   = 7
+  30:	402383b3          	sub	t2,t2,sp
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:34
+	sw   x7, -12(x3)    //      dmem[0] <- 7
+  34:	fe71aa23          	sw	t2,-12(gp)
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:35
+	lw   x2, 0(x0)      //x2 -> dmem[0]  = 7
+  38:	00002103          	lw	sp,0(zero) # 0 <start>
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:36
+	add  x9, x2, x5     //x9 = 7   +  11  = 18
+  3c:	005104b3          	add	s1,sp,t0
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:37
+	jal  x3, end        //pc = end, x3 = 0x44             #Переход к end
+  40:	008001ef          	jal	gp,48 <end>
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:38
+	addi x2, x0, 1      //!x2= 0   +  1   = 1
+  44:	00100113          	li	sp,1
+
+00000048 <end>:
+end():
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:40
+end:
+	add  x2, x2, x9     //x2 = 7   +  18  = 25
+  48:	00910133          	add	sp,sp,s1
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:41
+	sw   x2, -64(x3)    //      dmem[4] <- 25
+  4c:	fc21a023          	sw	sp,-64(gp)
+
+00000050 <done>:
+done():
+D:\GitHub\askorv32\fw\Debug/../Core/Startup/start.S:43
+done:
+	beq  x2, x2, done   //pc = (25 == 25)? done : pc + 4  #Истина, бесконечный цикл
+  50:	00210063          	beq	sp,sp,50 <done>
