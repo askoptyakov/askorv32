@@ -1,16 +1,323 @@
-# **Сборщик проектов ПЛИС**
-Данный алгоритм пересобирает файл .fs который содержит данные блоков памяти
+<style>
+    red {color: Red}
+    orng0 {background-color: #FBE2D5; color: Black}
+    orng1 {background-color: #F7C7AC; color: Black}
+    orng2 {background-color: #F1A983; color: Black}
+    orng3 {background-color: #BE5014; color: Black}
+    grn0 {background-color: #DAF2D0; color: Black}
+    grn1 {background-color: #B5E6A2; color: Black}
+    grn2 {background-color: #8ED973; color: Black}
+    grn3 {background-color: #3C7D22; color: Black}
+    blu0 {background-color: #CAEDFB; color: Black}
+    blu1 {background-color: #94DCF8; color: Black}
+    blu2 {background-color: #61CBF3; color: Black}
+    blu3 {background-color: #0C769E; color: Black}
+    vlt0 {background-color: #F2CEEF; color: Black}
+    vlt1 {background-color: #E49EDD; color: Black}
+    vlt2 {background-color: #D86DCD; color: Black}
+    vlt3 {background-color: #782170; color: Black}
+    grey0 {background-color: #808080; color: Black}
+    grey1 {background-color: #A6A6A6; color: Black}
+    grey2 {background-color: #BFBFBF; color: Black}
+    grey3 {background-color: #D9D9D9; color: Black}
 
-## Структура памяти в ПЛИС
-Память плис разделена на две части R10 и R28. В части R10 - находятся 15 ячеек, активными их них являются 11. В части R28 - находятся 15 ячеек все из них активный. Ниже приведена таблица ячеек памяти
+    .table11 tr {background: #2B2B2B}
+    .table11 tr:nth-child(1) td:nth-child(7) {background: #FBE2D5; color: black}
+    .table11 tr:nth-child(1) td:nth-child(6) {background: #DAF2D0; color: black}
+    .table11 tr:nth-child(1) td:nth-child(2) {background: #CAEDFB; color: black}
+    .table11 tr:nth-child(2) td:nth-child(7) {background: #F2CEEF; color: black}
 
-|   Строка\столбец  |14    |13     |12     |11     |10     |9      |8      |7      |6      |5      |4      |3      |2      |1      |0      |
-| ----------------- |:----:| :----:| :----:| :----:| :----:| :----:| :----:| :----:| :----:| :----:| :----:| :----:| :----:| :----:| :----:|
-| R10: стр.744-999  |Пусто | [10]  | [9]   | [8]   | [7]   | Пусто | Пусто | [6]   | [5]   | [4]   | [3]   | [2]   | [1]   | [0]   | Пусто |
-| R28: стр.1000-1255| [14] |  [13] |  [12] |  [11] |  [10] |   [9] |  [8]  |  [7]  |   [6] |   [5] |  [4]  |   [3] |   [2] |   [1] |   [0] |
+    .table12 tr {background: #2B2B2B}
+    .table12 tr:nth-child(1) td:nth-child(7) {background: #F7C7AC; color: black}
+    .table12 tr:nth-child(1) td:nth-child(6) {background: #B5E6A2; color: black}
+    .table12 tr:nth-child(1) td:nth-child(2) {background: #94DCF8; color: black}
+    .table12 tr:nth-child(2) td:nth-child(7) {background: #E49EDD; color: black}
 
-### Переменый для работы 
-В начале алгаритма инициализируются переменные для работы найденые чисто **империческим** путем
+    .table13 tr {background: #2B2B2B}
+    .table13 tr:nth-child(1) td:nth-child(7) {background: #F1A983; color: black}
+    .table13 tr:nth-child(1) td:nth-child(6) {background: #8ED973; color: black}
+    .table13 tr:nth-child(1) td:nth-child(2) {background: #61CBF3; color: black}
+    .table13 tr:nth-child(2) td:nth-child(7) {background: #D86DCD; color: black}
+
+    .table14 tr {background: #2B2B2B}
+    .table14 tr:nth-child(1) td:nth-child(7) {background: #BE5014; color: black}
+    .table14 tr:nth-child(1) td:nth-child(6) {background: #3C7D22; color: black}
+    .table14 tr:nth-child(1) td:nth-child(2) {background: #0C769E; color: black}
+    .table14 tr:nth-child(2) td:nth-child(7) {background: #782170; color: black}
+
+    .table2 tr:nth-child(2) td:nth-child(1) {text-align: right}
+    .table2 tr:nth-child(4) td:nth-child(1) {text-align: right}
+    .table2 tr:nth-child(6) td:nth-child(1) {text-align: right}
+    .table2 tr:nth-child(8) td:nth-child(1) {text-align: right}
+    .table2 tr {background: #2B2B2B}
+    .table2 tr:nth-child(2) td:nth-child(2) {background: #DAF2D0; color: black}
+    .table2 tr:nth-child(2) td:nth-child(3) {background: #DAF2D0; color: black}
+    .table2 tr:nth-child(2) td:nth-child(4) {background: #DAF2D0; color: black}
+    .table2 tr:nth-child(2) td:nth-child(5) {background: #DAF2D0; color: black}
+    .table2 tr:nth-child(2) td:nth-child(6) {background: #DAF2D0; color: black}
+    .table2 tr:nth-child(2) td:nth-child(7) {background: #DAF2D0; color: black}
+    .table2 tr:nth-child(2) td:nth-child(8) {background: #DAF2D0; color: black}
+    .table2 tr:nth-child(2) td:nth-child(9) {background: #DAF2D0; color: black}
+    .table2 tr:nth-child(2) td:nth-child(10) {background: #FBE2D5; color: black}
+    .table2 tr:nth-child(2) td:nth-child(11) {background: #FBE2D5; color: black}
+    .table2 tr:nth-child(2) td:nth-child(12) {background: #FBE2D5; color: black}
+    .table2 tr:nth-child(2) td:nth-child(13) {background: #FBE2D5; color: black}
+    .table2 tr:nth-child(2) td:nth-child(14) {background: #FBE2D5; color: black}
+    .table2 tr:nth-child(2) td:nth-child(15) {background: #FBE2D5; color: black}
+    .table2 tr:nth-child(2) td:nth-child(16) {background: #FBE2D5; color: black}
+    .table2 tr:nth-child(2) td:nth-child(17) {background: #FBE2D5; color: black}
+
+    .table3 tr {background: #2B2B2B}
+    .table3 tr:nth-child(1) td:nth-child(10) {background: #808080; color: black}
+    .table3 tr:nth-child(1) td:nth-child(11) {background: #A6A6A6; color: black}
+    .table3 tr:nth-child(2) td:nth-child(12) {background: #BFBFBF; color: black}
+    .table3 tr:nth-child(2) td:nth-child(11) {background: #D9D9D9; color: black}
+
+    .table4 tr {background: #2B2B2B}
+    .table4 tr:nth-child(19) td:nth-child(6) {background: #808080; color: black}
+    .table4 tr:nth-child(21) td:nth-child(6) {background: #A6A6A6; color: black}
+    .table4 tr:nth-child(23) td:nth-child(5) {background: #BFBFBF; color: black}
+    .table4 tr:nth-child(21) td:nth-child(5) {background: #D9D9D9; color: black}
+
+    .table5 tr:nth-child(3) td:nth-child(2) {background: #808080; color: black}
+    .table5 tr:nth-child(2) td:nth-child(2) {background: #A6A6A6; color: black}
+    .table5 tr:nth-child(1) td:nth-child(2) {background: #BFBFBF; color: black}
+    .table5 tr:nth-child(4) td:nth-child(2) {background: #D9D9D9; color: black}
+    .table5 tr {background: #2B2B2B}
+    .table5 tr:nth-child(1) td:nth-child(8) {background: #FBE2D5; color: black}
+    .table5 tr:nth-child(1) td:nth-child(7) {background: #F7C7AC; color: black}
+    .table5 tr:nth-child(1) td:nth-child(6) {background: #F1A983; color: black}
+    .table5 tr:nth-child(1) td:nth-child(5) {background: #BE5014; color: black}
+    .table5 tr:nth-child(2) td:nth-child(8) {background: #DAF2D0; color: black}
+    .table5 tr:nth-child(2) td:nth-child(7) {background: #B5E6A2; color: black}
+    .table5 tr:nth-child(2) td:nth-child(6) {background: #8ED973; color: black}
+    .table5 tr:nth-child(2) td:nth-child(5) {background: #3C7D22; color: black}
+    .table5 tr:nth-child(3) td:nth-child(8) {background: #CAEDFB; color: black}
+    .table5 tr:nth-child(3) td:nth-child(7) {background: #94DCF8; color: black}
+    .table5 tr:nth-child(3) td:nth-child(6) {background: #61CBF3; color: black}
+    .table5 tr:nth-child(3) td:nth-child(5) {background: #0C769E; color: black}
+    .table5 tr:nth-child(4) td:nth-child(8) {background: #F2CEEF; color: black}
+    .table5 tr:nth-child(4) td:nth-child(7) {background: #E49EDD; color: black}
+    .table5 tr:nth-child(4) td:nth-child(6) {background: #D86DCD; color: black}
+    .table5 tr:nth-child(4) td:nth-child(5) {background: #782170; color: black}
+
+    right {text-align:right}
+</style>
+
+# Назначение
+Данный алгоритм создаёт новый файл конфигурации ПЛИС "out_fpga".fs заменяя данные блоков памяти BSRAM в файле конфигурации ПЛИС "in_fpga".fs на данные актуального проекта MCU "in_mcu".bin, принимая во внимание фактическое расположение блоков BSRAM после синтеза проекта ПЛИС согласно файлу "in_bsram_location".posp.
+
+Выполнение данного скрпита вызывается следующей строкой с указаннием входных и выходных файлов в качестве аргументов: <br>
+<code>mergetool.exe "in_fpga".fs "in_bsram_location".posp "in_mcu".bin "out_fpga".fs</code>
+
+Описание разлелено на 2 части:
++ Функциональное описание алгоритма работы
++ Описание кода алгоритма
+
+# Функциональное описание алгоритма работы
+ПЛИС *GW1NR-9* содержит внутри 26 блоков памяти *BSRAM(Block Static Random Access Memory)*, которые могут конфигурироваться из встроенной флеш-памяти автоматически при включении питания ПЛИС. Конфигурирование флеш памяти осуществляется специальной утилитой производителя *GOWIN PROGRAMMER*, данные для конфигурирования эта утилита берёт из файла конфигурации ПЛИС \*.fs.
+
+Блоки *BSRAM* комбинируются вместе для достижения необходимого объема и используются для организации памяти инструкций/данных программного ядра микропроцессора внутри ПЛИС. Чтобы, например, загрузить набор инструкций в такие блоки необходимо создать дополнительный файл инициализации памяти со списком 32 битных инструкций, и затем использовать этот файл при конфигурировании памяти инструкций внутри среды разработки ПЛИС *GOWIN IDE* с помощью встроенного  редактора IP-ядер. Такой процесс загрузки инструкций для программного микропроцессора требует множетсва манипуляций и затрачивает колоссальное время разработчика.
+
+Для ускорения процедуры разработки проекта микропроцессора на *С/С++*, а именно процедуры загрузки инструкций в память ПЛИС, используется алгоритм подмены данных в блоках памяти *BSRAM* непосредственно в файле конфигурации ПЛИС согласно следующему алгоритму. 
+### 1. Получаем данные файла "in_mcu".bin, содержащего набор инструкций в машинном коде
+Данный файл является результатом компиляции *С/С++* проекта микропроцессора в среде *GOWIN GMD*(он же *Eclipse*).
+>&emsp;&ensp;0: **<orng3>00</orng3><orng2>50</orng2><orng1>01</orng1><orng0>13</orng0>**&emsp;addi x2, x0, 5 &emsp; //x2 = 5
+><br>&emsp;&ensp;1: **<grn3>00</grn3><grn2>C0</grn2><grn1>01</grn1><grn0>93</grn0>**&emsp;addi x3, x0, 12&emsp;//x3 = 12
+><br>&emsp;.. &nbsp;: &emsp;&emsp;...&emsp;&emsp;&emsp;&emsp;&emsp; ...&emsp;&emsp;&emsp;&emsp; //Набор инструкций risc-v
+><br>&emsp;31: **<blu3>FF</blu3><blu2>71</blu2><blu1>83</blu1><blu0>93</blu0>**&emsp;addi x7, x3, -9&emsp; //x7 = 12  -  9   = 3
+><br>&emsp;32: **<vlt3>00</vlt3><vlt2>23</vlt2><vlt1>E2</vlt1><vlt0>33</vlt0>**&emsp;or   x4, x7, x2&emsp;&emsp;//x4 = 3  OR  5   = 7			
+
+### 2. Распределить байты инструкций между массивами, соответствующими блокам BSRAM
+Для памяти объёмом 8 кБайт, состощим из 4 блоков BSRAM, инструкция машинного кода (4 байта) раскладывается по одному байту в 4 блока BSRAM, следующая инструкция также. Наглядно распределение инструкций показано в таблицах с 1-1 по 1-4.
+
+<div style="text-align:right">Таблица 1-1. Представление блока BSRAM №1 с распределёнными инструкциями машинного кода</div>
+
+<div class="table11" align="center">
+
+|Адр.\Байт|31 |...| 3 | 2 | 1 | 0 |
+|:-------:|:-:|:-:|:-:|:-:|:-:|:-:|
+|    00   |93 |...|...|...|93 |13 |
+|    01   |...|...|...|...|...|33 |
+|   ...   |...|...|...|...|.. |...|
+|    3F   |...|...|...|...|...|...|
+
+</div>
+
+<div style="text-align:right">Таблица 1-2. Представление блока BSRAM №2 с распределёнными инструкциями машинного кода</div>
+
+<div class="table12" align="center">
+
+|Адр.\Байт|31 |...| 3 | 2 | 1 | 0 |
+|:-------:|:-:|:-:|:-:|:-:|:-:|:-:|
+|    00   |83 |...|...|...|01 |01 |
+|    01   |...|...|...|...|...|E2 |
+|   ...   |...|...|...|...|.. |...|
+|    3F   |...|...|...|...|...|...|
+
+</div>
+
+<div style="text-align:right">Таблица 1-3. Представление блока BSRAM №3 с распределёнными инструкциями машинного кода</div>
+
+<div class="table13" align="center">
+
+|Адр.\Байт|31 |...| 3 | 2 | 1 | 0 |
+|:-------:|:-:|:-:|:-:|:-:|:-:|:-:|
+|    00   |71 |...|...|...|C0 |50 |
+|    01   |...|...|...|...|...|23 |
+|   ...   |...|...|...|...|.. |...|
+|    3F   |...|...|...|...|...|...|
+
+</div>
+
+<div style="text-align:right">Таблица 1-4. Представление блока BSRAM №4 с распределёнными инструкциями машинного кода</div>
+
+<div class="table14" align="center">
+
+|Адр.\Байт|31 |...| 3 | 2 | 1 | 0 |
+|:-------:|:-:|:-:|:-:|:-:|:-:|:-:|
+|    00   |71 |...|...|...|C0 |50 |
+|    01   |...|...|...|...|...|23 |
+|   ...   |...|...|...|...|.. |...|
+|    3F   |...|...|...|...|...|...|
+
+</div>
+    
+### 3. Преобразовать байтовые массивы в строковые согласно разметке строчек и проходов \*.fs файла
+Один блок BSRAM в файле .fs имеет 256 строк. При преобразовании данных в строковые массивы, для последующей записи в файл, необходимо совершить 4 прохода на каждую строку. За один проход строки производится запись 2 байт (16 бит) данных в определённые позиции строки, запись следующих данных на этом проходе производится во все оставшиеся строки. После чего начинается новый проход записи данных по тем же 256 строкам, но в новые позиции в строках. Данные для записи берутся из подготовленного в предыдущем пункте массива, и начиная с нулевого элемента массива записываются по порядку в строки начиная с конца блока (начиная с 256 строки). Процедура повторяется для всех блоков BSRAM, на выходе должно получиться четыре строковых массива, каждый из которых содержит 256 строк с новыми данными. В таблице 2 показаны необходимые позиции битов для записи в строку на каждом проходе.
+
+<div style="text-align:right">Таблица 2. Номера позиций записываемых битов при каждом проходе</div>
+
+<div class="table2">
+
+|Проход\Бит.|15 |14 |13 |12 |11 |10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+|-----------|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|   **1**   |138|129|121|112|103|95 |86 |77 |61 |51 |43 |35 |26 |17 | 9 | 0 |
+| data/bin  | 1 | 0 | 0 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 1 | 1 |
+|   **2**   |139|130|122|113|104|96 |88 |78 |62 |52 |44 |36 |27 |18 |10 | 1 |
+| data/bin  | X | X | X | X | X | X | X | X | X | X | X | X | X | X | X | X |
+|   **3**   |144|135|127|118|110|101|92 |84 |66 |58 |49 |40 |32 |23 |14 | 6 |
+| data/bin  | X | X | X | X | X | X | X | X | X | X | X | X | X | X | X | X |
+|   **4**   |145|136|128|119|111|102|93 |85 |68 |59 |50 |41 |33 |24 |16 | 7 |
+| data/bin  | X | X | X | X | X | X | X | X | X | X | X | X | X | X | X | X |
+
+</div>
+
+При записи данных в строковые массивы необходимо учитывать своеобразный порядок смены строк внутри одного/каждого прохода. Далее показан алгормит переключения между строками, в котором в квадратных скобках указывается [номер строки], а каждое последующе приращение строки представляется числом со знаком перед ним +/-.
+
+>&emsp;**Проход №1**<br>
+>&emsp;&emsp;&emsp; &nbsp; [255] >> -128 >> [127] >> +64 >> [191] >> -128 >> [63] >> +191 >> <br>
+>&emsp;&emsp; >> [254] >> -128 >> [126] >> +64 >> [190] >> -128 >> [62] >> +191 >> <br>
+>&emsp;&emsp; >> [........] >> -128 >> [.......] >> +64 >> [.......] >> -128 >> [.....] >> +191 >><br>
+>&emsp;&emsp; >> [192] >> -128 >> [ 64 ] >> +64 >> [128] >> -128 >> [ 0 ]<br>
+>&emsp;**Проход №2** - Повторный проход тех же строк с записью данных в новые позиции битов<br>
+>&emsp;**Проход №3** - Повторный проход тех же строк с записью данных в новые позиции битов<br>
+>&emsp;**Проход №4** - Повторный проход тех же строк с записью данных в новые позиции битов<br>
+   
+### 4. Включить надстройку генерации Post-Place File в редакторе *GOWIN IDE*, а также отключить формирование контрольной суммы CRC
+В данном проекте ПЛИС используется 4 блока *BSRAM* и при синтезе проекта редактор использует реальные блоки памяти в произвольном порядке, всего в микросхеме *GW1NR-9* доступно 26 таких блоков памяти. Для определения их реального расположения, в редакторе *GOWIN IDE* включаем функцию:<br> <code>Project -> Configuration -> Place & Routine -> General -> Generate Post-Place File -> True</code>
+
+На данный момент алгоритм не реализует расчёт и подмену контрольной суммы в строках с инициализацией данных блоков памяти BSRAM при записи в \*.fs файл, поэтому формирование CRC должно быть отключено в редакторе *GOWIN IDE*:<br>
+<code>Project -> Configuration -> BitStream -> Enable CRC Check -> Снять галочку</code>
+
+### 5. Получить данные расположения блоков памяти после синтеза проекта ПЛИС из файла "in_bsram_location".posp
+После синтеза проекта ПЛИС будет появляться файл с расширением \*.posp, в котором показано какие конкретно блоки памяти *BSRAM* использовались при синтезе проекта ПЛИС, а также их связь с программными представлениями (sp_inst_X). Надпись <code>imem</code> указывает на то, что блок памяти BSRAM используется как память инструкций. Получаем данные из файла "in_bsram_location".posp   
+>&emsp;imem/sp_inst_2 PLACE_BSRAM_<grey0>R10[5]</grey0>   
+>&emsp;imem/sp_inst_1 PLACE_BSRAM_<grey1>R10[4]</grey1>  
+>&emsp;imem/sp_inst_0 PLACE_BSRAM_<grey2>R28[4]</grey2>  
+>&emsp;imem/sp_inst_3 PLACE_BSRAM_<grey3>R28[5]</grey3>
+### 6. Определить расположение используемых блоков памяти в разметке файла \*.fs, согласно таблице 3.
+Данные блоков памяти в этом файле расположены в двух горизонатльных зонах R10 (11 блоков BSRAM) и R28 (15 блоков BSRAM). Ниже приведена таблица 3 расположения блоков памяти в файле *.fs<br>
+Блоки памяти зоны **R10** расположены в **строках 744-999**.<br>
+Блоки памяти зоны **R28** расположены в **строках 1000-1255**
+
+<div style="text-align:right">Таблица 3. Разметка ячеек памяти BSRAM в файле *.fs</div>
+
+<div class="table3">
+
+|Зона\Поз.| 14 | 13 | 12 | 11 | 10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+|:-------:|:--:|:--:|:--:|:--:|:--:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| **R10** | X  |[10]|[9] |[8] |[7] | X | X |[6]|[5]|[4]|[3]|[2]|[1]|[0]| X |
+| **R28** |[14]|[13]|[12]|[11]|[10]|[9]|[8]|[7]|[6]|[5]|[4]|[3]|[2]|[1]|[0]|
+
+</div>
+
+### 7. Определить стартовые адреса в строке файла \*.fs для каждого используемого блока BSRAM
+Все строки с инициализацией данных блоков памяти BSRAM в файле \*.fs имеют одинаковую структуру, которая показана в таблице 4. Нулевой символ строки принимается с начала строки(слева). Структура строки содержит секции обозначенные заглавными латинскими буквами, для каждой секции показана стартовая позиция символа и конечная позиция символа, длина секции, а также значения данных для зон R28 и R10. Для поиска позиций записи данных в строке сначала нужно найти номер используемого блока памяти BSRAM, например R10[5], значение в столбце "Начало" и "Конец" будут соответствовать тому диапазону символов, который необходимо заменить на новые данные, в этом примере диапазон [1516:1670]. 
+
+<div style="text-align:right">Таблица 4. Разметка одной строки с инициализацей<br> блоков памяти BSRAM в файле *.fs</div>
+
+<div class="table4">
+
+|Секция |Начало|Конец |Длина|R28     |R10     |Примечание                 |
+|:-----:|:----:|:----:|:---:|:------:|:------:|---------------------------|
+|  A    |  0   |   3  |   4 |  1111  |  1111  |Стартовый символ F         |
+|  B    |  4   |  75  |  72 |72{0}\* |72{0}\* |До первого блока BSRAM     |
+|  C14  |  76  | 230  | 155 |**[14]**|72{0}\* |Блок памяти BSRAM          |
+|  D14  |  231 | 255  |  25 |  25{0} |  25{0} |Между блоками BSRAM        |
+|  C13  |  256 | 410  | 155 |**[13]**|**[10]**|Блок памяти BSRAM          |
+|  D13  |  411 | 435  |  25 |  25{0} |  25{0} |Между блоками BSRAM        |
+|  C12  |  436 | 590  | 155 |**[12]**|**[9]** |Блок памяти BSRAM          |
+|  D12  |  591 | 615  |  25 |  25{0} |  25{0} |Между блоками BSRAM        |
+|  C11  |  616 | 770  | 155 |**[11]**|**[8]** |Блок памяти BSRAM          |
+|  D11  |  771 | 795  |  25 |  25{0} |  25{0} |Между блоками BSRAM        |
+|  C10  |  796 | 950  | 155 |**[10]**|**[7]** |Блок памяти BSRAM          |
+|  D10  |  951 | 975  |  25 |  25{0} |  25{0} |Между блоками BSRAM        |
+|  C9   |  976 |1130  | 155 |**[9]** |72{0}\* |Блок памяти BSRAM          |
+|  D9   | 1131 |1155  |  25 |  25{0} |  25{0} |Между блоками BSRAM        |
+|  C8   | 1156 |1310  | 155 |**[8]** |72{0}\* |Блок памяти BSRAM          |
+|  D8   | 1311 |1335  |  25 |  25{0} |  25{0} |Между блоками BSRAM        |
+|  C7   | 1336 |1490  | 155 |**[7]** |**[6]** |Блок памяти BSRAM          |
+|  D7   | 1491 |1515  |  25 |  25{0} |  25{0} |Между блоками BSRAM        |
+|  C6   | 1516 |1670  | 155 |**[6]** |**[5]** |Блок памяти BSRAM          |
+|  D6   | 1671 |1695  |  25 |  25{0} |  25{0} |Между блоками BSRAM        |
+|  C5   | 1696 |1850  | 155 |**[5]** |**[4]** |Блок памяти BSRAM          |
+|  D5   | 1851 |1875  |  25 |  25{0} |  25{0} |Между блоками BSRAM        |
+|  C4   | 1876 |2030  | 155 |**[4]** |**[3]** |Блок памяти BSRAM          |
+|  D4   | 2031 |2055  |  25 |  25{0} |  25{0} |Между блоками BSRAM        |
+|  C3   | 2056 |2210  | 155 |**[3]** |**[2]** |Блок памяти BSRAM          |
+|  D3   | 2211 |2235  |  25 |  25{0} |  25{0} |Между блоками BSRAM        |
+|  C2   | 2236 |2390  | 155 |**[2]** |**[1]** |Блок памяти BSRAM          |
+|  D2   | 2391 |2415  |  25 |  25{0} |  25{0} |Между блоками BSRAM        |
+|  C1   | 2416 |2570  | 155 |**[1]** |**[0]** |Блок памяти BSRAM          |
+|  D1   | 2571 |2595  |  25 |  25{0} |  25{0} |Между блоками BSRAM        |
+|  C0   | 2596 |2750  | 155 |**[0]** |72{0}\* |Блок памяти BSRAM          |
+|  E    | 2751 |2839  |  89 |89{0}\* |89{0}\* |Между последним BSRAM и CRC|
+|*F\*\**|*2840*|*2855*| *16*| *CRC16*| *CRC16*|*Контрольная сумма CRC16*  |
+|  G    | 2856 |2903  |   4 |  48{1} |  48{1} |Конечные символы 12{F}     |
+
+</div>
+
+\* В секторе может находится конфигурационная информация, поэтому не рекомендуется изменять данные.<br>
+\*\* Контрольная сумма CRC16 может быть отключена в редакторе *GOWIN IDE*, в таком случае последний сектор G смещается на 16 символов влево.
+
+### 8. Получить данные входного файла конфигурации ПЛИС "in_fpga".fs, заменить необходимые данные в используемых блоках памяти BSRAM не затрагивая других данных. Полученный результат сохранить в новый файл "out_fpga".fs
+
+Последовательность действий для записи в файл "out_fpga".fs описана в списке ниже, а также продемонстрирована наглядно в таблице 5:
+1. Берём строковые массивы подготовленные для записи согласно разметке файла \*.fs, полученные в пункте 3 настоящей инструкции;
+1. Сопоставляем программные представления блоков памяти BSRAM с реально используемыми блоками внутри микросхемы согласно пункту 6;
+1. Находим изменяемый диапазон строк и диапазон столбцов для каждого блока памяти BSRAM согласно пунктам 6 (для строк) и 7 (для столбцов);
+1. Получаем данные входного файла конфигурации ПЛИС "in_fpga".fs;
+1. Заменяем необходмые данные по найденым адресам, не затрагивая прочих данных;
+1. Полученный результат сохраняем в новый файл "out_fpga".fs
+
+<div style="text-align:right">Таблица 5. Сопоставление данных текущего примера для организации записи в файл *.fs</div>
+
+<div class="table5" align="center">
+
+|Прогр. BSRAM|Факт. BSRAM|Диапазон строк|Диапазон столбцов|      |      |      |      |
+|:----------:|:---------:|:------------:|:---------------:|:----:|:----:|:----:|:----:|
+|sp_inst_0   |**R28[4]** |[1000:1255]   |[1876:2030]      |&nbsp;|&nbsp;|&nbsp;|&nbsp;|
+|sp_inst_1   |**R10[4]** |[744:999]     |[1696:1850]      |&nbsp;|&nbsp;|&nbsp;|&nbsp;|
+|sp_inst_2   |**R10[5]** |[744:999]     |[1516:1670]      |&nbsp;|&nbsp;|&nbsp;|&nbsp;|
+|sp_inst_3   |**R28[5]** |[1000:1255]   |[1696:1850]      |&nbsp;|&nbsp;|&nbsp;|&nbsp;|
+
+</div>
+
+# Описание кода алгоритма
+
+### Переменые для работы 
+В начале алгоритма инициализируются переменные для работы найденые чисто **империческим** путем
 ```python
 #0.1 Соотносим блоки BSRAM и начальные позиции записи в строке *.fs
               #    0    1    2    3    4    5    6    7   8   9  10
@@ -46,29 +353,15 @@ for i in range(4):
     for j in range(len(bsram[i]), 2048):                                                            #Дополняем строки до полного объёма блоков BSRAM
         bsram[i].append(0)
 ```
-### Дейсвие третье **Работа с файлов .posp**
+### Дейсвие третье **Работа с файлом .posp**
 В файле с расширением .posp указаны какие блоки памяти используются
 ```
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_5_s PLACE_BSRAM_R10[7]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_6_s PLACE_BSRAM_R28[10]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_11_s PLACE_BSRAM_R10[6]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_12_s PLACE_BSRAM_R10[8]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_1_s PLACE_BSRAM_R10[9]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_13_s PLACE_BSRAM_R28[9]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_9_s PLACE_BSRAM_R28[8]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_10_s PLACE_BSRAM_R10[10]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_8_s PLACE_BSRAM_R28[11]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_7_s PLACE_BSRAM_R28[12]  
 imem/sp_inst_2 PLACE_BSRAM_R10[5]   
 imem/sp_inst_1 PLACE_BSRAM_R10[4]  
 imem/sp_inst_0 PLACE_BSRAM_R28[4]  
 imem/sp_inst_3 PLACE_BSRAM_R28[5]  
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_3_s PLACE_BSRAM_R10[3] 
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_2_s PLACE_BSRAM_R10[2] 
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_0_s PLACE_BSRAM_R28[7] 
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_4_s PLACE_BSRAM_R28[6] 
 ```
-нам необходимо достать строки в которых есть ключевое слово **item**
+нам необходимо достать строки в которых есть ключевое слово **imem**
 для этого будем использовать следующий алгоритм:
 ```python
 with open("hw/impl/pnr/riscv.posp", "r") as file:                                                   #Открываем *.posp
@@ -79,7 +372,7 @@ imem_list = re.findall("imem.*", text_data)
 ```python
 imem_list = re.findall("imem.*", text_data) 
 ```
-ищет все строки которые содержат слово **item**, затем знак **"."** указывает на то что после может быть любой символ, затем знак **"*"** указывает на любое количество символов.   
+ищет все строки которые содержат слово **imem**, затем знак **"."** указывает на то что после может быть любой символ, затем знак **"*"** указывает на любое количество символов.   
 Далее необходимо достать номер **"sp_inst_"**, указатель блока памяти **"R10"** или  **"R28"**, а так же индекс блока, например **"[5]"**. Данное действие выполняет алгоритм:
 ```python
 for string in imem_list:
@@ -105,13 +398,13 @@ for i , string in enumerate(bsram_loc):                                         
 ```python
 bsram_loc.sort() 
 ```  
-### Дейсвие четвертое **Работа с файлов .fs**
-Необходимо открыть файл с кодом памяти с расширением **.fs**
+### Дейсвие четвертое **Работа с файлом .fs**
+Необходимо открыть файл конфигурации ПЛИС с расширением **.fs**
 ```python
 with open("hw/impl/pnr/ao_0.fs", "r") as file:                                                      #Открываем *.fs и выгрузим все строки отдельно в список
     conf_data = file.readlines()
 ```
-каждая строка условно паделена на 3 блока первая и третья часть строки не несет в себе полезной информации, нам нужна только центральная часть, для удобства работы необходимо сохранить первую и третью часть строки, а вторую заполнить **0**. С помощью кода:
+каждая строка условно поделена на 3 блока, первая и третья часть строки не несет в себе полезной информации, нам нужна только центральная часть. Для удобства работы необходимо сохранить первую и третью часть строки, а вторую заполнить **0**. С помощью кода:
 ```python
 for bsram_num in range(4):                                                                          #Сначала определим какой блок BSRAM и стартовый адрес записи
     bsram_zone = bsram_loc[bsram_num][1]                                                            #Зона в которой располагается BSRAM: 0 - R10; 1 - R28;       
@@ -131,27 +424,27 @@ for bsram_num in range(4):                                                      
 Далее необходимо сформировать строки для записи на основе массива **bsram** который мы получили во втором действии, ниже показан код который сначала формирует строки
 ,а потом перезаписывает во вторую часть памяти, так же в конце кода вычесляется **shift_str** для следущего прохода  
 ```python
-bit_list0 = []                                                   
+bit_list0 = []
 bit_list1 = []
-bit_list = [] 
+bit_list  = [] 
 for i, byte in enumerate(bsram[bsram_num]):                                                         #Перебераем файл .bin для создания файла .fs
         each2bytes = i%2                                                                            #Каждые два байта
         if (each2bytes):                                                                            #Создаём список с битами 2ух байт для записи в строку BSRAM
-            bit_list1 = [1 if x=='1' else 0 for x in "{:08b}".format(byte)]                         #Упращеная запись условия обернутого в цикл
+            bit_list1 = [1 if x=='1' else 0 for x in "{:08b}".format(byte)]                         #Упрощеная запись условия обернутого в цикл
             bit_list = bit_list1 + bit_list0                                                        #Собираем два байта в один лист
         else:    
-            bit_list0 = [1 if x=='1' else 0 for x in "{:08b}".format(byte)]                         #Упращеная запись условия обернутого в цикл
+            bit_list0 = [1 if x=='1' else 0 for x in "{:08b}".format(byte)]                         #Упрощеная запись условия обернутого в цикл
         if (each2bytes):                                                                            #Расставляем битики данных в одной строке BSRAM
             j = i//2                                                                                #Счётчик пар байтов
             p = j//256                                                                              #Номер прохода (всего 4 прохода)
             if((j % 256) == 0): shift_str = 0                                                       #Осуществляем сброс смещения строки каждые 256 значений
-            current_str = base_str + shift_str                                                      #Добовляем смещение текущей строки
+            current_str = base_str + shift_str                                                      #Добавляем смещение текущей строки
             bsram_str = list(conf_data[current_str][base_pos-154:base_pos+1])                       #Берём за основу строку из файла и заменяем в ней нужные символы
             for k, bit in enumerate(bit_list):                                                      #Перебераем массив bit_list                                                                                                             
                 bsram_str[154-bit_loc_pas[p][k]] = str(bit)                                         #Создаем строку bsram_str из bit_list                         
             #Записываем битики в строку BSRAM выгруженную из файла *.fs
             first_part_of_str = conf_data[current_str][:base_pos-154]                               #Оставляем без измененной первую часть строки
-            second_part_of_str = ''.join(bsram_str)                                                 #Изменяем вторую часть строки (только в ней хронятся полезные данные)
+            second_part_of_str = ''.join(bsram_str)                                                 #Изменяем вторую часть строки (только в ней хранятся полезные данные)
             third_part_of_str = conf_data[current_str][base_pos+1:]                                 #Оставляем без измененной третью часть строки
             conf_data[current_str] = first_part_of_str + second_part_of_str + third_part_of_str     #Собираем 3 части строки в одну
             match ((j % 256) % 4):                                                                  #Определяем номер строки для следующей записи (всего 4 прохода)   
