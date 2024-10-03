@@ -13,7 +13,7 @@ bit_loc_pas2 = [144,135,127,118,110,101,92,84,66,58,49,40,32,23,14,6]           
 bit_loc_pas3 = [145,136,128,119,111,102,93,85,68,59,50,41,33,24,16,7]                               #Позиции битов для четвертого прохода
 bit_loc_pas = [bit_loc_pas0, bit_loc_pas1, bit_loc_pas2, bit_loc_pas3]                              #Собираем массивы в один лист для дальнейшей работы с ним
 #1 Открываем бинарник mcu
-with open("fw/Debug/riscv.bin", "rb") as file:
+with open("riscv.bin", "rb") as file:#with open("../../fw/Debug/riscv.bin", "rb") as file:
     binary_data = file.read()
 #2 Преобразуем машинный код в 4 строки для BSRAM и заполняем строки до полного обьема
 bsram = [[],[],[],[]]
@@ -29,7 +29,7 @@ for i in range(4):
     for j in range(len(bsram[i]), 2048):                                                            #Дополняем строки до полного объёма блоков BSRAM
         bsram[i].append(0)                                                                          #Добавляем в массив 
 #3 Анализируем файл размещения BSRAM в плис *.posp
-with open("hw/impl/pnr/riscv.posp", "r") as file:                                                   #Открываем *.posp
+with open("../../hw/impl/pnr/riscv.posp", "r") as file:                                                   #Открываем *.posp
     text_data = file.read()
 imem_list = re.findall("imem.*", text_data)                                                         #Ищем место где размещается память инструкций(imem)
 bsram_loc = []
@@ -38,7 +38,7 @@ for string in imem_list:
     block1 = re.findall('(R[0-9]+)', string)                                                        #Цифра вместе с буквой R определяет зону расположения блока BSRAM
     block2 = re.findall(r'(\[[0-9]+\])', string)                                                    #Цифра в квадратных скобках показывает расположение блока BSRAM в строке
     bsram_loc.append([block0[0], block1[0], block2[0]])
-    print(bsram_loc)
+    #print(bsram_loc)
 for i , string in enumerate(bsram_loc):                                                             #Удаляем все символы из строк и преобразовываем строки в числа
     for j, element in enumerate(string):
         if (j == 1):                                                                                #Если элемент 1, то происходит замена, на:                                                                           
@@ -49,7 +49,7 @@ for i , string in enumerate(bsram_loc):                                         
         else: bsram_loc[i][j] = int(re.sub('[^0-9]', '', element))                                  #Откидываем квадратные скобки
 bsram_loc.sort()                                                                                    #Сортируем строки по порядку расположения BSRAM в проекте плис
 #4 Подменяем нужные фрагменты в файле *.fs
-with open("hw/impl/pnr/ao_0.fs", "r") as file:                                                      #Открываем *.fs и выгрузим все строки отдельно в список
+with open("../../hw/impl/pnr/ao_0.fs", "r") as file:                                                      #Открываем *.fs и выгрузим все строки отдельно в список
     conf_data = file.readlines()
 for bsram_num in range(4):                                                                          #Сначала определим какой блок BSRAM и стартовый адрес записи
     bsram_zone = bsram_loc[bsram_num][1]                                                            #Зона в которой располагается BSRAM: 0 - R10; 1 - R28;       
@@ -93,5 +93,5 @@ for bsram_num in range(4):                                                      
                 case 2: shift_str = shift_str - 128                                                 #Начальная позиция для третьего прохода
                 case 3: shift_str = shift_str + 191                                                 #Начальная позиция для четвертого прохода
     print('Блок BSRAM', bsram_num, 'записан!')   
-with open("hw/impl/pnr/riscv.fs", "w") as file:                                                     #Запись данных в новый файл riscv.fs
+with open("riscv.fs", "w") as file:   #with open("../../fw/Debug/riscv.fs", "w") as file:                                                     #Запись данных в новый файл riscv.fs
     file.writelines(conf_data)
