@@ -4,48 +4,102 @@ module core
     output logic [5:0]  out,       //Выход на 6 светодиодов
     //Интерфейс памяти команд
     input  logic [31:0] imem_data,
-    output logic [10:0]  imem_addr,
+    output logic [10:0] imem_addr,
     //Интерфейс памяти данных
     input logic [31:0]  dmem_ReadData,
     output logic        dmem_Write,
     output logic [31:0] dmem_Addr, dmem_WriteData
 );
-
-    ////////////////////#cu - Блок управления////////////////////
-    //DESCRIPTION: Блоку управления (БУ) формирует управляющие сигналы
-    //для тракта данных в зависимости от типа инструкции. Условно
-    //разделён на 3 узла:
-    //1) Основной дешифратор - формирует основную часть управляющих
-    //сигналов для всех узлов тракта данных в зависимости от кода опреации
-    //op[6:0], а также формирует внутренний сигнал ALUOp для предвыбора
-    //операции АЛУ.
-    //2) Дешифратор АЛУ - выбирает тип операции в АЛУ на основе сигнала
-    //ALUOp, 5ого бита поля funct7 и битов [2:0] поля funct3;
-    //3) Логика JUMP/BRANCH - выбирает источник смещения для приращения
-    //счётчика команд: PC=PC+4 при PCSrc=0, PC=PC+Imm при PCSrc=0.
-    logic RegWrite, ALUSrc, MemWrite, Branch, Jump;
-    logic [1:0] ImmSrc, ResultSrc, ALUOp;
+    logic       Zero, RegWrite, ALUSrc, MemWrite, PCSrc;
+    logic [1:0] ImmSrc, ResultSrc;
     logic [2:0] ALUControl;
-    logic [6:0] op;
-    logic Zero, funct7b5, PCSrc;
-    logic [2:0] funct3b210;
-    assign op = Instr[6:0];
-    assign funct7b5 = Instr[30];
-    assign funct3b210 = Instr[14:12];
+    control_unit cu (  .op(Instr[6:0]), .funct3(Instr[14:12]), .funct7b5(Instr[30]), .Zero(Zero),
+                        .RegWrite(RegWrite), .ALUSrc(ALUSrc), .MemWrite(MemWrite), .PCSrc(PCSrc),
+                        .ImmSrc(ImmSrc), .ResultSrc(ResultSrc), .ALUControl(ALUControl));
+    
+    logic [31:0] PCTarget, PC, PCPlus4, Instr;
+    fetch fetch(    .clk(clk), .rst(rst), .PCSrc(PCSrc),
+                    .PCTarget(PCTarget),    
+                    .PC(PC), .PCPlus4(PCPlus4), .Instr(Instr),
+                    //Интерфейс памяти инструкций
+                    .imem_data(imem_data),
+                    .imem_addr(imem_addr));
+    
+    logic [31:0] PC_, PCPlus4_;
+    logic [31:0] RD1, RD2, ImmExt, Result;
+    decode decode(  .clk(clk), .rst(rst), .RegWrite(RegWrite), .ImmSrc(ImmSrc),
+                    .Instr(Instr), .Result(Result),
+                    .RD1(RD1), .RD2(RD2), .ImmExt(ImmExt),
+                    //Транслирование
+                    .PC(PC),   .PCPlus4(PCPlus4),
+                    .PC_(PC_), .PCPlus4_(PCPlus4_));
 
-    logic [10:0] ControlS; //Сборка сигналов управлеиня
-    assign {RegWrite, ImmSrc[1:0], ALUSrc, MemWrite, ResultSrc[1:0], Branch, ALUOp[1:0], Jump} = ControlS;
+    logic [31:0] ALUResult, WriteData, PCPlus4__;
+    execute execute (   .ALUSrc(ALUSrc), .ALUControl(ALUControl),
+                        .RD1(RD1), .RD2(RD2), .PC(PC_), .ImmExt(ImmExt),
+                        .Zero(Zero), .ALUResult(ALUResult), .WriteData(WriteData),
+                        //Транслирование
+                        .PCPlus4(PCPlus4_), .PCPlus4_(PCPlus4__),
+                        //Особенные
+                        .PCTarget(PCTarget));
+
+    logic [31:0] ReadData, ALUResult_, PCPlus4___; 
+    memory memory ( .MemWrite(MemWrite), .ALUResult(ALUResult), .WriteData(WriteData),
+                    .ReadData(ReadData),
+                    //Интерфейс памяти данных
+                    .dmem_ReadData(dmem_ReadData),
+                    .dmem_Write(dmem_Write), .dmem_Addr(dmem_Addr),
+                    .dmem_WriteData(dmem_WriteData), .ALUResult_(ALUResult_),
+                    //Транслирование
+                    .PCPlus4(PCPlus4__), .PCPlus4_(PCPlus4___));
+
+    writeback writeback (   .ResultSrc(ResultSrc),
+                            .ALUResult(ALUResult_), .ReadData(ReadData), .PCPlus4(PCPlus4___),
+                            //Особенные
+                            .Result(Result));
+
+    assign out = dmem_ReadData[5:0];
+
+endmodule
+
+//#cu - Блок управления//
+//DESCRIPTION: Блоку управления (БУ) формирует управляющие сигналы
+//для тракта данных в зависимости от типа инструкции. Условно
+//разделён на 3 узла:
+//1) Основной дешифратор - формирует основную часть управляющих
+//сигналов для всех узлов тракта данных в зависимости от кода опреации
+//op[6:0], а также формирует внутренний сигнал ALUOp для предвыбора
+//операции АЛУ.
+//2) Дешифратор АЛУ - выбирает тип операции в АЛУ на основе сигнала
+//ALUOp, 5ого бита поля funct7 и битов [2:0] поля funct3;
+//3) Логика JUMP/BRANCH - выбирает источник смещения для приращения
+//счётчика команд: PC=PC+4 при PCSrc=0, PC=PC+Imm при PCSrc=0.
+module control_unit (
+    input logic [6:0]   op,
+    input logic [2:0]   funct3,
+    input logic         funct7b5, Zero,
+    
+    output logic        RegWrite, ALUSrc, MemWrite, PCSrc,
+    output logic [1:0]  ImmSrc,ResultSrc,
+    output logic [2:0]  ALUControl
+);
+
+    logic Branch, Jump;
+    logic [1:0] ALUOp;
+
+    logic [10:0] controls; //Сборка сигналов управлеиня
+    assign {RegWrite, ImmSrc[1:0], ALUSrc, MemWrite, ResultSrc[1:0], Branch, ALUOp[1:0], Jump} = controls;
     //          A          BB        C         D          EE           F         GG        H
     ////#cu.1 Основной дешифратор
     always_comb
         case(op)                     //A_BB_C_D_EE_F_GG_H
-            7'b0000011: ControlS = 11'b1_00_1_0_01_0_00_0; //Команда lw
-            7'b0100011: ControlS = 11'b0_01_1_1_00_0_00_0; //Команда sw
-            7'b0110011: ControlS = 11'b1_00_0_0_00_0_10_0; //Команды or, and, ???(тип R) 
-            7'b1100011: ControlS = 11'b0_10_0_0_00_1_01_0; //Команда beq
-            7'b0010011: ControlS = 11'b1_00_1_0_00_0_10_0; //Команда addi
-            7'b1101111: ControlS = 11'b1_11_0_0_10_0_00_1; //Команда jal
-            default:    ControlS = 11'bx_xx_x_x_xx_x_xx_x; //Другие команды
+            7'b0000011: controls = 11'b1_00_1_0_01_0_00_0; //Команда lw
+            7'b0100011: controls = 11'b0_01_1_1_00_0_00_0; //Команда sw
+            7'b0110011: controls = 11'b1_00_0_0_00_0_10_0; //Команды or, and, ???(тип R) 
+            7'b1100011: controls = 11'b0_10_0_0_00_1_01_0; //Команда beq
+            7'b0010011: controls = 11'b1_00_1_0_00_0_10_0; //Команда addi
+            7'b1101111: controls = 11'b1_11_0_0_10_0_00_1; //Команда jal
+            default:    controls = 11'bx_xx_x_x_xx_x_xx_x; //Другие команды
         endcase
     ////#cu.2 Дешифратор АЛУ
     logic opb5;
@@ -56,7 +110,7 @@ module core
         case(ALUOp)
             2'b00:   ALUControl = 3'b000;                                   //lw,sw
             2'b01:   ALUControl = 3'b001;                                   //beq
-            default: case(funct3b210)
+            default: case(funct3)
                         3'b000:  ALUControl = (RtypeSub) ? 3'b001 : 3'b000; //sub : add,addi
                         3'b010:  ALUControl = 3'b101;                       //slt
                         3'b110:  ALUControl = 3'b011;                       //or
@@ -66,51 +120,59 @@ module core
         endcase
     ////#cu.3 Логика JUMP/BRANCH
     assign PCSrc = (Zero & Branch) | Jump;
-    
-    ////////////////////#pc - Счётчик команд////////////////////
+
+endmodule
+
+module fetch (
+    input  logic        clk, rst, PCSrc,
+    input  logic [31:0] PCTarget,
+    output logic [31:0] PC, PCPlus4, Instr,
+
+    //Интерфейс памяти инструкций
+    input  logic [31:0] imem_data,
+    output logic [10:0] imem_addr
+);
+    //#pc - Счётчик команд//
     //DESCRIPTION: Счётчик команд PC на каждом такте принимает значение
     //PCNext, значение на который попадает с мультиплесора с сигналом выбора PCSrc.
     //PCNext может принимать значение PCPlus4(приращение текущего значения PC на 4ед.)
-    //или значение внешнего источника смещения PCExt(приращение текущего значения PC
+    //или значение внешнего источника смещения PCTarget(приращение текущего значения PC
     //на значение расширенного знаком непосредственного операнда ImmExt).
-    logic [31:0] PC, PCPlus4, PCExt, PCNext;
+    logic [31:0] PCNext;
     assign PCPlus4 = PC + 4;
-    assign PCExt = PC + ImmExt;
-    assign PCNext = (PCSrc)? PCExt : PCPlus4;
+    assign PCNext = (PCSrc)? PCTarget : PCPlus4;
 
     always_ff @(posedge clk, posedge rst)
         if (rst)  PC <= 0;
         else      PC <= PCNext;
-
-    assign out = PC[6:1];
     
-    ////////////////////#imem - Память команд////////////////////
+    //#imem - Память команд//
     //DESCRIPTION: По входному адресу счётчика команд PC из памяти команд
     //извлекается инструкция Instr. Выведен внешний интерфейс для подключения
     //памяти на шины imem_addr и imem_data.
-    logic [31:0] Instr;
     assign Instr = imem_data;
     assign imem_addr = PC[12:2];
+endmodule
 
-    ////////////////////#rf - Регистровый файл////////////////////
+module decode (
+    input logic         clk, rst, RegWrite,
+    input logic  [ 1:0] ImmSrc,
+    input  logic [31:0] Instr, Result,
+    output logic [31:0] RD1, RD2, ImmExt,
+    //Транслирование
+    input  logic [31:0] PC, PCPlus4,
+    output logic [31:0] PC_, PCPlus4_
+);
+    //#rf - Регистровый файл//
     //DESCRIPTION: Трёхпортовый регистровый файл имеет два порта для считывания
     //и один порт для загрузки данных по сигналу разрешения RegWrite
-    logic [5:0] rf_Addr1, rf_Addr2, rf_Addr3;
-    logic [31:0] rf_RD1, rf_RD2, Result;
+    logic [5:0] Addr1, Addr2, Addr3;
     logic [31:0] rf[31:0];
 
-    assign rf_Addr1[5:0] = Instr[19:15];
-    assign rf_Addr2[5:0] = Instr[24:20];
-    assign rf_Addr3[5:0] = Instr[11:7];
+    assign Addr1[5:0] = Instr[19:15];
+    assign Addr2[5:0] = Instr[24:20];
+    assign Addr3[5:0] = Instr[11:7];
     
-    always_comb //Мультиплексор для выбора данных на запись в рег. файл:
-        case (ResultSrc)
-            2'b00:   Result = alu_Result;       //Результат вычисления АЛУ                         
-            2'b01:   Result = dmem_ReadData;    //Результат выгрузки из памяти данных
-            2'b10:   Result = PCPlus4;          //Значение текущего значения счётчика с приращением +4
-            default: Result = 0;
-        endcase
-
     always_ff @(posedge clk, posedge rst)
         if (rst) begin
             rf[1] <= 0;  //x1
@@ -145,17 +207,16 @@ module core
             rf[30] <= 0; //x30
             rf[31] <= 0; //x31
         end
-        else if (RegWrite) rf[rf_Addr3] <= Result;
+        else if (RegWrite) rf[Addr3] <= Result;
 
-    assign rf_RD1 = (rf_Addr1 != 0) ? rf[rf_Addr1] : 0;
-    assign rf_RD2 = (rf_Addr2 != 0) ? rf[rf_Addr2] : 0;
+    assign RD1 = (Addr1 != 0) ? rf[Addr1] : 0;
+    assign RD2 = (Addr2 != 0) ? rf[Addr2] : 0;
 
-    //////////#ie - Знаковое расширение непосредственного числа//////////
+    //#ie - Знаковое расширение непосредственного числа//
     //DESCRIPTION: Производится знаковое расширение непосредственного числа
     //в зависимости от типа регистра ImmSrc. Знаковый бит Imm[31] копируется
     //в старшие разряды непосредственного значения.
     logic [31:7] Imm;
-    logic [31:0] ImmExt;
     assign Imm = Instr[31:7];
 
     always_comb
@@ -167,40 +228,101 @@ module core
             default: ImmExt = 32'd0;
         endcase
 
-    //////////#alu - Арифметикологическое устройство (АЛУ)//////////
-    //DESCRIPTION: В зависимости от сигнала управления ALUResult происходит
-    //соответствующая операция. На входы alu_A и alu_B поступают входные
-    //операнды, результат записывается в alu_Result. Устройство детектирует
+    //#end-to-end - Транслируемые сигналы без изменения//
+    assign PC_ = PC;
+    assign PCPlus4_ = PCPlus4;
+
+endmodule
+
+module execute (
+    input  logic        ALUSrc,
+    input  logic [ 2:0] ALUControl,
+    input  logic [31:0] RD1, RD2, PC, ImmExt,
+    output logic        Zero,
+    output logic [31:0] ALUResult, WriteData,
+    //Транслирование
+    input  logic [31:0] PCPlus4,
+    output logic [31:0] PCPlus4_,
+    //Особенные
+    output logic [31:0] PCTarget
+);
+
+    //#alu - Арифметикологическое устройство (АЛУ)//
+    //DESCRIPTION: В зависимости от сигнала управления ALUControl происходит
+    //соответствующая операция. На входы srcA и srcB поступают входные
+    //операнды, результат записывается в ALUResult. Устройство детектирует
     //нулевой результат операции - сигнал Zero=1 при нулевом результате.
-    //На вход alu_B может поступать как второй операнд регистрового файла RD2,
+    //На вход srcB может поступать как второй операнд регистрового файла RD2,
     //так и расширенное знаком непосредственное значение ImmExt в зависимости
     //от сигнала управления ALUSrc
-    logic [31:0] alu_A;
-    logic [31:0] alu_B;
-    logic [31:0] alu_Result;
-    assign alu_A = rf_RD1;
-    assign alu_B = (ALUSrc)? ImmExt : rf_RD2; //Мультипелксор для выбора второго операнда АЛУ: RD2 или ImmExt
+    logic [31:0] srcA;
+    logic [31:0] srcB;
+    assign srcA = RD1;
+    assign srcB = (ALUSrc)? ImmExt : RD2; //Мультипелксор для выбора второго операнда АЛУ: RD2 или ImmExt
     
     always_comb
         case (ALUControl)
-            3'b000: alu_Result = alu_A + alu_B;
-            3'b001: alu_Result = alu_A - alu_B;
-            3'b010: alu_Result = alu_A & alu_B;
-            3'b011: alu_Result = alu_A | alu_B;
-            3'b101: alu_Result = (alu_A < alu_B)? 32'd1 : 32'd0;
-            default: alu_Result = 32'd0;
+            3'b000: ALUResult = srcA + srcB;
+            3'b001: ALUResult = srcA - srcB;
+            3'b010: ALUResult = srcA & srcB;
+            3'b011: ALUResult = srcA | srcB;
+            3'b101: ALUResult = (srcA < srcB)? 32'd1 : 32'd0;
+            default: ALUResult = 32'd0;
         endcase
 
-    assign Zero = &(~alu_Result);
+    assign Zero = &(~ALUResult);
 
-    ////////////////////#dmem - Память данных////////////////////
+    //#Сумматор текущего счётчика инструкций PC и расширенного непосредственного числа ImmExt.
+    assign PCTarget = PC + ImmExt;
+
+    //#Транслирование сигналов
+    assign PCPlus4_ = PCPlus4;
+    assign WriteData = RD2;
+
+endmodule
+
+module memory (
+    input logic         MemWrite,
+    input logic  [31:0] ALUResult, WriteData,
+    output logic [31:0] ReadData,
+    //Интерфейс памяти данных
+    input logic  [31:0] dmem_ReadData,
+    output logic        dmem_Write,
+    output logic [31:0] dmem_Addr, dmem_WriteData, ALUResult_,
+    //Транслирование
+    input  logic [31:0] PCPlus4,
+    output logic [31:0] PCPlus4_    
+);
+
+    //#dmem - Память данных//
     //DESCRIPTION: Память типа RAM доступна для чтения/записи. Имеет один вход
     //адреса dmem_Addr, выход считанных данных dmem_ReadData, а также вход записи
     //данных dmem_WriteData по сигналу разрешения записи dmem_Write. Выведен внешний
     //интерфейс для подключенияп памяти.
-    assign dmem_WriteData = rf_RD2;
-    assign dmem_Addr = alu_Result; 
+    assign dmem_WriteData = WriteData;
+    assign dmem_Addr = ALUResult; 
     assign dmem_Write = MemWrite;
-    //dmem_ReadData подключен в блок регистрового файла
+    assign ReadData = dmem_ReadData;
+
+    //#Транслирование сигналов
+    assign PCPlus4_ = PCPlus4;
+    assign ALUResult_ = ALUResult;
+
+endmodule
+
+module writeback (
+    input  logic [ 1:0] ResultSrc,
+    input  logic [31:0] ALUResult, ReadData, PCPlus4,
+    //Особенные
+    output logic [31:0] Result
+);
+
+    always_comb //Мультиплексор для выбора данных на запись в рег. файл:
+        case (ResultSrc)
+            2'b00:   Result = ALUResult;   //Результат вычисления АЛУ                         
+            2'b01:   Result = ReadData;    //Результат выгрузки из памяти данных
+            2'b10:   Result = PCPlus4;     //Значение текущего значения счётчика с приращением +4
+            default: Result = 0;
+        endcase
 
 endmodule
