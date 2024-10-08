@@ -1,7 +1,14 @@
-module core   
+/* Заметки:
+1. Регистры RdD-RdW 32 битные, а нужны 5 бит. Необходимо переделать, поскольку регистры занимают
+лишнее пространство ПЛИС. Сложно сделана петля регистра Rd через регистры стадий тракта данных,
+необходимо упростить. Смотри информацию на стр. 520 Харрисов.
+*/
+
+module core
+  #(parameter [0:0] CORE_TYPE = 1)  //1 - Однотактное ядро; 0 - Конвеерное ядро
    (input  logic        clk,      //Вход тактирования
     input  logic        rst,      //Вход сброса (кнопка S2)
-    output logic [5:0]  out,       //Выход на 6 светодиодов
+    output logic [5:0]  out,      //Выход на 6 светодиодов
     //Интерфейс памяти команд
     input  logic [31:0] imem_data,
     output logic [10:0] imem_addr,
@@ -10,54 +17,76 @@ module core
     output logic        dmem_Write,
     output logic [31:0] dmem_Addr, dmem_WriteData
 );
-    logic       Zero, RegWrite, ALUSrc, MemWrite, PCSrc;
-    logic [1:0] ImmSrc, ResultSrc;
-    logic [2:0] ALUControl;
-    control_unit cu (  .op(Instr[6:0]), .funct3(Instr[14:12]), .funct7b5(Instr[30]), .Zero(Zero),
-                        .RegWrite(RegWrite), .ALUSrc(ALUSrc), .MemWrite(MemWrite), .PCSrc(PCSrc),
-                        .ImmSrc(ImmSrc), .ResultSrc(ResultSrc), .ALUControl(ALUControl));
     
-    logic [31:0] PCTarget, PC, PCPlus4, Instr;
-    fetch fetch(    .clk(clk), .rst(rst), .PCSrc(PCSrc),
-                    .PCTarget(PCTarget),    
-                    .PC(PC), .PCPlus4(PCPlus4), .Instr(Instr),
+    //Сигналы тракта данных
+    logic [31:0] PCPlus4F,      PCF, InstrF;
+    logic [31:0] PCPlus4D, RdD, PCD, InstrD, ImmExtD, RD1D, RD2D;
+    logic [31:0] PCPlus4E, RdE, PCE,         ImmExtE, RD1E, RD2E, WriteDataE, ALUResultE, PCTargetE;
+    logic [31:0] PCPlus4M, RdM,                                   WriteDataM, ALUResultM, ReadDataM;
+    logic [31:0] PCPlus4W, RdW,                                               ALUResultW, ReadDataW, ResultW;    
+
+    //Сигналы блока управления
+    logic RegWriteD, MemWriteD, JumpD, BranchD, ALUSrcD;                logic [1:0] ResultSrcD, ImmSrcD; logic [2:0] ALUControlD;
+    logic RegWriteE, MemWriteE, JumpE, BranchE, ALUSrcE, PCSrcE, ZeroE; logic [1:0] ResultSrcE;          logic [2:0] ALUControlE;
+    logic RegWriteM, MemWriteM;                                         logic [1:0] ResultSrcM;
+    logic RegWriteW;                                                    logic [1:0] ResultSrcW;
+
+    //CONTROL UNIT//////////////////////////////////////////////////////////////////////////////////
+    control_unit cu (  .op(InstrD[6:0]), .funct3(InstrD[14:12]), .funct7b5(InstrD[30]),
+                        .RegWrite(RegWriteD), .ALUSrc(ALUSrcD), .MemWrite(MemWriteD), .Jump(JumpD), .Branch(BranchD),
+                        .ImmSrc(ImmSrcD), .ResultSrc(ResultSrcD), .ALUControl(ALUControlD));
+    //FETCH/////////////////////////////////////////////////////////////////////////////////////////
+    fetch fetch(    .clk(clk), .rst(rst), .PCSrc(PCSrcE),
+                    .PCTarget(PCTargetE),    
+                    .PC(PCF), .PCPlus4(PCPlus4F), .Instr(InstrF),
                     //Интерфейс памяти инструкций
                     .imem_data(imem_data),
                     .imem_addr(imem_addr));
-    
-    logic [31:0] PC_, PCPlus4_;
-    logic [31:0] RD1, RD2, ImmExt, Result;
-    decode decode(  .clk(clk), .rst(rst), .RegWrite(RegWrite), .ImmSrc(ImmSrc),
-                    .Instr(Instr), .Result(Result),
-                    .RD1(RD1), .RD2(RD2), .ImmExt(ImmExt),
-                    //Транслирование
-                    .PC(PC),   .PCPlus4(PCPlus4),
-                    .PC_(PC_), .PCPlus4_(PCPlus4_));
-
-    logic [31:0] ALUResult, WriteData, PCPlus4__;
-    execute execute (   .ALUSrc(ALUSrc), .ALUControl(ALUControl),
-                        .RD1(RD1), .RD2(RD2), .PC(PC_), .ImmExt(ImmExt),
-                        .Zero(Zero), .ALUResult(ALUResult), .WriteData(WriteData),
-                        //Транслирование
-                        .PCPlus4(PCPlus4_), .PCPlus4_(PCPlus4__),
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    regdata #(3, CORE_TYPE) rd_fetch (clk, rst, {InstrF, PCF, PCPlus4F},
+                                                {InstrD, PCD, PCPlus4D});
+    //DECODE////////////////////////////////////////////////////////////////////////////////////////
+    decode decode(  .clk(clk), .rst(rst), .RegWrite(RegWriteD), .ImmSrc(ImmSrcD),
+                    .Instr({InstrD[31:12],RdW[4:0],InstrD[6:0]}), .Result(ResultW),
+                    .RD1(RD1D), .RD2(RD2D), .ImmExt(ImmExtD));
+    assign RdD = {{27{1'b0}},InstrD[11:7]};
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    regdata    #(6, CORE_TYPE)  rd_decode (clk, rst, {PCD, PCPlus4D, ImmExtD, RD1D, RD2D, RdD},
+                                                     {PCE, PCPlus4E, ImmExtE, RD1E, RD2E, RdE});
+    regcontrol #(10, CORE_TYPE) rc_decode (clk, rst, 
+                    {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[2:0], ALUSrcD}, 
+                    {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[2:0], ALUSrcE});
+    //EXECUTE///////////////////////////////////////////////////////////////////////////////////////
+    execute execute (   .ALUSrc(ALUSrcE), .ALUControl(ALUControlE),
+                        .RD1(RD1E), .RD2(RD2E), .PC(PCE), .ImmExt(ImmExtE),
+                        .Zero(ZeroE), .ALUResult(ALUResultE), .WriteData(WriteDataE),
                         //Особенные
-                        .PCTarget(PCTarget));
-
-    logic [31:0] ReadData, ALUResult_, PCPlus4___; 
-    memory memory ( .MemWrite(MemWrite), .ALUResult(ALUResult), .WriteData(WriteData),
-                    .ReadData(ReadData),
+                        .PCTarget(PCTargetE));
+    ////Логика JUMP/BRANCH
+    assign PCSrcE = (ZeroE & BranchE) | JumpE;
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    regdata    #(4, CORE_TYPE) rd_execute (clk, rst, {PCPlus4E, WriteDataE, ALUResultE, RdE},
+                                                     {PCPlus4M, WriteDataM, ALUResultM, RdM});
+    regcontrol #(4, CORE_TYPE) rc_execute (clk, rst, {RegWriteE, ResultSrcE[1:0], MemWriteE}, 
+                                                     {RegWriteM, ResultSrcM[1:0], MemWriteM});
+    //MEMORY////////////////////////////////////////////////////////////////////////////////////////
+    memory memory ( .MemWrite(MemWriteM), .ALUResult(ALUResultM), .WriteData(WriteDataM),
+                    .ReadData(ReadDataM),
                     //Интерфейс памяти данных
                     .dmem_ReadData(dmem_ReadData),
                     .dmem_Write(dmem_Write), .dmem_Addr(dmem_Addr),
-                    .dmem_WriteData(dmem_WriteData), .ALUResult_(ALUResult_),
-                    //Транслирование
-                    .PCPlus4(PCPlus4__), .PCPlus4_(PCPlus4___));
-
-    writeback writeback (   .ResultSrc(ResultSrc),
-                            .ALUResult(ALUResult_), .ReadData(ReadData), .PCPlus4(PCPlus4___),
+                    .dmem_WriteData(dmem_WriteData));
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    regdata    #(4, CORE_TYPE) rd_memory (clk, rst, {PCPlus4M, ReadDataM, ALUResultM, RdM},
+                                                    {PCPlus4W, ReadDataW, ALUResultW, RdW});
+    regcontrol #(3, CORE_TYPE) rc_memory (clk, rst, {RegWriteM, ResultSrcM[1:0]}, 
+                                                    {RegWriteW, ResultSrcW[1:0]});
+    //WRITEBACK/////////////////////////////////////////////////////////////////////////////////////
+    writeback writeback (   .ResultSrc(ResultSrcW),
+                            .ALUResult(ALUResultW), .ReadData(ReadDataW), .PCPlus4(PCPlus4W),
                             //Особенные
-                            .Result(Result));
-
+                            .Result(ResultW));
+    ////////////////////////////////////////////////////////////////////////////////////////////////
     assign out = dmem_ReadData[5:0];
 
 endmodule
@@ -77,14 +106,13 @@ endmodule
 module control_unit (
     input logic [6:0]   op,
     input logic [2:0]   funct3,
-    input logic         funct7b5, Zero,
+    input logic         funct7b5,
     
-    output logic        RegWrite, ALUSrc, MemWrite, PCSrc,
+    output logic        RegWrite, ALUSrc, MemWrite, Jump, Branch,
     output logic [1:0]  ImmSrc,ResultSrc,
     output logic [2:0]  ALUControl
 );
 
-    logic Branch, Jump;
     logic [1:0] ALUOp;
 
     logic [10:0] controls; //Сборка сигналов управлеиня
@@ -118,9 +146,6 @@ module control_unit (
                         default: ALUControl = 3'bxxx;                       //Другие команды
                      endcase
         endcase
-    ////#cu.3 Логика JUMP/BRANCH
-    assign PCSrc = (Zero & Branch) | Jump;
-
 endmodule
 
 module fetch (
@@ -158,10 +183,7 @@ module decode (
     input logic         clk, rst, RegWrite,
     input logic  [ 1:0] ImmSrc,
     input  logic [31:0] Instr, Result,
-    output logic [31:0] RD1, RD2, ImmExt,
-    //Транслирование
-    input  logic [31:0] PC, PCPlus4,
-    output logic [31:0] PC_, PCPlus4_
+    output logic [31:0] RD1, RD2, ImmExt
 );
     //#rf - Регистровый файл//
     //DESCRIPTION: Трёхпортовый регистровый файл имеет два порта для считывания
@@ -228,10 +250,6 @@ module decode (
             default: ImmExt = 32'd0;
         endcase
 
-    //#end-to-end - Транслируемые сигналы без изменения//
-    assign PC_ = PC;
-    assign PCPlus4_ = PCPlus4;
-
 endmodule
 
 module execute (
@@ -240,9 +258,6 @@ module execute (
     input  logic [31:0] RD1, RD2, PC, ImmExt,
     output logic        Zero,
     output logic [31:0] ALUResult, WriteData,
-    //Транслирование
-    input  logic [31:0] PCPlus4,
-    output logic [31:0] PCPlus4_,
     //Особенные
     output logic [31:0] PCTarget
 );
@@ -275,8 +290,7 @@ module execute (
     //#Сумматор текущего счётчика инструкций PC и расширенного непосредственного числа ImmExt.
     assign PCTarget = PC + ImmExt;
 
-    //#Транслирование сигналов
-    assign PCPlus4_ = PCPlus4;
+    //#Прочие связи
     assign WriteData = RD2;
 
 endmodule
@@ -288,10 +302,7 @@ module memory (
     //Интерфейс памяти данных
     input logic  [31:0] dmem_ReadData,
     output logic        dmem_Write,
-    output logic [31:0] dmem_Addr, dmem_WriteData, ALUResult_,
-    //Транслирование
-    input  logic [31:0] PCPlus4,
-    output logic [31:0] PCPlus4_    
+    output logic [31:0] dmem_Addr, dmem_WriteData
 );
 
     //#dmem - Память данных//
@@ -303,10 +314,6 @@ module memory (
     assign dmem_Addr = ALUResult; 
     assign dmem_Write = MemWrite;
     assign ReadData = dmem_ReadData;
-
-    //#Транслирование сигналов
-    assign PCPlus4_ = PCPlus4;
-    assign ALUResult_ = ALUResult;
 
 endmodule
 
@@ -324,5 +331,45 @@ module writeback (
             2'b10:   Result = PCPlus4;     //Значение текущего значения счётчика с приращением +4
             default: Result = 0;
         endcase
+
+endmodule
+
+module regdata
+          #(parameter QUANTITY = 2,
+            parameter CORE_TYPE = 0)
+          (input  logic        clk, rst,
+           input  logic [31:0] d [QUANTITY-1:0],
+           output logic [31:0] q [QUANTITY-1:0]);
+
+    genvar i;
+
+    generate if (CORE_TYPE) begin   //Однотактное ядро
+        assign q = d;
+    end else begin                  //Конвеерное ядро
+        for(i=0; i<QUANTITY; i=i+1) begin : regdataloop
+            always_ff @(posedge clk, posedge rst)
+                if (rst)    q[i] <= 0;
+                else        q[i] <= d[i];
+        end
+    end
+    endgenerate
+
+endmodule
+
+module regcontrol
+          #(parameter WIDTH = 2,
+            parameter CORE_TYPE = 0)
+          (input  logic             clk, rst,
+           input  logic [WIDTH-1:0] d,
+           output logic [WIDTH-1:0] q);
+
+    generate if (CORE_TYPE) begin   //Однотактное ядро
+        assign q = d;
+    end else begin                  //Конвеерное ядро
+        always_ff @(posedge clk, posedge rst)
+            if (rst)    q <= 0;
+            else        q <= d;
+    end
+    endgenerate
 
 endmodule

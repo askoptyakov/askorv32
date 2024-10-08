@@ -4,73 +4,73 @@
     <Mode>Standard</Mode>
     <AoCore index="0" sample_clock="clk_p" trig_type="0" storage_depth="16" window_num="1" capture_amount="16" implementation="0" trigger_pos="0" module_name="top" force_trigger_by_falling_edge="false" capture_init_data_enabled="false">
         <SignalList>
-            <Bus capture_enable="true" name="riscv/PC[31:0]">
-                <Signal>riscv/PC[31]</Signal>
-                <Signal>riscv/PC[30]</Signal>
-                <Signal>riscv/PC[29]</Signal>
-                <Signal>riscv/PC[28]</Signal>
-                <Signal>riscv/PC[27]</Signal>
-                <Signal>riscv/PC[26]</Signal>
-                <Signal>riscv/PC[25]</Signal>
-                <Signal>riscv/PC[24]</Signal>
-                <Signal>riscv/PC[23]</Signal>
-                <Signal>riscv/PC[22]</Signal>
-                <Signal>riscv/PC[21]</Signal>
-                <Signal>riscv/PC[20]</Signal>
-                <Signal>riscv/PC[19]</Signal>
-                <Signal>riscv/PC[18]</Signal>
-                <Signal>riscv/PC[17]</Signal>
-                <Signal>riscv/PC[16]</Signal>
-                <Signal>riscv/PC[15]</Signal>
-                <Signal>riscv/PC[14]</Signal>
-                <Signal>riscv/PC[13]</Signal>
-                <Signal>riscv/PC[12]</Signal>
-                <Signal>riscv/PC[11]</Signal>
-                <Signal>riscv/PC[10]</Signal>
-                <Signal>riscv/PC[9]</Signal>
-                <Signal>riscv/PC[8]</Signal>
-                <Signal>riscv/PC[7]</Signal>
-                <Signal>riscv/PC[6]</Signal>
-                <Signal>riscv/PC[5]</Signal>
-                <Signal>riscv/PC[4]</Signal>
-                <Signal>riscv/PC[3]</Signal>
-                <Signal>riscv/PC[2]</Signal>
-                <Signal>riscv/PC[1]</Signal>
-                <Signal>riscv/PC[0]</Signal>
+            <Bus capture_enable="true" name="riscv/PCF[31:0]">
+                <Signal>riscv/PCF[31]</Signal>
+                <Signal>riscv/PCF[30]</Signal>
+                <Signal>riscv/PCF[29]</Signal>
+                <Signal>riscv/PCF[28]</Signal>
+                <Signal>riscv/PCF[27]</Signal>
+                <Signal>riscv/PCF[26]</Signal>
+                <Signal>riscv/PCF[25]</Signal>
+                <Signal>riscv/PCF[24]</Signal>
+                <Signal>riscv/PCF[23]</Signal>
+                <Signal>riscv/PCF[22]</Signal>
+                <Signal>riscv/PCF[21]</Signal>
+                <Signal>riscv/PCF[20]</Signal>
+                <Signal>riscv/PCF[19]</Signal>
+                <Signal>riscv/PCF[18]</Signal>
+                <Signal>riscv/PCF[17]</Signal>
+                <Signal>riscv/PCF[16]</Signal>
+                <Signal>riscv/PCF[15]</Signal>
+                <Signal>riscv/PCF[14]</Signal>
+                <Signal>riscv/PCF[13]</Signal>
+                <Signal>riscv/PCF[12]</Signal>
+                <Signal>riscv/PCF[11]</Signal>
+                <Signal>riscv/PCF[10]</Signal>
+                <Signal>riscv/PCF[9]</Signal>
+                <Signal>riscv/PCF[8]</Signal>
+                <Signal>riscv/PCF[7]</Signal>
+                <Signal>riscv/PCF[6]</Signal>
+                <Signal>riscv/PCF[5]</Signal>
+                <Signal>riscv/PCF[4]</Signal>
+                <Signal>riscv/PCF[3]</Signal>
+                <Signal>riscv/PCF[2]</Signal>
+                <Signal>riscv/PCF[1]</Signal>
+                <Signal>riscv/PCF[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/Instr[31:0]">
-                <Signal>riscv/Instr[31]</Signal>
-                <Signal>riscv/Instr[30]</Signal>
-                <Signal>riscv/Instr[29]</Signal>
-                <Signal>riscv/Instr[28]</Signal>
-                <Signal>riscv/Instr[27]</Signal>
-                <Signal>riscv/Instr[26]</Signal>
-                <Signal>riscv/Instr[25]</Signal>
-                <Signal>riscv/Instr[24]</Signal>
-                <Signal>riscv/Instr[23]</Signal>
-                <Signal>riscv/Instr[22]</Signal>
-                <Signal>riscv/Instr[21]</Signal>
-                <Signal>riscv/Instr[20]</Signal>
-                <Signal>riscv/Instr[19]</Signal>
-                <Signal>riscv/Instr[18]</Signal>
-                <Signal>riscv/Instr[17]</Signal>
-                <Signal>riscv/Instr[16]</Signal>
-                <Signal>riscv/Instr[15]</Signal>
-                <Signal>riscv/Instr[14]</Signal>
-                <Signal>riscv/Instr[13]</Signal>
-                <Signal>riscv/Instr[12]</Signal>
-                <Signal>riscv/Instr[11]</Signal>
-                <Signal>riscv/Instr[10]</Signal>
-                <Signal>riscv/Instr[9]</Signal>
-                <Signal>riscv/Instr[8]</Signal>
-                <Signal>riscv/Instr[7]</Signal>
-                <Signal>riscv/Instr[6]</Signal>
-                <Signal>riscv/Instr[5]</Signal>
-                <Signal>riscv/Instr[4]</Signal>
-                <Signal>riscv/Instr[3]</Signal>
-                <Signal>riscv/Instr[2]</Signal>
-                <Signal>riscv/Instr[1]</Signal>
-                <Signal>riscv/Instr[0]</Signal>
+            <Bus capture_enable="true" name="riscv/InstrF[31:0]">
+                <Signal>riscv/InstrF[31]</Signal>
+                <Signal>riscv/InstrF[30]</Signal>
+                <Signal>riscv/InstrF[29]</Signal>
+                <Signal>riscv/InstrF[28]</Signal>
+                <Signal>riscv/InstrF[27]</Signal>
+                <Signal>riscv/InstrF[26]</Signal>
+                <Signal>riscv/InstrF[25]</Signal>
+                <Signal>riscv/InstrF[24]</Signal>
+                <Signal>riscv/InstrF[23]</Signal>
+                <Signal>riscv/InstrF[22]</Signal>
+                <Signal>riscv/InstrF[21]</Signal>
+                <Signal>riscv/InstrF[20]</Signal>
+                <Signal>riscv/InstrF[19]</Signal>
+                <Signal>riscv/InstrF[18]</Signal>
+                <Signal>riscv/InstrF[17]</Signal>
+                <Signal>riscv/InstrF[16]</Signal>
+                <Signal>riscv/InstrF[15]</Signal>
+                <Signal>riscv/InstrF[14]</Signal>
+                <Signal>riscv/InstrF[13]</Signal>
+                <Signal>riscv/InstrF[12]</Signal>
+                <Signal>riscv/InstrF[11]</Signal>
+                <Signal>riscv/InstrF[10]</Signal>
+                <Signal>riscv/InstrF[9]</Signal>
+                <Signal>riscv/InstrF[8]</Signal>
+                <Signal>riscv/InstrF[7]</Signal>
+                <Signal>riscv/InstrF[6]</Signal>
+                <Signal>riscv/InstrF[5]</Signal>
+                <Signal>riscv/InstrF[4]</Signal>
+                <Signal>riscv/InstrF[3]</Signal>
+                <Signal>riscv/InstrF[2]</Signal>
+                <Signal>riscv/InstrF[1]</Signal>
+                <Signal>riscv/InstrF[0]</Signal>
             </Bus>
             <Bus capture_enable="true" name="riscv/decode/rf[2][31:0]">
                 <Signal>riscv/decode/rf[2][31]</Signal>
@@ -514,12 +514,12 @@
                 <Signal>riscv/execute/ALUResult[1]</Signal>
                 <Signal>riscv/execute/ALUResult[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/ALUControl[2:0]">
-                <Signal>riscv/ALUControl[2]</Signal>
-                <Signal>riscv/ALUControl[1]</Signal>
-                <Signal>riscv/ALUControl[0]</Signal>
+            <Bus capture_enable="true" name="riscv/ALUControlE[2:0]">
+                <Signal>riscv/ALUControlE[2]</Signal>
+                <Signal>riscv/ALUControlE[1]</Signal>
+                <Signal>riscv/ALUControlE[0]</Signal>
             </Bus>
-            <Signal capture_enable="true">riscv/ALUSrc</Signal>
+            <Signal capture_enable="true">riscv/ALUSrcE</Signal>
             <Signal capture_enable="true">clk_p</Signal>
         </SignalList>
         <Triggers>
@@ -530,39 +530,39 @@
             </Trigger>
             <Trigger index="1">
                 <SignalList>
-                    <Bus restorename="riscv/PC[31:0]">
-                        <Signal>riscv/PC[31]</Signal>
-                        <Signal>riscv/PC[30]</Signal>
-                        <Signal>riscv/PC[29]</Signal>
-                        <Signal>riscv/PC[28]</Signal>
-                        <Signal>riscv/PC[27]</Signal>
-                        <Signal>riscv/PC[26]</Signal>
-                        <Signal>riscv/PC[25]</Signal>
-                        <Signal>riscv/PC[24]</Signal>
-                        <Signal>riscv/PC[23]</Signal>
-                        <Signal>riscv/PC[22]</Signal>
-                        <Signal>riscv/PC[21]</Signal>
-                        <Signal>riscv/PC[20]</Signal>
-                        <Signal>riscv/PC[19]</Signal>
-                        <Signal>riscv/PC[18]</Signal>
-                        <Signal>riscv/PC[17]</Signal>
-                        <Signal>riscv/PC[16]</Signal>
-                        <Signal>riscv/PC[15]</Signal>
-                        <Signal>riscv/PC[14]</Signal>
-                        <Signal>riscv/PC[13]</Signal>
-                        <Signal>riscv/PC[12]</Signal>
-                        <Signal>riscv/PC[11]</Signal>
-                        <Signal>riscv/PC[10]</Signal>
-                        <Signal>riscv/PC[9]</Signal>
-                        <Signal>riscv/PC[8]</Signal>
-                        <Signal>riscv/PC[7]</Signal>
-                        <Signal>riscv/PC[6]</Signal>
-                        <Signal>riscv/PC[5]</Signal>
-                        <Signal>riscv/PC[4]</Signal>
-                        <Signal>riscv/PC[3]</Signal>
-                        <Signal>riscv/PC[2]</Signal>
-                        <Signal>riscv/PC[1]</Signal>
-                        <Signal>riscv/PC[0]</Signal>
+                    <Bus restorename="riscv/PCF[31:0]">
+                        <Signal>riscv/PCF[31]</Signal>
+                        <Signal>riscv/PCF[30]</Signal>
+                        <Signal>riscv/PCF[29]</Signal>
+                        <Signal>riscv/PCF[28]</Signal>
+                        <Signal>riscv/PCF[27]</Signal>
+                        <Signal>riscv/PCF[26]</Signal>
+                        <Signal>riscv/PCF[25]</Signal>
+                        <Signal>riscv/PCF[24]</Signal>
+                        <Signal>riscv/PCF[23]</Signal>
+                        <Signal>riscv/PCF[22]</Signal>
+                        <Signal>riscv/PCF[21]</Signal>
+                        <Signal>riscv/PCF[20]</Signal>
+                        <Signal>riscv/PCF[19]</Signal>
+                        <Signal>riscv/PCF[18]</Signal>
+                        <Signal>riscv/PCF[17]</Signal>
+                        <Signal>riscv/PCF[16]</Signal>
+                        <Signal>riscv/PCF[15]</Signal>
+                        <Signal>riscv/PCF[14]</Signal>
+                        <Signal>riscv/PCF[13]</Signal>
+                        <Signal>riscv/PCF[12]</Signal>
+                        <Signal>riscv/PCF[11]</Signal>
+                        <Signal>riscv/PCF[10]</Signal>
+                        <Signal>riscv/PCF[9]</Signal>
+                        <Signal>riscv/PCF[8]</Signal>
+                        <Signal>riscv/PCF[7]</Signal>
+                        <Signal>riscv/PCF[6]</Signal>
+                        <Signal>riscv/PCF[5]</Signal>
+                        <Signal>riscv/PCF[4]</Signal>
+                        <Signal>riscv/PCF[3]</Signal>
+                        <Signal>riscv/PCF[2]</Signal>
+                        <Signal>riscv/PCF[1]</Signal>
+                        <Signal>riscv/PCF[0]</Signal>
                     </Bus>
                 </SignalList>
             </Trigger>
