@@ -5,8 +5,8 @@
 -part_number GW1NR-LV9QN88PC6/I5
 
 
--mod_name bsram8k
--file_name bsram
+-mod_name bsram_dmem8k
+-file_name bsram_dmem
 -path D:/GitHub/askorv32/hw/src/gwlib/
 -type RAM_SP
 -file_type vlg
@@ -15,4 +15,4 @@
 -read_mode bypass
 -write_mode normal
 -reset_mode sync
--init_file D:/GitHub/askorv32/hw/src/mem_init/imem2048_pr.mi
+-init_file D:/GitHub/askorv32/hw/src/mem_init/dmem2048_.mi

@@ -2,7 +2,7 @@
 <GAO_CONFIG>
     <Version>3.0</Version>
     <Mode>Standard</Mode>
-    <AoCore index="0" sample_clock="clk_p" trig_type="0" storage_depth="16" window_num="1" capture_amount="16" implementation="0" trigger_pos="0" module_name="top" force_trigger_by_falling_edge="false" capture_init_data_enabled="false">
+    <AoCore index="0" sample_clock="clk_core" trig_type="0" storage_depth="16" window_num="1" capture_amount="16" implementation="0" trigger_pos="0" module_name="top" force_trigger_by_falling_edge="false" capture_init_data_enabled="false">
         <SignalList>
             <Bus capture_enable="true" name="riscv/PCF[31:0]">
                 <Signal>riscv/PCF[31]</Signal>
@@ -242,40 +242,6 @@
                 <Signal>riscv/decode/rf[5][1]</Signal>
                 <Signal>riscv/decode/rf[5][0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="dmem/RAM[0][31:0]">
-                <Signal>dmem/RAM[0][31]</Signal>
-                <Signal>dmem/RAM[0][30]</Signal>
-                <Signal>dmem/RAM[0][29]</Signal>
-                <Signal>dmem/RAM[0][28]</Signal>
-                <Signal>dmem/RAM[0][27]</Signal>
-                <Signal>dmem/RAM[0][26]</Signal>
-                <Signal>dmem/RAM[0][25]</Signal>
-                <Signal>dmem/RAM[0][24]</Signal>
-                <Signal>dmem/RAM[0][23]</Signal>
-                <Signal>dmem/RAM[0][22]</Signal>
-                <Signal>dmem/RAM[0][21]</Signal>
-                <Signal>dmem/RAM[0][20]</Signal>
-                <Signal>dmem/RAM[0][19]</Signal>
-                <Signal>dmem/RAM[0][18]</Signal>
-                <Signal>dmem/RAM[0][17]</Signal>
-                <Signal>dmem/RAM[0][16]</Signal>
-                <Signal>dmem/RAM[0][15]</Signal>
-                <Signal>dmem/RAM[0][14]</Signal>
-                <Signal>dmem/RAM[0][13]</Signal>
-                <Signal>dmem/RAM[0][12]</Signal>
-                <Signal>dmem/RAM[0][11]</Signal>
-                <Signal>dmem/RAM[0][10]</Signal>
-                <Signal>dmem/RAM[0][9]</Signal>
-                <Signal>dmem/RAM[0][8]</Signal>
-                <Signal>dmem/RAM[0][7]</Signal>
-                <Signal>dmem/RAM[0][6]</Signal>
-                <Signal>dmem/RAM[0][5]</Signal>
-                <Signal>dmem/RAM[0][4]</Signal>
-                <Signal>dmem/RAM[0][3]</Signal>
-                <Signal>dmem/RAM[0][2]</Signal>
-                <Signal>dmem/RAM[0][1]</Signal>
-                <Signal>dmem/RAM[0][0]</Signal>
-            </Bus>
             <Bus capture_enable="true" name="riscv/decode/rf[9][31:0]">
                 <Signal>riscv/decode/rf[9][31]</Signal>
                 <Signal>riscv/decode/rf[9][30]</Signal>
@@ -310,107 +276,73 @@
                 <Signal>riscv/decode/rf[9][1]</Signal>
                 <Signal>riscv/decode/rf[9][0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="dmem/RAM[4][31:0]">
-                <Signal>dmem/RAM[4][31]</Signal>
-                <Signal>dmem/RAM[4][30]</Signal>
-                <Signal>dmem/RAM[4][29]</Signal>
-                <Signal>dmem/RAM[4][28]</Signal>
-                <Signal>dmem/RAM[4][27]</Signal>
-                <Signal>dmem/RAM[4][26]</Signal>
-                <Signal>dmem/RAM[4][25]</Signal>
-                <Signal>dmem/RAM[4][24]</Signal>
-                <Signal>dmem/RAM[4][23]</Signal>
-                <Signal>dmem/RAM[4][22]</Signal>
-                <Signal>dmem/RAM[4][21]</Signal>
-                <Signal>dmem/RAM[4][20]</Signal>
-                <Signal>dmem/RAM[4][19]</Signal>
-                <Signal>dmem/RAM[4][18]</Signal>
-                <Signal>dmem/RAM[4][17]</Signal>
-                <Signal>dmem/RAM[4][16]</Signal>
-                <Signal>dmem/RAM[4][15]</Signal>
-                <Signal>dmem/RAM[4][14]</Signal>
-                <Signal>dmem/RAM[4][13]</Signal>
-                <Signal>dmem/RAM[4][12]</Signal>
-                <Signal>dmem/RAM[4][11]</Signal>
-                <Signal>dmem/RAM[4][10]</Signal>
-                <Signal>dmem/RAM[4][9]</Signal>
-                <Signal>dmem/RAM[4][8]</Signal>
-                <Signal>dmem/RAM[4][7]</Signal>
-                <Signal>dmem/RAM[4][6]</Signal>
-                <Signal>dmem/RAM[4][5]</Signal>
-                <Signal>dmem/RAM[4][4]</Signal>
-                <Signal>dmem/RAM[4][3]</Signal>
-                <Signal>dmem/RAM[4][2]</Signal>
-                <Signal>dmem/RAM[4][1]</Signal>
-                <Signal>dmem/RAM[4][0]</Signal>
+            <Bus capture_enable="true" name="dmem_Addr[31:0]">
+                <Signal>dmem_Addr[31]</Signal>
+                <Signal>dmem_Addr[30]</Signal>
+                <Signal>dmem_Addr[29]</Signal>
+                <Signal>dmem_Addr[28]</Signal>
+                <Signal>dmem_Addr[27]</Signal>
+                <Signal>dmem_Addr[26]</Signal>
+                <Signal>dmem_Addr[25]</Signal>
+                <Signal>dmem_Addr[24]</Signal>
+                <Signal>dmem_Addr[23]</Signal>
+                <Signal>dmem_Addr[22]</Signal>
+                <Signal>dmem_Addr[21]</Signal>
+                <Signal>dmem_Addr[20]</Signal>
+                <Signal>dmem_Addr[19]</Signal>
+                <Signal>dmem_Addr[18]</Signal>
+                <Signal>dmem_Addr[17]</Signal>
+                <Signal>dmem_Addr[16]</Signal>
+                <Signal>dmem_Addr[15]</Signal>
+                <Signal>dmem_Addr[14]</Signal>
+                <Signal>dmem_Addr[13]</Signal>
+                <Signal>dmem_Addr[12]</Signal>
+                <Signal>dmem_Addr[11]</Signal>
+                <Signal>dmem_Addr[10]</Signal>
+                <Signal>dmem_Addr[9]</Signal>
+                <Signal>dmem_Addr[8]</Signal>
+                <Signal>dmem_Addr[7]</Signal>
+                <Signal>dmem_Addr[6]</Signal>
+                <Signal>dmem_Addr[5]</Signal>
+                <Signal>dmem_Addr[4]</Signal>
+                <Signal>dmem_Addr[3]</Signal>
+                <Signal>dmem_Addr[2]</Signal>
+                <Signal>dmem_Addr[1]</Signal>
+                <Signal>dmem_Addr[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="dmem/a[31:0]">
-                <Signal>dmem/a[31]</Signal>
-                <Signal>dmem/a[30]</Signal>
-                <Signal>dmem/a[29]</Signal>
-                <Signal>dmem/a[28]</Signal>
-                <Signal>dmem/a[27]</Signal>
-                <Signal>dmem/a[26]</Signal>
-                <Signal>dmem/a[25]</Signal>
-                <Signal>dmem/a[24]</Signal>
-                <Signal>dmem/a[23]</Signal>
-                <Signal>dmem/a[22]</Signal>
-                <Signal>dmem/a[21]</Signal>
-                <Signal>dmem/a[20]</Signal>
-                <Signal>dmem/a[19]</Signal>
-                <Signal>dmem/a[18]</Signal>
-                <Signal>dmem/a[17]</Signal>
-                <Signal>dmem/a[16]</Signal>
-                <Signal>dmem/a[15]</Signal>
-                <Signal>dmem/a[14]</Signal>
-                <Signal>dmem/a[13]</Signal>
-                <Signal>dmem/a[12]</Signal>
-                <Signal>dmem/a[11]</Signal>
-                <Signal>dmem/a[10]</Signal>
-                <Signal>dmem/a[9]</Signal>
-                <Signal>dmem/a[8]</Signal>
-                <Signal>dmem/a[7]</Signal>
-                <Signal>dmem/a[6]</Signal>
-                <Signal>dmem/a[5]</Signal>
-                <Signal>dmem/a[4]</Signal>
-                <Signal>dmem/a[3]</Signal>
-                <Signal>dmem/a[2]</Signal>
-                <Signal>dmem/a[1]</Signal>
-                <Signal>dmem/a[0]</Signal>
-            </Bus>
-            <Bus capture_enable="true" name="dmem/wd[31:0]">
-                <Signal>dmem/wd[31]</Signal>
-                <Signal>dmem/wd[30]</Signal>
-                <Signal>dmem/wd[29]</Signal>
-                <Signal>dmem/wd[28]</Signal>
-                <Signal>dmem/wd[27]</Signal>
-                <Signal>dmem/wd[26]</Signal>
-                <Signal>dmem/wd[25]</Signal>
-                <Signal>dmem/wd[24]</Signal>
-                <Signal>dmem/wd[23]</Signal>
-                <Signal>dmem/wd[22]</Signal>
-                <Signal>dmem/wd[21]</Signal>
-                <Signal>dmem/wd[20]</Signal>
-                <Signal>dmem/wd[19]</Signal>
-                <Signal>dmem/wd[18]</Signal>
-                <Signal>dmem/wd[17]</Signal>
-                <Signal>dmem/wd[16]</Signal>
-                <Signal>dmem/wd[15]</Signal>
-                <Signal>dmem/wd[14]</Signal>
-                <Signal>dmem/wd[13]</Signal>
-                <Signal>dmem/wd[12]</Signal>
-                <Signal>dmem/wd[11]</Signal>
-                <Signal>dmem/wd[10]</Signal>
-                <Signal>dmem/wd[9]</Signal>
-                <Signal>dmem/wd[8]</Signal>
-                <Signal>dmem/wd[7]</Signal>
-                <Signal>dmem/wd[6]</Signal>
-                <Signal>dmem/wd[5]</Signal>
-                <Signal>dmem/wd[4]</Signal>
-                <Signal>dmem/wd[3]</Signal>
-                <Signal>dmem/wd[2]</Signal>
-                <Signal>dmem/wd[1]</Signal>
-                <Signal>dmem/wd[0]</Signal>
+            <Bus capture_enable="true" name="dmem_WriteData[31:0]">
+                <Signal>dmem_WriteData[31]</Signal>
+                <Signal>dmem_WriteData[30]</Signal>
+                <Signal>dmem_WriteData[29]</Signal>
+                <Signal>dmem_WriteData[28]</Signal>
+                <Signal>dmem_WriteData[27]</Signal>
+                <Signal>dmem_WriteData[26]</Signal>
+                <Signal>dmem_WriteData[25]</Signal>
+                <Signal>dmem_WriteData[24]</Signal>
+                <Signal>dmem_WriteData[23]</Signal>
+                <Signal>dmem_WriteData[22]</Signal>
+                <Signal>dmem_WriteData[21]</Signal>
+                <Signal>dmem_WriteData[20]</Signal>
+                <Signal>dmem_WriteData[19]</Signal>
+                <Signal>dmem_WriteData[18]</Signal>
+                <Signal>dmem_WriteData[17]</Signal>
+                <Signal>dmem_WriteData[16]</Signal>
+                <Signal>dmem_WriteData[15]</Signal>
+                <Signal>dmem_WriteData[14]</Signal>
+                <Signal>dmem_WriteData[13]</Signal>
+                <Signal>dmem_WriteData[12]</Signal>
+                <Signal>dmem_WriteData[11]</Signal>
+                <Signal>dmem_WriteData[10]</Signal>
+                <Signal>dmem_WriteData[9]</Signal>
+                <Signal>dmem_WriteData[8]</Signal>
+                <Signal>dmem_WriteData[7]</Signal>
+                <Signal>dmem_WriteData[6]</Signal>
+                <Signal>dmem_WriteData[5]</Signal>
+                <Signal>dmem_WriteData[4]</Signal>
+                <Signal>dmem_WriteData[3]</Signal>
+                <Signal>dmem_WriteData[2]</Signal>
+                <Signal>dmem_WriteData[1]</Signal>
+                <Signal>dmem_WriteData[0]</Signal>
             </Bus>
             <Bus capture_enable="true" name="riscv/execute/srcA[31:0]">
                 <Signal>riscv/execute/srcA[31]</Signal>
@@ -520,7 +452,9 @@
                 <Signal>riscv/ALUControlE[0]</Signal>
             </Bus>
             <Signal capture_enable="true">riscv/ALUSrcE</Signal>
-            <Signal capture_enable="true">clk_p</Signal>
+            <Signal capture_enable="true">clk_core</Signal>
+            <Signal capture_enable="true">clk_imem</Signal>
+            <Signal capture_enable="true">clk_dmem</Signal>
         </SignalList>
         <Triggers>
             <Trigger index="0">
@@ -603,5 +537,5 @@
             <Expression>M0&amp;M1</Expression>
         </Expressions>
     </AoCore>
-    <GAO_ID>0011110010100110</GAO_ID>
+    <GAO_ID>0101111111010010</GAO_ID>
 </GAO_CONFIG>

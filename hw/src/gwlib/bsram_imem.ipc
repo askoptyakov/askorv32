@@ -1,7 +1,7 @@
 [General]
 ipc_version=4
-file=bsram
-module=bsram8k
+file=bsram_imem
+module=bsram_imem8k
 target_device=gw1nr9c-004
 type=ram_sp
 version=3.0

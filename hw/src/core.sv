@@ -1,21 +1,15 @@
-/* Заметки:
-1. Регистры RdD-RdW 32 битные, а нужны 5 бит. Необходимо переделать, поскольку регистры занимают
-лишнее пространство ПЛИС. Сложно сделана петля регистра Rd через регистры стадий тракта данных,
-необходимо упростить. Смотри информацию на стр. 520 Харрисов.
-*/
-
-module core
-  #(parameter [0:0] CORE_TYPE = 1)  //1 - Однотактное ядро; 0 - Конвеерное ядро
-   (input  logic        clk,      //Вход тактирования
-    input  logic        rst,      //Вход сброса (кнопка S2)
-    output logic [5:0]  out,      //Выход на 6 светодиодов
-    //Интерфейс памяти команд
-    input  logic [31:0] imem_data,
-    output logic [10:0] imem_addr,
-    //Интерфейс памяти данных
-    input logic [31:0]  dmem_ReadData,
-    output logic        dmem_Write,
-    output logic [31:0] dmem_Addr, dmem_WriteData
+module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное ядро; 0 - Конвеерное ядро
+              parameter [0:0] MEMORY_TYPE = 1)//1 - BSRAM;            0 - Синтезированная
+             (input  logic        clk,      //Вход тактирования
+              input  logic        rst,      //Вход сброса (кнопка S2)
+              output logic [5:0]  out,      //Выход на 6 светодиодов
+              //Интерфейс памяти команд
+              input  logic [31:0] imem_data,
+              output logic [10:0] imem_addr,
+              //Интерфейс памяти данных
+              input logic [31:0]  dmem_ReadData,
+              output logic        dmem_Write,
+              output logic [31:0] dmem_Addr, dmem_WriteData
 );
     
     //Сигналы тракта данных

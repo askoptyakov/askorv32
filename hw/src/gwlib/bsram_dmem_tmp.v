@@ -1,16 +1,16 @@
 //Copyright (C)2014-2024 Gowin Semiconductor Corporation.
 //All rights reserved.
 //File Title: Template file for instantiation
-//Tool Version: V1.9.10 (64-bit)
+//Tool Version: V1.9.9.03 Education (64-bit)
 //Part Number: GW1NR-LV9QN88PC6/I5
 //Device: GW1NR-9
 //Device Version: C
-//Created Time: Tue Sep 24 17:17:15 2024
+//Created Time: Wed Oct  9 14:36:10 2024
 
 //Change the instance name and port connections to the signal names
 //--------Copy here to design--------
 
-    bsram8k your_instance_name(
+    bsram_dmem8k your_instance_name(
         .dout(dout), //output [31:0] dout
         .clk(clk), //input clk
         .oce(oce), //input oce

@@ -1,13 +1,13 @@
 //Copyright (C)2014-2024 Gowin Semiconductor Corporation.
 //All rights reserved.
 //File Title: IP file
-//Tool Version: V1.9.10 (64-bit)
+//Tool Version: V1.9.9.03 Education (64-bit)
 //Part Number: GW1NR-LV9QN88PC6/I5
 //Device: GW1NR-9
 //Device Version: C
-//Created Time: Tue Sep 24 17:17:15 2024
+//Created Time: Wed Oct  9 14:30:38 2024
 
-module bsram8k (dout, clk, oce, ce, reset, wre, ad, din);
+module bsram_imem8k (dout, clk, oce, ce, reset, wre, ad, din);
 
 output [31:0] dout;
 input clk;
@@ -102,4 +102,4 @@ defparam sp_inst_3.BLK_SEL = 3'b000;
 defparam sp_inst_3.RESET_MODE = "SYNC";
 defparam sp_inst_3.INIT_RAM_00 = 256'h000000000000000000000000FC0000000000FE40000000000002000000FF0000;
 
-endmodule //bsram8k
+endmodule //bsram_imem8k
