@@ -31,7 +31,7 @@
 //============================================================================================== 
 
 module top #(parameter [0:0] CORE_TYPE   = `PIPELINE_CORE,
-             parameter [0:0] MEMORY_TYPE = `BSRAM_MEM)   
+             parameter [0:0] MEMORY_TYPE = `SYNTH_MEM)   
             (input  logic       clk,     //Вход тактирования
              input  logic       rst_n,   //Вход сброса (кнопка S2)
              output logic [5:0] led      //Выход на 6 светодиодов
@@ -39,6 +39,9 @@ module top #(parameter [0:0] CORE_TYPE   = `PIPELINE_CORE,
     //#0 Настройка тактирования
     //DESCRIPTION: Для однотактного ядра при использовании BSAM делаем псевдооднотактный процессор
     //с тремя тактами на одну инструкцию. Тактируем imem и dmem 2ым и 3ьим тактом.
+    //logic clk_div2;
+    //always_ff @(posedge clk) clk_div2 <= ~clk_div2;
+
     logic clk_core, clk_imem, clk_dmem;
     generate if (MEMORY_TYPE & CORE_TYPE) begin   //#1 - Для однотактного ядра с BSRAM
         divideby3 divideby3(.clk(clk), .clk_div3(clk_core), .clk_imem(clk_imem), .clk_dmem(clk_dmem));

@@ -2,7 +2,7 @@
 <GAO_CONFIG>
     <Version>3.0</Version>
     <Mode>Standard</Mode>
-    <AoCore index="0" sample_clock="clk_core" trig_type="0" storage_depth="16" window_num="1" capture_amount="16" implementation="0" trigger_pos="0" module_name="top" force_trigger_by_falling_edge="false" capture_init_data_enabled="false">
+    <AoCore index="0" sample_clock="clk" trig_type="0" storage_depth="16" window_num="1" capture_amount="16" implementation="0" trigger_pos="0" module_name="top" force_trigger_by_falling_edge="false" capture_init_data_enabled="false">
         <SignalList>
             <Bus capture_enable="true" name="riscv/PCF[31:0]">
                 <Signal>riscv/PCF[31]</Signal>
@@ -37,74 +37,6 @@
                 <Signal>riscv/PCF[2]</Signal>
                 <Signal>riscv/PCF[1]</Signal>
                 <Signal>riscv/PCF[0]</Signal>
-            </Bus>
-            <Bus capture_enable="true" name="riscv/InstrF[31:0]">
-                <Signal>riscv/InstrF[31]</Signal>
-                <Signal>riscv/InstrF[30]</Signal>
-                <Signal>riscv/InstrF[29]</Signal>
-                <Signal>riscv/InstrF[28]</Signal>
-                <Signal>riscv/InstrF[27]</Signal>
-                <Signal>riscv/InstrF[26]</Signal>
-                <Signal>riscv/InstrF[25]</Signal>
-                <Signal>riscv/InstrF[24]</Signal>
-                <Signal>riscv/InstrF[23]</Signal>
-                <Signal>riscv/InstrF[22]</Signal>
-                <Signal>riscv/InstrF[21]</Signal>
-                <Signal>riscv/InstrF[20]</Signal>
-                <Signal>riscv/InstrF[19]</Signal>
-                <Signal>riscv/InstrF[18]</Signal>
-                <Signal>riscv/InstrF[17]</Signal>
-                <Signal>riscv/InstrF[16]</Signal>
-                <Signal>riscv/InstrF[15]</Signal>
-                <Signal>riscv/InstrF[14]</Signal>
-                <Signal>riscv/InstrF[13]</Signal>
-                <Signal>riscv/InstrF[12]</Signal>
-                <Signal>riscv/InstrF[11]</Signal>
-                <Signal>riscv/InstrF[10]</Signal>
-                <Signal>riscv/InstrF[9]</Signal>
-                <Signal>riscv/InstrF[8]</Signal>
-                <Signal>riscv/InstrF[7]</Signal>
-                <Signal>riscv/InstrF[6]</Signal>
-                <Signal>riscv/InstrF[5]</Signal>
-                <Signal>riscv/InstrF[4]</Signal>
-                <Signal>riscv/InstrF[3]</Signal>
-                <Signal>riscv/InstrF[2]</Signal>
-                <Signal>riscv/InstrF[1]</Signal>
-                <Signal>riscv/InstrF[0]</Signal>
-            </Bus>
-            <Bus capture_enable="true" name="riscv/InstrD[31:0]">
-                <Signal>riscv/InstrD[31]</Signal>
-                <Signal>riscv/InstrD[30]</Signal>
-                <Signal>riscv/InstrD[29]</Signal>
-                <Signal>riscv/InstrD[28]</Signal>
-                <Signal>riscv/InstrD[27]</Signal>
-                <Signal>riscv/InstrD[26]</Signal>
-                <Signal>riscv/InstrD[25]</Signal>
-                <Signal>riscv/InstrD[24]</Signal>
-                <Signal>riscv/InstrD[23]</Signal>
-                <Signal>riscv/InstrD[22]</Signal>
-                <Signal>riscv/InstrD[21]</Signal>
-                <Signal>riscv/InstrD[20]</Signal>
-                <Signal>riscv/InstrD[19]</Signal>
-                <Signal>riscv/InstrD[18]</Signal>
-                <Signal>riscv/InstrD[17]</Signal>
-                <Signal>riscv/InstrD[16]</Signal>
-                <Signal>riscv/InstrD[15]</Signal>
-                <Signal>riscv/InstrD[14]</Signal>
-                <Signal>riscv/InstrD[13]</Signal>
-                <Signal>riscv/InstrD[12]</Signal>
-                <Signal>riscv/InstrD[11]</Signal>
-                <Signal>riscv/InstrD[10]</Signal>
-                <Signal>riscv/InstrD[9]</Signal>
-                <Signal>riscv/InstrD[8]</Signal>
-                <Signal>riscv/InstrD[7]</Signal>
-                <Signal>riscv/InstrD[6]</Signal>
-                <Signal>riscv/InstrD[5]</Signal>
-                <Signal>riscv/InstrD[4]</Signal>
-                <Signal>riscv/InstrD[3]</Signal>
-                <Signal>riscv/InstrD[2]</Signal>
-                <Signal>riscv/InstrD[1]</Signal>
-                <Signal>riscv/InstrD[0]</Signal>
             </Bus>
             <Bus capture_enable="true" name="riscv/decode/rf[2][31:0]">
                 <Signal>riscv/decode/rf[2][31]</Signal>
@@ -310,74 +242,6 @@
                 <Signal>riscv/decode/rf[9][1]</Signal>
                 <Signal>riscv/decode/rf[9][0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="dmem_Addr[31:0]">
-                <Signal>dmem_Addr[31]</Signal>
-                <Signal>dmem_Addr[30]</Signal>
-                <Signal>dmem_Addr[29]</Signal>
-                <Signal>dmem_Addr[28]</Signal>
-                <Signal>dmem_Addr[27]</Signal>
-                <Signal>dmem_Addr[26]</Signal>
-                <Signal>dmem_Addr[25]</Signal>
-                <Signal>dmem_Addr[24]</Signal>
-                <Signal>dmem_Addr[23]</Signal>
-                <Signal>dmem_Addr[22]</Signal>
-                <Signal>dmem_Addr[21]</Signal>
-                <Signal>dmem_Addr[20]</Signal>
-                <Signal>dmem_Addr[19]</Signal>
-                <Signal>dmem_Addr[18]</Signal>
-                <Signal>dmem_Addr[17]</Signal>
-                <Signal>dmem_Addr[16]</Signal>
-                <Signal>dmem_Addr[15]</Signal>
-                <Signal>dmem_Addr[14]</Signal>
-                <Signal>dmem_Addr[13]</Signal>
-                <Signal>dmem_Addr[12]</Signal>
-                <Signal>dmem_Addr[11]</Signal>
-                <Signal>dmem_Addr[10]</Signal>
-                <Signal>dmem_Addr[9]</Signal>
-                <Signal>dmem_Addr[8]</Signal>
-                <Signal>dmem_Addr[7]</Signal>
-                <Signal>dmem_Addr[6]</Signal>
-                <Signal>dmem_Addr[5]</Signal>
-                <Signal>dmem_Addr[4]</Signal>
-                <Signal>dmem_Addr[3]</Signal>
-                <Signal>dmem_Addr[2]</Signal>
-                <Signal>dmem_Addr[1]</Signal>
-                <Signal>dmem_Addr[0]</Signal>
-            </Bus>
-            <Bus capture_enable="true" name="dmem_WriteData[31:0]">
-                <Signal>dmem_WriteData[31]</Signal>
-                <Signal>dmem_WriteData[30]</Signal>
-                <Signal>dmem_WriteData[29]</Signal>
-                <Signal>dmem_WriteData[28]</Signal>
-                <Signal>dmem_WriteData[27]</Signal>
-                <Signal>dmem_WriteData[26]</Signal>
-                <Signal>dmem_WriteData[25]</Signal>
-                <Signal>dmem_WriteData[24]</Signal>
-                <Signal>dmem_WriteData[23]</Signal>
-                <Signal>dmem_WriteData[22]</Signal>
-                <Signal>dmem_WriteData[21]</Signal>
-                <Signal>dmem_WriteData[20]</Signal>
-                <Signal>dmem_WriteData[19]</Signal>
-                <Signal>dmem_WriteData[18]</Signal>
-                <Signal>dmem_WriteData[17]</Signal>
-                <Signal>dmem_WriteData[16]</Signal>
-                <Signal>dmem_WriteData[15]</Signal>
-                <Signal>dmem_WriteData[14]</Signal>
-                <Signal>dmem_WriteData[13]</Signal>
-                <Signal>dmem_WriteData[12]</Signal>
-                <Signal>dmem_WriteData[11]</Signal>
-                <Signal>dmem_WriteData[10]</Signal>
-                <Signal>dmem_WriteData[9]</Signal>
-                <Signal>dmem_WriteData[8]</Signal>
-                <Signal>dmem_WriteData[7]</Signal>
-                <Signal>dmem_WriteData[6]</Signal>
-                <Signal>dmem_WriteData[5]</Signal>
-                <Signal>dmem_WriteData[4]</Signal>
-                <Signal>dmem_WriteData[3]</Signal>
-                <Signal>dmem_WriteData[2]</Signal>
-                <Signal>dmem_WriteData[1]</Signal>
-                <Signal>dmem_WriteData[0]</Signal>
-            </Bus>
             <Bus capture_enable="true" name="riscv/execute/srcA[31:0]">
                 <Signal>riscv/execute/srcA[31]</Signal>
                 <Signal>riscv/execute/srcA[30]</Signal>
@@ -480,15 +344,122 @@
                 <Signal>riscv/execute/ALUResult[1]</Signal>
                 <Signal>riscv/execute/ALUResult[0]</Signal>
             </Bus>
+            <Bus capture_enable="true" name="riscv/ALUResultM[31:0]">
+                <Signal>riscv/ALUResultM[31]</Signal>
+                <Signal>riscv/ALUResultM[30]</Signal>
+                <Signal>riscv/ALUResultM[29]</Signal>
+                <Signal>riscv/ALUResultM[28]</Signal>
+                <Signal>riscv/ALUResultM[27]</Signal>
+                <Signal>riscv/ALUResultM[26]</Signal>
+                <Signal>riscv/ALUResultM[25]</Signal>
+                <Signal>riscv/ALUResultM[24]</Signal>
+                <Signal>riscv/ALUResultM[23]</Signal>
+                <Signal>riscv/ALUResultM[22]</Signal>
+                <Signal>riscv/ALUResultM[21]</Signal>
+                <Signal>riscv/ALUResultM[20]</Signal>
+                <Signal>riscv/ALUResultM[19]</Signal>
+                <Signal>riscv/ALUResultM[18]</Signal>
+                <Signal>riscv/ALUResultM[17]</Signal>
+                <Signal>riscv/ALUResultM[16]</Signal>
+                <Signal>riscv/ALUResultM[15]</Signal>
+                <Signal>riscv/ALUResultM[14]</Signal>
+                <Signal>riscv/ALUResultM[13]</Signal>
+                <Signal>riscv/ALUResultM[12]</Signal>
+                <Signal>riscv/ALUResultM[11]</Signal>
+                <Signal>riscv/ALUResultM[10]</Signal>
+                <Signal>riscv/ALUResultM[9]</Signal>
+                <Signal>riscv/ALUResultM[8]</Signal>
+                <Signal>riscv/ALUResultM[7]</Signal>
+                <Signal>riscv/ALUResultM[6]</Signal>
+                <Signal>riscv/ALUResultM[5]</Signal>
+                <Signal>riscv/ALUResultM[4]</Signal>
+                <Signal>riscv/ALUResultM[3]</Signal>
+                <Signal>riscv/ALUResultM[2]</Signal>
+                <Signal>riscv/ALUResultM[1]</Signal>
+                <Signal>riscv/ALUResultM[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="riscv/ALUResultW[31:0]">
+                <Signal>riscv/ALUResultW[31]</Signal>
+                <Signal>riscv/ALUResultW[30]</Signal>
+                <Signal>riscv/ALUResultW[29]</Signal>
+                <Signal>riscv/ALUResultW[28]</Signal>
+                <Signal>riscv/ALUResultW[27]</Signal>
+                <Signal>riscv/ALUResultW[26]</Signal>
+                <Signal>riscv/ALUResultW[25]</Signal>
+                <Signal>riscv/ALUResultW[24]</Signal>
+                <Signal>riscv/ALUResultW[23]</Signal>
+                <Signal>riscv/ALUResultW[22]</Signal>
+                <Signal>riscv/ALUResultW[21]</Signal>
+                <Signal>riscv/ALUResultW[20]</Signal>
+                <Signal>riscv/ALUResultW[19]</Signal>
+                <Signal>riscv/ALUResultW[18]</Signal>
+                <Signal>riscv/ALUResultW[17]</Signal>
+                <Signal>riscv/ALUResultW[16]</Signal>
+                <Signal>riscv/ALUResultW[15]</Signal>
+                <Signal>riscv/ALUResultW[14]</Signal>
+                <Signal>riscv/ALUResultW[13]</Signal>
+                <Signal>riscv/ALUResultW[12]</Signal>
+                <Signal>riscv/ALUResultW[11]</Signal>
+                <Signal>riscv/ALUResultW[10]</Signal>
+                <Signal>riscv/ALUResultW[9]</Signal>
+                <Signal>riscv/ALUResultW[8]</Signal>
+                <Signal>riscv/ALUResultW[7]</Signal>
+                <Signal>riscv/ALUResultW[6]</Signal>
+                <Signal>riscv/ALUResultW[5]</Signal>
+                <Signal>riscv/ALUResultW[4]</Signal>
+                <Signal>riscv/ALUResultW[3]</Signal>
+                <Signal>riscv/ALUResultW[2]</Signal>
+                <Signal>riscv/ALUResultW[1]</Signal>
+                <Signal>riscv/ALUResultW[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="riscv/ResultW[31:0]">
+                <Signal>riscv/ResultW[31]</Signal>
+                <Signal>riscv/ResultW[30]</Signal>
+                <Signal>riscv/ResultW[29]</Signal>
+                <Signal>riscv/ResultW[28]</Signal>
+                <Signal>riscv/ResultW[27]</Signal>
+                <Signal>riscv/ResultW[26]</Signal>
+                <Signal>riscv/ResultW[25]</Signal>
+                <Signal>riscv/ResultW[24]</Signal>
+                <Signal>riscv/ResultW[23]</Signal>
+                <Signal>riscv/ResultW[22]</Signal>
+                <Signal>riscv/ResultW[21]</Signal>
+                <Signal>riscv/ResultW[20]</Signal>
+                <Signal>riscv/ResultW[19]</Signal>
+                <Signal>riscv/ResultW[18]</Signal>
+                <Signal>riscv/ResultW[17]</Signal>
+                <Signal>riscv/ResultW[16]</Signal>
+                <Signal>riscv/ResultW[15]</Signal>
+                <Signal>riscv/ResultW[14]</Signal>
+                <Signal>riscv/ResultW[13]</Signal>
+                <Signal>riscv/ResultW[12]</Signal>
+                <Signal>riscv/ResultW[11]</Signal>
+                <Signal>riscv/ResultW[10]</Signal>
+                <Signal>riscv/ResultW[9]</Signal>
+                <Signal>riscv/ResultW[8]</Signal>
+                <Signal>riscv/ResultW[7]</Signal>
+                <Signal>riscv/ResultW[6]</Signal>
+                <Signal>riscv/ResultW[5]</Signal>
+                <Signal>riscv/ResultW[4]</Signal>
+                <Signal>riscv/ResultW[3]</Signal>
+                <Signal>riscv/ResultW[2]</Signal>
+                <Signal>riscv/ResultW[1]</Signal>
+                <Signal>riscv/ResultW[0]</Signal>
+            </Bus>
+            <Signal capture_enable="true">riscv/RegWriteW</Signal>
+            <Bus capture_enable="true" name="riscv/RdW[4:0]">
+                <Signal>riscv/RdW[4]</Signal>
+                <Signal>riscv/RdW[3]</Signal>
+                <Signal>riscv/RdW[2]</Signal>
+                <Signal>riscv/RdW[1]</Signal>
+                <Signal>riscv/RdW[0]</Signal>
+            </Bus>
             <Bus capture_enable="true" name="riscv/ALUControlE[2:0]">
                 <Signal>riscv/ALUControlE[2]</Signal>
                 <Signal>riscv/ALUControlE[1]</Signal>
                 <Signal>riscv/ALUControlE[0]</Signal>
             </Bus>
             <Signal capture_enable="true">riscv/ALUSrcE</Signal>
-            <Signal capture_enable="true">clk_core</Signal>
-            <Signal capture_enable="true">clk_imem</Signal>
-            <Signal capture_enable="true">clk_dmem</Signal>
         </SignalList>
         <Triggers>
             <Trigger index="0">
@@ -551,7 +522,7 @@
         </Triggers>
         <MatchUnits>
             <MatchUnit index="0" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="0" value1="0" trigger="0"/>
-            <MatchUnit index="1" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="00000000000000000000000000101000" value1="00000000000000000000000000000000" trigger="1"/>
+            <MatchUnit index="1" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="00000000000000000000000000001000" value1="00000000000000000000000000000000" trigger="1"/>
             <MatchUnit index="2" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
             <MatchUnit index="3" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
             <MatchUnit index="4" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
@@ -571,5 +542,5 @@
             <Expression>M0</Expression>
         </Expressions>
     </AoCore>
-    <GAO_ID>1110010010000111</GAO_ID>
+    <GAO_ID>1001101001110110</GAO_ID>
 </GAO_CONFIG>

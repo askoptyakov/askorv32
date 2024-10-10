@@ -13,11 +13,16 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
 );
     
     //Сигналы тракта данных
+    logic [4: 0] RdD, Rs1D, Rs2D;
+    logic [4: 0] RdE, Rs1E, Rs2E;
+    logic [4: 0] RdM;
+    logic [4: 0] RdW;
+
     logic [31:0] PCPlus4F,      PCF, InstrF;
-    logic [31:0] PCPlus4D, RdD, PCD, InstrD, ImmExtD, RD1D, RD2D;
-    logic [31:0] PCPlus4E, RdE, PCE,         ImmExtE, RD1E, RD2E, WriteDataE, ALUResultE, PCTargetE;
-    logic [31:0] PCPlus4M, RdM,                                   WriteDataM, ALUResultM, ReadDataM;
-    logic [31:0] PCPlus4W, RdW,                                               ALUResultW, ReadDataW, ResultW;    
+    logic [31:0] PCPlus4D, PCD, InstrD, ImmExtD, RD1D, RD2D;
+    logic [31:0] PCPlus4E, PCE,         ImmExtE, RD1E, RD2E, WriteDataE, ALUResultE, PCTargetE;
+    logic [31:0] PCPlus4M,                                   WriteDataM, ALUResultM, ReadDataM;
+    logic [31:0] PCPlus4W,                                               ALUResultW, ReadDataW, ResultW; 
 
     //Сигналы блока управления
     logic RegWriteD, MemWriteD, JumpD, BranchD, ALUSrcD;                logic [1:0] ResultSrcD, ImmSrcD; logic [2:0] ALUControlD;
@@ -25,10 +30,16 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
     logic RegWriteM, MemWriteM;                                         logic [1:0] ResultSrcM;
     logic RegWriteW;                                                    logic [1:0] ResultSrcW;
 
+    //Сигналы блока предотвращения конфликтов
+    logic [1:0] ForwardAE, ForwardBE;
     //CONTROL UNIT//////////////////////////////////////////////////////////////////////////////////
     control_unit cu (  .op(InstrD[6:0]), .funct3(InstrD[14:12]), .funct7b5(InstrD[30]),
                         .RegWrite(RegWriteD), .ALUSrc(ALUSrcD), .MemWrite(MemWriteD), .Jump(JumpD), .Branch(BranchD),
                         .ImmSrc(ImmSrcD), .ResultSrc(ResultSrcD), .ALUControl(ALUControlD));
+    conflict_prevention_unit #(CORE_TYPE) pu
+                              (.RegWriteM(RegWriteM), .RegWriteW(RegWriteW),                                 
+                               .Rs1E(Rs1E), .Rs2E(Rs2E), .RdM(RdM), .RdW(RdW),
+                               .ForwardA(ForwardAE), .ForwardB(ForwardBE));
     //FETCH/////////////////////////////////////////////////////////////////////////////////////////
     fetch fetch(    .clk(clk), .rst(rst), .PCSrc(PCSrcE),
                     .PCTarget(PCTargetE),    
@@ -41,27 +52,34 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
     regdata #(2, CORE_TYPE)           rd_fetch (clk, rst, {PCF, PCPlus4F},
                                                           {PCD, PCPlus4D});
     //DECODE////////////////////////////////////////////////////////////////////////////////////////
-    decode #(CORE_TYPE) decode(  .clk(clk), .rst(rst), .RegWrite(RegWriteD), .ImmSrc(ImmSrcD),
+    decode #(CORE_TYPE) decode(  .clk(clk), .rst(rst), .RegWrite(RegWriteW), .ImmSrc(ImmSrcD),
                                  .Instr({InstrD[31:12],RdW[4:0],InstrD[6:0]}), .Result(ResultW),
                                  .RD1(RD1D), .RD2(RD2D), .ImmExt(ImmExtD));
-    assign RdD = {{27{1'b0}},InstrD[11:7]};
+    assign Rs1D = InstrD[19:15];
+    assign Rs2D = InstrD[24:20];
+    assign RdD  = InstrD[11:7];
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    regdata    #(6, CORE_TYPE)  rd_decode (clk, rst, {PCD, PCPlus4D, ImmExtD, RD1D, RD2D, RdD},
-                                                     {PCE, PCPlus4E, ImmExtE, RD1E, RD2E, RdE});
+    regdata #(5, CORE_TYPE) rd_decode (clk, rst, {PCD, PCPlus4D, ImmExtD, RD1D, RD2D},
+                                                 {PCE, PCPlus4E, ImmExtE, RD1E, RD2E});
+    regrf   #(3, CORE_TYPE) rf_decode (clk, rst, {Rs1D, Rs2D, RdD},
+                                                 {Rs1E, Rs2E, RdE});
     regcontrol #(10, CORE_TYPE) rc_decode (clk, rst, 
                     {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[2:0], ALUSrcD}, 
                     {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[2:0], ALUSrcE});
     //EXECUTE///////////////////////////////////////////////////////////////////////////////////////
-    execute execute (   .ALUSrc(ALUSrcE), .ALUControl(ALUControlE),
-                        .RD1(RD1E), .RD2(RD2E), .PC(PCE), .ImmExt(ImmExtE),
-                        .Zero(ZeroE), .ALUResult(ALUResultE), .WriteData(WriteDataE),
-                        //Особенные
-                        .PCTarget(PCTargetE));
+    execute #(CORE_TYPE) execute
+             (.ALUSrc(ALUSrcE), .ForwardA(ForwardAE), .ForwardB(ForwardBE), .ALUControl(ALUControlE),
+              .RD1(RD1E), .RD2(RD2E), .PC(PCE), .ImmExt(ImmExtE), .ResultW(ResultW), .ALUResultM(ALUResultM),
+              .Zero(ZeroE), .ALUResult(ALUResultE), .WriteData(WriteDataE),
+              //Особенные
+              .PCTarget(PCTargetE));
     ////Логика JUMP/BRANCH
     assign PCSrcE = (ZeroE & BranchE) | JumpE;
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    regdata    #(4, CORE_TYPE) rd_execute (clk, rst, {PCPlus4E, WriteDataE, ALUResultE, RdE},
-                                                     {PCPlus4M, WriteDataM, ALUResultM, RdM});
+    regdata    #(3, CORE_TYPE) rd_execute (clk, rst, {PCPlus4E, WriteDataE, ALUResultE},
+                                                     {PCPlus4M, WriteDataM, ALUResultM});
+    regrf      #(1, CORE_TYPE) rf_execute (clk, rst, {RdE},
+                                                     {RdM});
     regcontrol #(4, CORE_TYPE) rc_execute (clk, rst, {RegWriteE, ResultSrcE[1:0], MemWriteE}, 
                                                      {RegWriteM, ResultSrcM[1:0], MemWriteM});
     //MEMORY////////////////////////////////////////////////////////////////////////////////////////
@@ -72,11 +90,13 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
                     .dmem_Write(dmem_Write), .dmem_Addr(dmem_Addr),
                     .dmem_WriteData(dmem_WriteData));
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    regmem  #(CORE_TYPE, MEMORY_TYPE) rm_memory (clk, rst, ReadDataM, ReadDataW);
-    regdata #(3, CORE_TYPE)           rd_memory (clk, rst, {PCPlus4M, ALUResultM, RdM},
-                                                           {PCPlus4W, ALUResultW, RdW});
-    regcontrol #(3, CORE_TYPE) rc_memory (clk, rst, {RegWriteM, ResultSrcM[1:0]}, 
-                                                    {RegWriteW, ResultSrcW[1:0]});
+    regmem     #(CORE_TYPE, MEMORY_TYPE) rm_memory (clk, rst, ReadDataM, ReadDataW);
+    regdata    #(2, CORE_TYPE)           rd_memory (clk, rst, {PCPlus4M, ALUResultM},
+                                                              {PCPlus4W, ALUResultW});
+    regrf      #(1, CORE_TYPE)           rf_memory (clk, rst, {RdM},
+                                                              {RdW});
+    regcontrol #(3, CORE_TYPE)           rc_memory (clk, rst, {RegWriteM, ResultSrcM[1:0]}, 
+                                                              {RegWriteW, ResultSrcW[1:0]});
     //WRITEBACK/////////////////////////////////////////////////////////////////////////////////////
     writeback writeback (   .ResultSrc(ResultSrcW),
                             .ALUResult(ALUResultW), .ReadData(ReadDataW), .PCPlus4(PCPlus4W),
@@ -142,6 +162,29 @@ module control_unit (
                         default: ALUControl = 3'bxxx;                       //Другие команды
                      endcase
         endcase
+endmodule
+
+module conflict_prevention_unit 
+  #(parameter CORE_TYPE = 0)
+   (input  logic       RegWriteM, RegWriteW,
+    input  logic [4:0] Rs1E, Rs2E, RdM, RdW,    
+    output logic [1:0] ForwardA, ForwardB
+);
+    generate if (CORE_TYPE) begin   //#1 - Однотактное ядро
+        assign ForwardA = 2'b00;
+        assign ForwardB = 2'b00;
+    end else begin                  //#0 - Конвеерное ядро
+        always_comb begin
+            if        ((Rs1E != 0) & (Rs1E == RdM) & RegWriteM) ForwardA = 2'b10;
+            else if   ((Rs1E != 0) & (Rs1E == RdW) & RegWriteW) ForwardA = 2'b01;
+                 else                                           ForwardA = 2'b00;
+            if        ((Rs2E != 0) & (Rs2E == RdM) & RegWriteM) ForwardB = 2'b10;
+            else if   ((Rs2E != 0) & (Rs2E == RdW) & RegWriteW) ForwardB = 2'b01;
+                 else                                           ForwardB = 2'b00;
+        end
+    end
+    endgenerate
+    
 endmodule
 
 module fetch (
@@ -266,11 +309,13 @@ module decode
                 rf[31] <= 0; //x31
             end
             else if (RegWrite) rf[Addr3] <= Result;
-            
-        always_ff @(posedge clk) begin
-            RD1 <= (Addr1 != 0) ? rf[Addr1] : 0;
-            RD2 <= (Addr2 != 0) ? rf[Addr2] : 0;
-        end
+        
+        assign RD1 = (Addr1 != 0) ? rf[Addr1] : 0;
+        assign RD2 = (Addr2 != 0) ? rf[Addr2] : 0;
+        //always_ff @(posedge clk) begin
+        //    RD1 <= (Addr1 != 0) ? rf[Addr1] : 0;
+        //    RD2 <= (Addr2 != 0) ? rf[Addr2] : 0;
+        //end
     end
     endgenerate
     //#ie - Знаковое расширение непосредственного числа//
@@ -291,10 +336,11 @@ module decode
 
 endmodule
 
-module execute (
+module execute #(CORE_TYPE) (
     input  logic        ALUSrc,
+    input  logic [ 1:0] ForwardA, ForwardB,
     input  logic [ 2:0] ALUControl,
-    input  logic [31:0] RD1, RD2, PC, ImmExt,
+    input  logic [31:0] RD1, RD2, PC, ImmExt, ResultW, ALUResultM,
     output logic        Zero,
     output logic [31:0] ALUResult, WriteData,
     //Особенные
@@ -309,10 +355,35 @@ module execute (
     //На вход srcB может поступать как второй операнд регистрового файла RD2,
     //так и расширенное знаком непосредственное значение ImmExt в зависимости
     //от сигнала управления ALUSrc
-    logic [31:0] srcA;
-    logic [31:0] srcB;
-    assign srcA = RD1;
-    assign srcB = (ALUSrc)? ImmExt : RD2; //Мультипелксор для выбора второго операнда АЛУ: RD2 или ImmExt
+    
+    logic [31:0] Amux, Bmux;
+    //logic [31:0] Aabc [2:0] = {ALUResultM, ResultW, RD1};//{RD1, ResultW, ALUResultM};
+    //logic [31:0] Babc [2:0] = {ALUResultM, ResultW, RD2};//{RD2, ResultW, ALUResultM};
+    //assign Amux = Aabc[ForwardA];
+    //assign Bmux = Babc[ForwardB];
+    
+    generate if (CORE_TYPE) begin   //#1 - Однотактное ядро
+        assign Amux = RD1;
+        assign Bmux = RD2;        
+    end else begin                  //#0 - Конвеерное ядро
+        always_comb
+            case (ForwardA)
+                  2'b01: Amux = ResultW;
+                  2'b10: Amux = ALUResultM;
+                default: Amux = RD1;
+            endcase
+        always_comb
+            case (ForwardB)
+                  2'b01: Bmux = ResultW;
+                  2'b10: Bmux = ALUResultM;
+                default: Bmux = RD2;
+            endcase
+    end
+    endgenerate
+    
+    logic [31:0] srcA, srcB;
+    assign srcA = Amux;
+    assign srcB = (ALUSrc)? ImmExt : Bmux; //Мультипелксор для выбора второго операнда АЛУ: RD2 или ImmExt
     
     always_comb
         case (ALUControl)
@@ -330,7 +401,7 @@ module execute (
     assign PCTarget = PC + ImmExt;
 
     //#Прочие связи
-    assign WriteData = RD2;
+    assign WriteData = Bmux;
 
 endmodule
 
@@ -379,6 +450,28 @@ module regdata
           (input  logic        clk, rst,
            input  logic [31:0] d [QUANTITY-1:0],
            output logic [31:0] q [QUANTITY-1:0]);
+
+    genvar i;
+
+    generate if (CORE_TYPE) begin   //#1 - Однотактное ядро
+        assign q = d;
+    end else begin                  //#0 - Конвеерное ядро
+        for(i=0; i<QUANTITY; i=i+1) begin : regdataloop
+            always_ff @(posedge clk, posedge rst)
+                if (rst)    q[i] <= 0;
+                else        q[i] <= d[i];
+        end
+    end
+    endgenerate
+
+endmodule
+
+module regrf
+          #(parameter QUANTITY = 2, //Количество адресных регистров регистрового файла
+            parameter CORE_TYPE = 0)
+          (input  logic        clk, rst,
+           input  logic [4:0] d [QUANTITY-1:0],
+           output logic [4:0] q [QUANTITY-1:0]);
 
     genvar i;
 
