@@ -12,6 +12,11 @@
 кроме памяти инструкций, которая тактируется от второго такта, и памяти данных, которая тактируется
 от третьего такта. Думаю что реализвация однотактного ядра с синхронной памятью возможна при
 2 тактах, необходима !дополнительная проработка!
+3.При использовании памяти BSRAM в конвеерном ядре межстадийным регистром является сама память
+поскольку она явлется синхронной и выдаёт данные на выход по такту. При использовании синтезированной
+памяти в конвеерном ядре нужен дополнительный межстадийный регистр поскольку память асинхронная и
+необходимо разделить стадии регистрами. Для однотактного ядра межстадийный регистр не нужен, связь
+явлется проводником.
 */
 
 //============================================================================================== 
@@ -25,17 +30,19 @@
 `define SYNTH_MEM 0
 //============================================================================================== 
 
-module top #(parameter [0:0] CORE_TYPE   = `SINGLECYCLE_CORE,
+module top #(parameter [0:0] CORE_TYPE   = `PIPELINE_CORE,
              parameter [0:0] MEMORY_TYPE = `BSRAM_MEM)   
             (input  logic       clk,     //Вход тактирования
              input  logic       rst_n,   //Вход сброса (кнопка S2)
              output logic [5:0] led      //Выход на 6 светодиодов
 );
     //#0 Настройка тактирования
+    //DESCRIPTION: Для однотактного ядра при использовании BSAM делаем псевдооднотактный процессор
+    //с тремя тактами на одну инструкцию. Тактируем imem и dmem 2ым и 3ьим тактом.
     logic clk_core, clk_imem, clk_dmem;
-    generate if (MEMORY_TYPE) begin   //#1 - BSRAM
+    generate if (MEMORY_TYPE & CORE_TYPE) begin   //#1 - Для однотактного ядра с BSRAM
         divideby3 divideby3(.clk(clk), .clk_div3(clk_core), .clk_imem(clk_imem), .clk_dmem(clk_dmem));
-    end else begin                    //#0 - Синтезированная память
+    end else begin                                //#0 - Прочие конфигурации
         assign clk_core = clk;
         assign clk_imem = clk;
         assign clk_dmem = clk;
@@ -78,7 +85,7 @@ module top #(parameter [0:0] CORE_TYPE   = `SINGLECYCLE_CORE,
            .dmem_Addr(dmem_Addr), .dmem_WriteData(dmem_WriteData));
    
     //#3 Подключаем память
-    imem #(MEMORY_TYPE) imem(.clk(clk_imem),.addr(imem_addr), .data(imem_data));
+    imem #(MEMORY_TYPE) imem(.clk(clk_imem), .rst(rst_sync), .addr(imem_addr), .data(imem_data));
 
     dmem #(MEMORY_TYPE) dmem(.clk(clk_dmem), .we(dmem_Write), .reset(rst_sync),
                              .a(dmem_Addr), .wd(dmem_WriteData),

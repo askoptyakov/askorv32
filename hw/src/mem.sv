@@ -1,5 +1,5 @@
 module imem #(parameter [0:0] MEMORY_TYPE = 0) //Память команд (ROM)
-             (input logic clk,
+             (input logic clk, rst,
               input logic [10:0] addr,
               output logic [31:0] data);
 
@@ -11,7 +11,7 @@ module imem #(parameter [0:0] MEMORY_TYPE = 0) //Память команд (ROM)
         .clk(clk), //input clk
         .oce(1'b0), //input oce
         .ce(1'b1), //input ce
-        .reset(1'b0), //input reset
+        .reset(rst), //input reset
         .wre(1'b0), //input wre
         .ad(addr), //input [10:0] ad
         .din(32'b0000_0000_0000_0000_0000_0000_0000_0000) //input [31:0] din

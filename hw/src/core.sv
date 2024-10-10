@@ -37,12 +37,13 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
                     .imem_data(imem_data),
                     .imem_addr(imem_addr));
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    regdata #(3, CORE_TYPE) rd_fetch (clk, rst, {InstrF, PCF, PCPlus4F},
-                                                {InstrD, PCD, PCPlus4D});
+    regmem  #(CORE_TYPE, MEMORY_TYPE) rm_fetch (clk, rst, InstrF, InstrD);
+    regdata #(2, CORE_TYPE)           rd_fetch (clk, rst, {PCF, PCPlus4F},
+                                                          {PCD, PCPlus4D});
     //DECODE////////////////////////////////////////////////////////////////////////////////////////
-    decode decode(  .clk(clk), .rst(rst), .RegWrite(RegWriteD), .ImmSrc(ImmSrcD),
-                    .Instr({InstrD[31:12],RdW[4:0],InstrD[6:0]}), .Result(ResultW),
-                    .RD1(RD1D), .RD2(RD2D), .ImmExt(ImmExtD));
+    decode #(CORE_TYPE) decode(  .clk(clk), .rst(rst), .RegWrite(RegWriteD), .ImmSrc(ImmSrcD),
+                                 .Instr({InstrD[31:12],RdW[4:0],InstrD[6:0]}), .Result(ResultW),
+                                 .RD1(RD1D), .RD2(RD2D), .ImmExt(ImmExtD));
     assign RdD = {{27{1'b0}},InstrD[11:7]};
     ////////////////////////////////////////////////////////////////////////////////////////////////
     regdata    #(6, CORE_TYPE)  rd_decode (clk, rst, {PCD, PCPlus4D, ImmExtD, RD1D, RD2D, RdD},
@@ -71,8 +72,9 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
                     .dmem_Write(dmem_Write), .dmem_Addr(dmem_Addr),
                     .dmem_WriteData(dmem_WriteData));
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    regdata    #(4, CORE_TYPE) rd_memory (clk, rst, {PCPlus4M, ReadDataM, ALUResultM, RdM},
-                                                    {PCPlus4W, ReadDataW, ALUResultW, RdW});
+    regmem  #(CORE_TYPE, MEMORY_TYPE) rm_memory (clk, rst, ReadDataM, ReadDataW);
+    regdata #(3, CORE_TYPE)           rd_memory (clk, rst, {PCPlus4M, ALUResultM, RdM},
+                                                           {PCPlus4W, ALUResultW, RdW});
     regcontrol #(3, CORE_TYPE) rc_memory (clk, rst, {RegWriteM, ResultSrcM[1:0]}, 
                                                     {RegWriteW, ResultSrcW[1:0]});
     //WRITEBACK/////////////////////////////////////////////////////////////////////////////////////
@@ -173,8 +175,9 @@ module fetch (
     assign imem_addr = PC[12:2];
 endmodule
 
-module decode (
-    input logic         clk, rst, RegWrite,
+module decode 
+  #(parameter CORE_TYPE = 0)
+   (input logic         clk, rst, RegWrite,
     input logic  [ 1:0] ImmSrc,
     input  logic [31:0] Instr, Result,
     output logic [31:0] RD1, RD2, ImmExt
@@ -189,45 +192,87 @@ module decode (
     assign Addr2[5:0] = Instr[24:20];
     assign Addr3[5:0] = Instr[11:7];
     
-    always_ff @(posedge clk, posedge rst)
-        if (rst) begin
-            rf[1] <= 0;  //x1
-            rf[2] <= 0;  //x2
-            rf[3] <= 0;  //x3
-            rf[4] <= 0;  //x4
-            rf[5] <= 0;  //x5
-            rf[6] <= 0;  //x6
-            rf[7] <= 0;  //x7
-            rf[8] <= 0;  //x8
-            rf[9] <= 0;  //x9
-            rf[10] <= 0; //x10
-            rf[11] <= 0; //x11
-            rf[12] <= 0; //x12
-            rf[13] <= 0; //x13
-            rf[14] <= 0; //x14
-            rf[15] <= 0; //x15
-            rf[16] <= 0; //x16
-            rf[17] <= 0; //x17
-            rf[18] <= 0; //x18
-            rf[19] <= 0; //x19
-            rf[20] <= 0; //x20
-            rf[21] <= 0; //x21
-            rf[22] <= 0; //x22
-            rf[23] <= 0; //x23
-            rf[24] <= 0; //x24
-            rf[25] <= 0; //x25
-            rf[26] <= 0; //x26
-            rf[27] <= 0; //x27
-            rf[28] <= 0; //x28
-            rf[29] <= 0; //x29
-            rf[30] <= 0; //x30
-            rf[31] <= 0; //x31
+    generate if (CORE_TYPE) begin   //Однотактное ядро
+        always_ff @(posedge clk, posedge rst)
+            if (rst) begin
+                rf[1] <= 0;  //x1
+                rf[2] <= 0;  //x2
+                rf[3] <= 0;  //x3
+                rf[4] <= 0;  //x4
+                rf[5] <= 0;  //x5
+                rf[6] <= 0;  //x6
+                rf[7] <= 0;  //x7
+                rf[8] <= 0;  //x8
+                rf[9] <= 0;  //x9
+                rf[10] <= 0; //x10
+                rf[11] <= 0; //x11
+                rf[12] <= 0; //x12
+                rf[13] <= 0; //x13
+                rf[14] <= 0; //x14
+                rf[15] <= 0; //x15
+                rf[16] <= 0; //x16
+                rf[17] <= 0; //x17
+                rf[18] <= 0; //x18
+                rf[19] <= 0; //x19
+                rf[20] <= 0; //x20
+                rf[21] <= 0; //x21
+                rf[22] <= 0; //x22
+                rf[23] <= 0; //x23
+                rf[24] <= 0; //x24
+                rf[25] <= 0; //x25
+                rf[26] <= 0; //x26
+                rf[27] <= 0; //x27
+                rf[28] <= 0; //x28
+                rf[29] <= 0; //x29
+                rf[30] <= 0; //x30
+                rf[31] <= 0; //x31
+            end
+            else if (RegWrite) rf[Addr3] <= Result;
+        assign RD1 = (Addr1 != 0) ? rf[Addr1] : 0;
+        assign RD2 = (Addr2 != 0) ? rf[Addr2] : 0;
+    end else begin                  //Конвеерное ядро
+        always_ff @(negedge clk, posedge rst)
+            if (rst) begin
+                rf[1] <= 0;  //x1
+                rf[2] <= 0;  //x2
+                rf[3] <= 0;  //x3
+                rf[4] <= 0;  //x4
+                rf[5] <= 0;  //x5
+                rf[6] <= 0;  //x6
+                rf[7] <= 0;  //x7
+                rf[8] <= 0;  //x8
+                rf[9] <= 0;  //x9
+                rf[10] <= 0; //x10
+                rf[11] <= 0; //x11
+                rf[12] <= 0; //x12
+                rf[13] <= 0; //x13
+                rf[14] <= 0; //x14
+                rf[15] <= 0; //x15
+                rf[16] <= 0; //x16
+                rf[17] <= 0; //x17
+                rf[18] <= 0; //x18
+                rf[19] <= 0; //x19
+                rf[20] <= 0; //x20
+                rf[21] <= 0; //x21
+                rf[22] <= 0; //x22
+                rf[23] <= 0; //x23
+                rf[24] <= 0; //x24
+                rf[25] <= 0; //x25
+                rf[26] <= 0; //x26
+                rf[27] <= 0; //x27
+                rf[28] <= 0; //x28
+                rf[29] <= 0; //x29
+                rf[30] <= 0; //x30
+                rf[31] <= 0; //x31
+            end
+            else if (RegWrite) rf[Addr3] <= Result;
+            
+        always_ff @(posedge clk) begin
+            RD1 <= (Addr1 != 0) ? rf[Addr1] : 0;
+            RD2 <= (Addr2 != 0) ? rf[Addr2] : 0;
         end
-        else if (RegWrite) rf[Addr3] <= Result;
-
-    assign RD1 = (Addr1 != 0) ? rf[Addr1] : 0;
-    assign RD2 = (Addr2 != 0) ? rf[Addr2] : 0;
-
+    end
+    endgenerate
     //#ie - Знаковое расширение непосредственного числа//
     //DESCRIPTION: Производится знаковое расширение непосредственного числа
     //в зависимости от типа регистра ImmSrc. Знаковый бит Imm[31] копируется
@@ -329,7 +374,7 @@ module writeback (
 endmodule
 
 module regdata
-          #(parameter QUANTITY = 2,
+          #(parameter QUANTITY = 2, //Количество регистров без регистра выхода памяти
             parameter CORE_TYPE = 0)
           (input  logic        clk, rst,
            input  logic [31:0] d [QUANTITY-1:0],
@@ -337,14 +382,36 @@ module regdata
 
     genvar i;
 
-    generate if (CORE_TYPE) begin   //Однотактное ядро
+    generate if (CORE_TYPE) begin   //#1 - Однотактное ядро
         assign q = d;
-    end else begin                  //Конвеерное ядро
+    end else begin                  //#0 - Конвеерное ядро
         for(i=0; i<QUANTITY; i=i+1) begin : regdataloop
             always_ff @(posedge clk, posedge rst)
                 if (rst)    q[i] <= 0;
                 else        q[i] <= d[i];
         end
+    end
+    endgenerate
+
+endmodule
+
+module regmem #(parameter CORE_TYPE = 0, //Количество регистров без регистра выхода памяти
+                parameter MEMORY_TYPE = 0)
+               (input  logic        clk, rst,
+                input  logic [31:0] dm,
+                output logic [31:0] qm);
+    
+    //При использовании памяти BSRAM в конвеерном ядре межстадийным регистром
+    //является сама память поскольку она явлется синхронной и выдаёт данные на выход по такту.
+    //При использовании синтезированной памяти в конвеерном ядре нужен дополнительный межстадийный
+    //регистр поскольку память асинхронная и необходимо разделить стадии регистрами.
+
+    generate if (MEMORY_TYPE | CORE_TYPE) begin    //#1 - Провод для прочих конфигураций
+        assign qm = dm;
+    end else begin                                 //#0 - Регистр для конвеерного ядра с синтезированной памятью
+        always_ff @(posedge clk, posedge rst)
+            if (rst)    qm <= 0;
+            else        qm <= dm;
     end
     endgenerate
 
@@ -357,9 +424,9 @@ module regcontrol
            input  logic [WIDTH-1:0] d,
            output logic [WIDTH-1:0] q);
 
-    generate if (CORE_TYPE) begin   //Однотактное ядро
+    generate if (CORE_TYPE) begin   //#1 - Однотактное ядро
         assign q = d;
-    end else begin                  //Конвеерное ядро
+    end else begin                  //#0 - Конвеерное ядро
         always_ff @(posedge clk, posedge rst)
             if (rst)    q <= 0;
             else        q <= d;

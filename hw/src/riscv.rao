@@ -72,6 +72,40 @@
                 <Signal>riscv/InstrF[1]</Signal>
                 <Signal>riscv/InstrF[0]</Signal>
             </Bus>
+            <Bus capture_enable="true" name="riscv/InstrD[31:0]">
+                <Signal>riscv/InstrD[31]</Signal>
+                <Signal>riscv/InstrD[30]</Signal>
+                <Signal>riscv/InstrD[29]</Signal>
+                <Signal>riscv/InstrD[28]</Signal>
+                <Signal>riscv/InstrD[27]</Signal>
+                <Signal>riscv/InstrD[26]</Signal>
+                <Signal>riscv/InstrD[25]</Signal>
+                <Signal>riscv/InstrD[24]</Signal>
+                <Signal>riscv/InstrD[23]</Signal>
+                <Signal>riscv/InstrD[22]</Signal>
+                <Signal>riscv/InstrD[21]</Signal>
+                <Signal>riscv/InstrD[20]</Signal>
+                <Signal>riscv/InstrD[19]</Signal>
+                <Signal>riscv/InstrD[18]</Signal>
+                <Signal>riscv/InstrD[17]</Signal>
+                <Signal>riscv/InstrD[16]</Signal>
+                <Signal>riscv/InstrD[15]</Signal>
+                <Signal>riscv/InstrD[14]</Signal>
+                <Signal>riscv/InstrD[13]</Signal>
+                <Signal>riscv/InstrD[12]</Signal>
+                <Signal>riscv/InstrD[11]</Signal>
+                <Signal>riscv/InstrD[10]</Signal>
+                <Signal>riscv/InstrD[9]</Signal>
+                <Signal>riscv/InstrD[8]</Signal>
+                <Signal>riscv/InstrD[7]</Signal>
+                <Signal>riscv/InstrD[6]</Signal>
+                <Signal>riscv/InstrD[5]</Signal>
+                <Signal>riscv/InstrD[4]</Signal>
+                <Signal>riscv/InstrD[3]</Signal>
+                <Signal>riscv/InstrD[2]</Signal>
+                <Signal>riscv/InstrD[1]</Signal>
+                <Signal>riscv/InstrD[0]</Signal>
+            </Bus>
             <Bus capture_enable="true" name="riscv/decode/rf[2][31:0]">
                 <Signal>riscv/decode/rf[2][31]</Signal>
                 <Signal>riscv/decode/rf[2][30]</Signal>
@@ -534,8 +568,8 @@
             <MatchUnit index="15" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
         </MatchUnits>
         <Expressions type="Static">
-            <Expression>M0&amp;M1</Expression>
+            <Expression>M0</Expression>
         </Expressions>
     </AoCore>
-    <GAO_ID>0101111111010010</GAO_ID>
+    <GAO_ID>1110010010000111</GAO_ID>
 </GAO_CONFIG>
