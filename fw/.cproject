@@ -10,7 +10,9 @@
 					<stringMacro name="out_imem" type="VALUE_TEXT" value="../../hw/src/mem_init/imem.mi"/>
 					<stringMacro name="in_bsram_location" type="VALUE_PATH_ANY" value="../../hw/impl/pnr/riscv.posp"/>
 					<stringMacro name="INSTRTOBSRAM" type="VALUE_TEXT" value="../../sw/instrtobsram/instrtobsram.exe ${in_imem} ${out_imem}"/>
+					<stringMacro name="out_synth_imem" type="VALUE_PATH_ANY" value="../../hw/src/mem_init/i.mem"/>
 					<stringMacro name="in_imem" type="VALUE_PATH_ANY" value="riscv.lst"/>
+					<stringMacro name="INSTRTOSYNTHMEM" type="VALUE_TEXT" value="../../sw/instrtosynthmem/instrtosynthmem.exe ${in_imem} ${out_synth_imem}"/>
 					<stringMacro name="out_fpga" type="VALUE_PATH_ANY" value="riscv.fs"/>
 				</macros>
 				<externalSettings/>
@@ -66,7 +68,7 @@
 								<option id="ilg.gnumcueclipse.managedbuild.cross.riscv.option.createlisting.wide.1792954062" name="Wide lines (--wide|-w)" superClass="ilg.gnumcueclipse.managedbuild.cross.riscv.option.createlisting.wide" useByScannerDiscovery="false" value="true" valueType="boolean"/>
 								<option id="ilg.gnumcueclipse.managedbuild.cross.riscv.option.createlisting.disassemble.132413954" name="Disassemble (--disassemble|-d)" superClass="ilg.gnumcueclipse.managedbuild.cross.riscv.option.createlisting.disassemble" useByScannerDiscovery="false" value="false" valueType="boolean"/>
 							</tool>
-							<tool command="${cross_prefix}${cross_size}${cross_suffix}" commandLinePattern="${COMMAND} ${FLAGS}; ${MERGETOOL}; ${INSTRTOBSRAM}" id="ilg.gnumcueclipse.managedbuild.cross.riscv.tool.printsize.926124743" name="GNU RISC-V Cross Print Size" superClass="ilg.gnumcueclipse.managedbuild.cross.riscv.tool.printsize">
+							<tool command="${cross_prefix}${cross_size}${cross_suffix}" commandLinePattern="${COMMAND} ${FLAGS}; ${INSTRTOBSRAM}; ${INSTRTOSYNTHMEM}; #${MERGETOOL};" id="ilg.gnumcueclipse.managedbuild.cross.riscv.tool.printsize.926124743" name="GNU RISC-V Cross Print Size" superClass="ilg.gnumcueclipse.managedbuild.cross.riscv.tool.printsize">
 								<option id="ilg.gnumcueclipse.managedbuild.cross.riscv.option.printsize.format.1707466656" name="Size format" superClass="ilg.gnumcueclipse.managedbuild.cross.riscv.option.printsize.format" useByScannerDiscovery="false"/>
 								<option id="ilg.gnumcueclipse.managedbuild.cross.riscv.option.printsize.hex.1574776408" name="Hex" superClass="ilg.gnumcueclipse.managedbuild.cross.riscv.option.printsize.hex" useByScannerDiscovery="false" value="false" valueType="boolean"/>
 							</tool>

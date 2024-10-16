@@ -36,7 +36,7 @@
 //============================================================================================== 
 
 module top #(parameter [0:0] CORE_TYPE   = `PIPELINE_CORE,
-             parameter [0:0] MEMORY_TYPE = `BSRAM_MEM)   
+             parameter [0:0] MEMORY_TYPE = `SYNTH_MEM)   
             (input  logic       clk,     //Вход тактирования
              input  logic       rst_n,   //Вход сброса (кнопка S2)
              output logic [5:0] led      //Выход на 6 светодиодов
