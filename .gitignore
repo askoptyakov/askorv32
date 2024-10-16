@@ -12,6 +12,7 @@ fw/Release/*
 hw/impl/*
 !hw/impl/pnr/*.fs
 !hw/impl/pnr/*.posp
+!hw/impl/pnr/*.json
 hw/src/gwlib/*
 !hw/src/gwlib/*.v
 hw/*.user
