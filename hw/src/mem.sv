@@ -73,7 +73,7 @@ module dmem #(parameter [0:0] MEMORY_TYPE = 0) //Память данных (RAM)
     //адреса a, выход считанных данных rd, а также вход записи
     //данных wd по сигналу разрешения записи we.
     generate if (MEMORY_TYPE) begin   //#1 - BSRAM
-        bsram_dmem8k imem(
+        bsram_dmem8k dmem(
         .dout(rd), //output [31:0] dout
         .clk(clk), //input clk
         .oce(1'b0), //input oce
