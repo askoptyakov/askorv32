@@ -1,0 +1,25 @@
+# fw
+fw/Debug/*
+!fw/Debug/riscv.bin
+!fw/Debug/riscv.fs
+!fw/Debug/riscv.lst
+fw/Release/*
+!fw/Release/riscv.bin
+!fw/Release/riscv.fs
+!fw/Release/riscv.lst
+
+# hw
+hw/impl/*
+!hw/impl/pnr/*.fs
+!hw/impl/pnr/*.posp
+hw/src/gwlib/*
+!hw/src/gwlib/*.v
+hw/*.user
+
+# General
+*.bck
+*.bak
+﻿.~*
+_autosave-*
+*/#auto_saved_files#
+*/*-backups/*
