@@ -14,12 +14,14 @@
 памяти в конвеерном ядре нужен дополнительный межстадийный регистр поскольку память асинхронная и
 необходимо разделить стадии регистрами. Для однотактного ядра межстадийный регистр не нужен, связь
 явлется проводником.
-3. Связано с пунктом 2. При разработки приостановки конвейера, всвязи с конфликтом при выполнении
+3. Связано с пунктом 2. При разработке приостановки конвейера, всвязи с конфликтом при выполнении
 инструкции lw, необходимо задержать межстадийный регистр (fetch-decode) на один такт. Поскольку в
 конвейерном ядре с памятью BSRAM межстадийным регистром является сама память приходится отключать
-тактирование памяти на 1 такт при помощи сигнала ce (clock enable). В текущей конфигурации кода
-появилось очень длинная связь именно логическая, сложная для понимания, но не нарушающая и не
-ухудшающая параметры ядра. Возможно пересмотреть.
+тактирование памяти на 1 такт подачей сигнала imem_re на контакт ce (clock enable) BSRAM. В текущей
+конфигурации кода появилось очень длинная связь именно логическая, сложная для понимания, но не
+нарушающая и не ухудшающая параметры ядра. Возможно пересмотреть.
+4. Не очень нравится как реализованы интерфейсы мамяти в ядре. Может лучше достать их из модулей
+стадий конвейера и поместить в главный модуль core. Подумать.
 */
 
 //============================================================================================== 
@@ -34,7 +36,7 @@
 //============================================================================================== 
 
 module top #(parameter [0:0] CORE_TYPE   = `PIPELINE_CORE,
-             parameter [0:0] MEMORY_TYPE = `SYNTH_MEM)   
+             parameter [0:0] MEMORY_TYPE = `BSRAM_MEM)   
             (input  logic       clk,     //Вход тактирования
              input  logic       rst_n,   //Вход сброса (кнопка S2)
              output logic [5:0] led      //Выход на 6 светодиодов
@@ -76,7 +78,7 @@ module top #(parameter [0:0] CORE_TYPE   = `PIPELINE_CORE,
     //#2 Подключаем ядро процессора
         //Интерфейс памяти команд
     logic [31:0] imem_data;
-    logic        imem_re;
+    logic        imem_re, imem_rst;
     logic [10:0] imem_addr;
         //Интерфейс памяти данных
     logic [31:0] dmem_ReadData;
@@ -86,13 +88,13 @@ module top #(parameter [0:0] CORE_TYPE   = `PIPELINE_CORE,
     core #(.CORE_TYPE(CORE_TYPE),
            .MEMORY_TYPE(MEMORY_TYPE))
            riscv  
-          (.clk(clk_core), .rst(rst_sync), .out(led),                       //Системные
-           .imem_data(imem_data), .imem_re(imem_re), .imem_addr(imem_addr), //Интерфейс памяти команд
-           .dmem_ReadData(dmem_ReadData), .dmem_Write(dmem_Write),          //Интерфейс памяти данных
+          (.clk(clk_core), .rst(rst_sync), .out(led),                                            //Системные
+           .imem_data(imem_data), .imem_re(imem_re), .imem_rst(imem_rst), .imem_addr(imem_addr), //Интерфейс памяти команд
+           .dmem_ReadData(dmem_ReadData), .dmem_Write(dmem_Write),                               //Интерфейс памяти данных
            .dmem_Addr(dmem_Addr), .dmem_WriteData(dmem_WriteData));
    
     //#3 Подключаем память
-    imem #(MEMORY_TYPE) imem(.clk(clk_imem), .rst(rst_sync), .re(imem_re), .addr(imem_addr), .data(imem_data));
+    imem #(MEMORY_TYPE) imem(.clk(clk_imem), .rst(rst_sync|imem_rst), .re(imem_re), .addr(imem_addr), .data(imem_data));
 
     dmem #(MEMORY_TYPE) dmem(.clk(clk_dmem), .reset(rst_sync), .we(dmem_Write),
                              .a(dmem_Addr), .wd(dmem_WriteData),

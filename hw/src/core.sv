@@ -5,7 +5,7 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
               output logic [5:0]  out,      //Выход на 6 светодиодов
               //Интерфейс памяти команд
               input  logic [31:0] imem_data,
-              output logic        imem_re,
+              output logic        imem_re, imem_rst,
               output logic [10:0] imem_addr,
               //Интерфейс памяти данных
               input logic [31:0]  dmem_ReadData,
@@ -35,7 +35,7 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
 
     //Сигналы блока предотвращения конфликтов
     logic [1:0] ForwardAE, ForwardBE;                   //Организация байпасирования
-    logic       StallF, StallD, FlushE;                 //Организация пузырька
+    logic       StallF, StallD, FlushD, FlushE;         //Организация приостановки и предсказателя branch
     //CONTROL UNIT//////////////////////////////////////////////////////////////////////////////////
     control_unit cu (  .op(InstrD[6:0]), .funct3(InstrD[14:12]), .funct7b5(InstrD[30]),
                         .RegWrite(RegWriteD), .ALUSrc(ALUSrcD), .MemWrite(MemWriteD), .Jump(JumpD), .Branch(BranchD),
@@ -46,18 +46,22 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
                                .ForwardA(ForwardAE), .ForwardB(ForwardBE),
                                //Организация пузырька
                                .ResultSrcE0(ResultSrcE[0]), .Rs1D(Rs1D), .Rs2D(Rs2D), .RdE(RdE),
-                               .StallF(StallF), .StallD(StallD), .FlushE(FlushE));
+                               .StallF(StallF), .StallD(StallD), .FlushE(FlushE),
+                                //Предсказание перехода branch
+                               .PCSrcE(PCSrcE), .FlushD(FlushD));
     //FETCH/////////////////////////////////////////////////////////////////////////////////////////
-    fetch fetch(    .clk(clk), .rst(rst), .PCSrc(PCSrcE), .Stall(StallF),
+    fetch fetch(    .clk(clk), .rst(rst), .PCSrc(PCSrcE), .StallF(StallF),
                     .PCTarget(PCTargetE),    
                     .PC(PCF), .PCPlus4(PCPlus4F), .Instr(InstrF),
                     //Интерфейс памяти инструкций
                     .imem_data(imem_data),
-                    .imem_re(imem_re), .imem_addr(imem_addr));
+                    .imem_re(imem_re), .imem_rst(imem_rst), .imem_addr(imem_addr),
+                    //Предсказание перехода branch
+                    .StallD(StallD), .FlushD(FlushD));
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    regmem  #(CORE_TYPE, MEMORY_TYPE) rm_fetch (clk, rst, StallD, InstrF, InstrD);
-    regdata #(2, CORE_TYPE)           rd_fetch (clk, rst, StallD, {PCF, PCPlus4F},
-                                                                  {PCD, PCPlus4D});
+    regmem  #(CORE_TYPE, MEMORY_TYPE) rm_fetch (clk, FlushD|rst, StallD, InstrF, InstrD);
+    regdata #(2, CORE_TYPE)           rd_fetch (clk, FlushD|rst, StallD, {PCF, PCPlus4F},
+                                                                         {PCD, PCPlus4D});
     //DECODE////////////////////////////////////////////////////////////////////////////////////////
     decode #(CORE_TYPE) decode(  .clk(clk), .rst(rst), .RegWrite(RegWriteW), .ImmSrc(ImmSrcD),
                                  .Addr1(Rs1D), .Addr2(Rs2D), .Addr3(RdW), .Imm(ImmD),
@@ -68,11 +72,11 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
     assign RdD  = InstrD[11:7];
     assign ImmD = InstrD[31:7];
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    regdata #(5, CORE_TYPE) rd_decode     (clk, FlushE, 1'b0, {PCD, PCPlus4D, ImmExtD, RD1D, RD2D},
-                                                              {PCE, PCPlus4E, ImmExtE, RD1E, RD2E});
-    regrf   #(3, CORE_TYPE) rf_decode     (clk, FlushE, 1'b0, {Rs1D, Rs2D, RdD},
-                                                              {Rs1E, Rs2E, RdE});
-    regcontrol #(10, CORE_TYPE) rc_decode (clk, FlushE, 1'b0, 
+    regdata #(5, CORE_TYPE) rd_decode     (clk, FlushE|rst, 1'b0, {PCD, PCPlus4D, ImmExtD, RD1D, RD2D},
+                                                                  {PCE, PCPlus4E, ImmExtE, RD1E, RD2E});
+    regrf   #(3, CORE_TYPE) rf_decode     (clk, FlushE|rst, 1'b0, {Rs1D, Rs2D, RdD},
+                                                                  {Rs1E, Rs2E, RdE});
+    regcontrol #(10, CORE_TYPE) rc_decode (clk, FlushE|rst, 1'b0, 
                     {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[2:0], ALUSrcD}, 
                     {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[2:0], ALUSrcE});
     //EXECUTE///////////////////////////////////////////////////////////////////////////////////////
@@ -181,7 +185,10 @@ module conflict_prevention_unit
     //Организация пузырька
     input  logic       ResultSrcE0,
     input  logic [4:0] Rs1D, Rs2D, RdE,
-    output logic       StallF, StallD, FlushE
+    output logic       StallF, StallD, FlushE,
+    //Предсказание перехода branch
+    input  logic       PCSrcE,
+    output logic       FlushD
 );
     //#1 Байпасирование
     generate if (CORE_TYPE) begin   //#1 - Однотактное ядро
@@ -210,19 +217,31 @@ module conflict_prevention_unit
 
     assign StallF = lwStall;
     assign StallD = lwStall;
-    assign FlushE = lwStall;
+
+    //#3 Предсказатель перехода branch
+    generate if (CORE_TYPE) begin   //#1 - Однотактное ядро
+        assign FlushD = 1'b0;
+        assign FlushE = lwStall;
+    end else begin                  //#0 - Конвеерное ядро
+        assign FlushD = PCSrcE;
+        assign FlushE = lwStall | PCSrcE;
+    end
+    endgenerate
 
 endmodule
 
 module fetch (
-    input  logic        clk, rst, PCSrc, Stall,
+    input  logic        clk, rst, PCSrc, StallF,
     input  logic [31:0] PCTarget,
     output logic [31:0] PC, PCPlus4, Instr,
 
     //Интерфейс памяти инструкций
     input  logic [31:0] imem_data,
-    output logic        imem_re,
-    output logic [10:0] imem_addr
+    output logic        imem_re, imem_rst,
+    output logic [10:0] imem_addr,
+
+    //Предсказание перехода branch
+    input logic         StallD, FlushD
 );
     //#pc - Счётчик команд//
     //DESCRIPTION: Счётчик команд PC на каждом такте принимает значение
@@ -232,7 +251,7 @@ module fetch (
     //на значение расширенного знаком непосредственного операнда ImmExt).
     
     logic en;
-    assign en = ~Stall; //Разрешение на включение(Запрет создаётся при конфликтах в конвейере)
+    assign en = ~StallF; //Разрешение на включение(Запрет создаётся при конфликтах в конвейере)
 
     logic [31:0] PCNext;
     assign PCPlus4 = PC + 4;
@@ -248,7 +267,8 @@ module fetch (
     //памяти на шины imem_addr и imem_data.
     assign Instr = imem_data;
     assign imem_addr = PC[12:2];
-    assign imem_re = en;
+    assign imem_re = ~StallD;
+    assign imem_rst = FlushD; //Чтобы сбросить выход памяти инструкций в BSRAM
 endmodule
 
 module decode 

@@ -19,6 +19,7 @@ module imem #(parameter [0:0] MEMORY_TYPE = 0) //Память команд (ROM)
     end else begin                  //#0 - Синтезированная память
         always_comb
             case (addr[4:0])
+                /* Для отработки пузырька
                 5'b00000: data = 32'h00500113;
                 5'b00001: data = 32'h00c00193;
                 5'b00010: data = 32'hff718393;
@@ -34,8 +35,7 @@ module imem #(parameter [0:0] MEMORY_TYPE = 0) //Память команд (ROM)
                 5'b01100: data = 32'h03800113;
                 5'b01101: data = 32'h009101b3;
                 default: data = 0;
-
-                /*
+                */
                 5'b00000: data = 32'h00500113;//7'h00//main:   addi x2, x0, 5      //x2 = 5
                 5'b00001: data = 32'h00C00193;//7'h04//        addi x3, x0, 12     //x3 = 12
                 5'b00010: data = 32'hFF718393;//7'h08//        addi x7, x3, -9     //x7 = 12  -  9   = 3
@@ -58,7 +58,6 @@ module imem #(parameter [0:0] MEMORY_TYPE = 0) //Память команд (ROM)
                 5'b10011: data = 32'hFC21A023;//7'h4C//        sw   x2, -64(x3)    //      dmem[4] <- 25
                 5'b10100: data = 32'h00210063;//7'h50//done:   beq  x2, x2, done   //pc = (25 == 25)? done : pc + 4  #Истина, бесконечный цикл 
                 default: data = 0;
-                */
         endcase
     end
     endgenerate
