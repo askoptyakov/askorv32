@@ -208,6 +208,40 @@
                 <Signal>riscv/decode/rf[5][1]</Signal>
                 <Signal>riscv/decode/rf[5][0]</Signal>
             </Bus>
+            <Bus capture_enable="true" name="riscv/decode/rf[8][31:0]">
+                <Signal>riscv/decode/rf[8][31]</Signal>
+                <Signal>riscv/decode/rf[8][30]</Signal>
+                <Signal>riscv/decode/rf[8][29]</Signal>
+                <Signal>riscv/decode/rf[8][28]</Signal>
+                <Signal>riscv/decode/rf[8][27]</Signal>
+                <Signal>riscv/decode/rf[8][26]</Signal>
+                <Signal>riscv/decode/rf[8][25]</Signal>
+                <Signal>riscv/decode/rf[8][24]</Signal>
+                <Signal>riscv/decode/rf[8][23]</Signal>
+                <Signal>riscv/decode/rf[8][22]</Signal>
+                <Signal>riscv/decode/rf[8][21]</Signal>
+                <Signal>riscv/decode/rf[8][20]</Signal>
+                <Signal>riscv/decode/rf[8][19]</Signal>
+                <Signal>riscv/decode/rf[8][18]</Signal>
+                <Signal>riscv/decode/rf[8][17]</Signal>
+                <Signal>riscv/decode/rf[8][16]</Signal>
+                <Signal>riscv/decode/rf[8][15]</Signal>
+                <Signal>riscv/decode/rf[8][14]</Signal>
+                <Signal>riscv/decode/rf[8][13]</Signal>
+                <Signal>riscv/decode/rf[8][12]</Signal>
+                <Signal>riscv/decode/rf[8][11]</Signal>
+                <Signal>riscv/decode/rf[8][10]</Signal>
+                <Signal>riscv/decode/rf[8][9]</Signal>
+                <Signal>riscv/decode/rf[8][8]</Signal>
+                <Signal>riscv/decode/rf[8][7]</Signal>
+                <Signal>riscv/decode/rf[8][6]</Signal>
+                <Signal>riscv/decode/rf[8][5]</Signal>
+                <Signal>riscv/decode/rf[8][4]</Signal>
+                <Signal>riscv/decode/rf[8][3]</Signal>
+                <Signal>riscv/decode/rf[8][2]</Signal>
+                <Signal>riscv/decode/rf[8][1]</Signal>
+                <Signal>riscv/decode/rf[8][0]</Signal>
+            </Bus>
             <Bus capture_enable="true" name="riscv/decode/rf[9][31:0]">
                 <Signal>riscv/decode/rf[9][31]</Signal>
                 <Signal>riscv/decode/rf[9][30]</Signal>
@@ -344,74 +378,6 @@
                 <Signal>riscv/execute/ALUResult[1]</Signal>
                 <Signal>riscv/execute/ALUResult[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/ALUResultM[31:0]">
-                <Signal>riscv/ALUResultM[31]</Signal>
-                <Signal>riscv/ALUResultM[30]</Signal>
-                <Signal>riscv/ALUResultM[29]</Signal>
-                <Signal>riscv/ALUResultM[28]</Signal>
-                <Signal>riscv/ALUResultM[27]</Signal>
-                <Signal>riscv/ALUResultM[26]</Signal>
-                <Signal>riscv/ALUResultM[25]</Signal>
-                <Signal>riscv/ALUResultM[24]</Signal>
-                <Signal>riscv/ALUResultM[23]</Signal>
-                <Signal>riscv/ALUResultM[22]</Signal>
-                <Signal>riscv/ALUResultM[21]</Signal>
-                <Signal>riscv/ALUResultM[20]</Signal>
-                <Signal>riscv/ALUResultM[19]</Signal>
-                <Signal>riscv/ALUResultM[18]</Signal>
-                <Signal>riscv/ALUResultM[17]</Signal>
-                <Signal>riscv/ALUResultM[16]</Signal>
-                <Signal>riscv/ALUResultM[15]</Signal>
-                <Signal>riscv/ALUResultM[14]</Signal>
-                <Signal>riscv/ALUResultM[13]</Signal>
-                <Signal>riscv/ALUResultM[12]</Signal>
-                <Signal>riscv/ALUResultM[11]</Signal>
-                <Signal>riscv/ALUResultM[10]</Signal>
-                <Signal>riscv/ALUResultM[9]</Signal>
-                <Signal>riscv/ALUResultM[8]</Signal>
-                <Signal>riscv/ALUResultM[7]</Signal>
-                <Signal>riscv/ALUResultM[6]</Signal>
-                <Signal>riscv/ALUResultM[5]</Signal>
-                <Signal>riscv/ALUResultM[4]</Signal>
-                <Signal>riscv/ALUResultM[3]</Signal>
-                <Signal>riscv/ALUResultM[2]</Signal>
-                <Signal>riscv/ALUResultM[1]</Signal>
-                <Signal>riscv/ALUResultM[0]</Signal>
-            </Bus>
-            <Bus capture_enable="true" name="riscv/ALUResultW[31:0]">
-                <Signal>riscv/ALUResultW[31]</Signal>
-                <Signal>riscv/ALUResultW[30]</Signal>
-                <Signal>riscv/ALUResultW[29]</Signal>
-                <Signal>riscv/ALUResultW[28]</Signal>
-                <Signal>riscv/ALUResultW[27]</Signal>
-                <Signal>riscv/ALUResultW[26]</Signal>
-                <Signal>riscv/ALUResultW[25]</Signal>
-                <Signal>riscv/ALUResultW[24]</Signal>
-                <Signal>riscv/ALUResultW[23]</Signal>
-                <Signal>riscv/ALUResultW[22]</Signal>
-                <Signal>riscv/ALUResultW[21]</Signal>
-                <Signal>riscv/ALUResultW[20]</Signal>
-                <Signal>riscv/ALUResultW[19]</Signal>
-                <Signal>riscv/ALUResultW[18]</Signal>
-                <Signal>riscv/ALUResultW[17]</Signal>
-                <Signal>riscv/ALUResultW[16]</Signal>
-                <Signal>riscv/ALUResultW[15]</Signal>
-                <Signal>riscv/ALUResultW[14]</Signal>
-                <Signal>riscv/ALUResultW[13]</Signal>
-                <Signal>riscv/ALUResultW[12]</Signal>
-                <Signal>riscv/ALUResultW[11]</Signal>
-                <Signal>riscv/ALUResultW[10]</Signal>
-                <Signal>riscv/ALUResultW[9]</Signal>
-                <Signal>riscv/ALUResultW[8]</Signal>
-                <Signal>riscv/ALUResultW[7]</Signal>
-                <Signal>riscv/ALUResultW[6]</Signal>
-                <Signal>riscv/ALUResultW[5]</Signal>
-                <Signal>riscv/ALUResultW[4]</Signal>
-                <Signal>riscv/ALUResultW[3]</Signal>
-                <Signal>riscv/ALUResultW[2]</Signal>
-                <Signal>riscv/ALUResultW[1]</Signal>
-                <Signal>riscv/ALUResultW[0]</Signal>
-            </Bus>
             <Bus capture_enable="true" name="riscv/ResultW[31:0]">
                 <Signal>riscv/ResultW[31]</Signal>
                 <Signal>riscv/ResultW[30]</Signal>
@@ -446,6 +412,20 @@
                 <Signal>riscv/ResultW[1]</Signal>
                 <Signal>riscv/ResultW[0]</Signal>
             </Bus>
+            <Bus capture_enable="true" name="riscv/decode/Addr1[4:0]">
+                <Signal>riscv/decode/Addr1[4]</Signal>
+                <Signal>riscv/decode/Addr1[3]</Signal>
+                <Signal>riscv/decode/Addr1[2]</Signal>
+                <Signal>riscv/decode/Addr1[1]</Signal>
+                <Signal>riscv/decode/Addr1[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="riscv/decode/Addr2[4:0]">
+                <Signal>riscv/decode/Addr2[4]</Signal>
+                <Signal>riscv/decode/Addr2[3]</Signal>
+                <Signal>riscv/decode/Addr2[2]</Signal>
+                <Signal>riscv/decode/Addr2[1]</Signal>
+                <Signal>riscv/decode/Addr2[0]</Signal>
+            </Bus>
             <Signal capture_enable="true">riscv/RegWriteW</Signal>
             <Bus capture_enable="true" name="riscv/RdW[4:0]">
                 <Signal>riscv/RdW[4]</Signal>
@@ -459,7 +439,6 @@
                 <Signal>riscv/ALUControlE[1]</Signal>
                 <Signal>riscv/ALUControlE[0]</Signal>
             </Bus>
-            <Signal capture_enable="true">riscv/ALUSrcE</Signal>
         </SignalList>
         <Triggers>
             <Trigger index="0">
@@ -542,5 +521,5 @@
             <Expression>M0</Expression>
         </Expressions>
     </AoCore>
-    <GAO_ID>1001101001110110</GAO_ID>
+    <GAO_ID>1111000101110111</GAO_ID>
 </GAO_CONFIG>

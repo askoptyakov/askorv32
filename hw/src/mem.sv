@@ -1,5 +1,5 @@
 module imem #(parameter [0:0] MEMORY_TYPE = 0) //Память команд (ROM)
-             (input logic clk, rst,
+             (input logic clk, rst, re,
               input logic [10:0] addr,
               output logic [31:0] data);
 
@@ -10,7 +10,7 @@ module imem #(parameter [0:0] MEMORY_TYPE = 0) //Память команд (ROM)
         .dout(data), //output [31:0] dout
         .clk(clk), //input clk
         .oce(1'b0), //input oce
-        .ce(1'b1), //input ce
+        .ce(re), //input ce
         .reset(rst), //input reset
         .wre(1'b0), //input wre
         .ad(addr), //input [10:0] ad
@@ -19,6 +19,23 @@ module imem #(parameter [0:0] MEMORY_TYPE = 0) //Память команд (ROM)
     end else begin                  //#0 - Синтезированная память
         always_comb
             case (addr[4:0])
+                5'b00000: data = 32'h00500113;
+                5'b00001: data = 32'h00c00193;
+                5'b00010: data = 32'hff718393;
+                5'b00011: data = 32'h0023e233;
+                5'b00100: data = 32'h0041f2b3;
+                5'b00101: data = 32'h004282b3;
+                5'b00110: data = 32'hfe51aa23;
+                5'b00111: data = 32'h00500393;
+                5'b01000: data = 32'h00600493;
+                5'b01001: data = 32'h00002103;
+                5'b01010: data = 32'h00410433;
+                5'b01011: data = 32'h403404b3;
+                5'b01100: data = 32'h03800113;
+                5'b01101: data = 32'h009101b3;
+                default: data = 0;
+
+                /*
                 5'b00000: data = 32'h00500113;//7'h00//main:   addi x2, x0, 5      //x2 = 5
                 5'b00001: data = 32'h00C00193;//7'h04//        addi x3, x0, 12     //x3 = 12
                 5'b00010: data = 32'hFF718393;//7'h08//        addi x7, x3, -9     //x7 = 12  -  9   = 3
@@ -41,13 +58,14 @@ module imem #(parameter [0:0] MEMORY_TYPE = 0) //Память команд (ROM)
                 5'b10011: data = 32'hFC21A023;//7'h4C//        sw   x2, -64(x3)    //      dmem[4] <- 25
                 5'b10100: data = 32'h00210063;//7'h50//done:   beq  x2, x2, done   //pc = (25 == 25)? done : pc + 4  #Истина, бесконечный цикл 
                 default: data = 0;
+                */
         endcase
     end
     endgenerate
 endmodule
 
 module dmem #(parameter [0:0] MEMORY_TYPE = 0) //Память данных (RAM)
-            (input logic clk, we, reset,
+            (input logic clk, reset, we, 
              input logic  [31:0] a,
              input logic  [31:0] wd,
              output logic [31:0] rd);
