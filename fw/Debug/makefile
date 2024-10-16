@@ -62,7 +62,7 @@ riscv.lst: riscv.elf
 
 riscv.siz: riscv.elf
 	@echo 'Invoking: GNU RISC-V Cross Print Size'
-	riscv-none-embed-size --format=berkeley "riscv.elf"; ../../sw/mergetool/mergetool.exe
+	riscv-none-embed-size --format=berkeley "riscv.elf"; ../../sw/mergetool/mergetool.exe riscv.bin ../../hw/impl/pnr/riscv.posp ../../hw/impl/pnr/ao_0.fs riscv.fs; ../../sw/instrtobsram/instrtobsram.exe riscv.lst ../../hw/src/mem_init/imem.mi
 	@echo 'Finished building: $@'
 	@echo ' '
 

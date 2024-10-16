@@ -3,6 +3,16 @@
 	<storageModule moduleId="org.eclipse.cdt.core.settings">
 		<cconfiguration id="ilg.gnumcueclipse.managedbuild.cross.riscv.config.elf.debug.1517686873">
 			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="ilg.gnumcueclipse.managedbuild.cross.riscv.config.elf.debug.1517686873" moduleId="org.eclipse.cdt.core.settings" name="Debug">
+				<macros>
+					<stringMacro name="in_fpga" type="VALUE_PATH_ANY" value="../../hw/impl/pnr/ao_0.fs"/>
+					<stringMacro name="MERGETOOL" type="VALUE_TEXT" value="../../sw/mergetool/mergetool.exe ${in_mcu} ${in_bsram_location} ${in_fpga} ${out_fpga}"/>
+					<stringMacro name="in_mcu" type="VALUE_PATH_ANY" value="riscv.bin"/>
+					<stringMacro name="out_imem" type="VALUE_TEXT" value="../../hw/src/mem_init/imem.mi"/>
+					<stringMacro name="in_bsram_location" type="VALUE_PATH_ANY" value="../../hw/impl/pnr/riscv.posp"/>
+					<stringMacro name="INSTRTOBSRAM" type="VALUE_TEXT" value="../../sw/instrtobsram/instrtobsram.exe ${in_imem} ${out_imem}"/>
+					<stringMacro name="in_imem" type="VALUE_PATH_ANY" value="riscv.lst"/>
+					<stringMacro name="out_fpga" type="VALUE_PATH_ANY" value="riscv.fs"/>
+				</macros>
 				<externalSettings/>
 				<extensions>
 					<extension id="org.eclipse.cdt.core.ELF" point="org.eclipse.cdt.core.BinaryParser"/>
@@ -56,7 +66,7 @@
 								<option id="ilg.gnumcueclipse.managedbuild.cross.riscv.option.createlisting.wide.1792954062" name="Wide lines (--wide|-w)" superClass="ilg.gnumcueclipse.managedbuild.cross.riscv.option.createlisting.wide" useByScannerDiscovery="false" value="true" valueType="boolean"/>
 								<option id="ilg.gnumcueclipse.managedbuild.cross.riscv.option.createlisting.disassemble.132413954" name="Disassemble (--disassemble|-d)" superClass="ilg.gnumcueclipse.managedbuild.cross.riscv.option.createlisting.disassemble" useByScannerDiscovery="false" value="false" valueType="boolean"/>
 							</tool>
-							<tool command="${cross_prefix}${cross_size}${cross_suffix}" commandLinePattern="${COMMAND} ${FLAGS}; ../../sw/mergetool/mergetool.exe" id="ilg.gnumcueclipse.managedbuild.cross.riscv.tool.printsize.926124743" name="GNU RISC-V Cross Print Size" superClass="ilg.gnumcueclipse.managedbuild.cross.riscv.tool.printsize">
+							<tool command="${cross_prefix}${cross_size}${cross_suffix}" commandLinePattern="${COMMAND} ${FLAGS}; ${MERGETOOL}; ${INSTRTOBSRAM}" id="ilg.gnumcueclipse.managedbuild.cross.riscv.tool.printsize.926124743" name="GNU RISC-V Cross Print Size" superClass="ilg.gnumcueclipse.managedbuild.cross.riscv.tool.printsize">
 								<option id="ilg.gnumcueclipse.managedbuild.cross.riscv.option.printsize.format.1707466656" name="Size format" superClass="ilg.gnumcueclipse.managedbuild.cross.riscv.option.printsize.format" useByScannerDiscovery="false"/>
 								<option id="ilg.gnumcueclipse.managedbuild.cross.riscv.option.printsize.hex.1574776408" name="Hex" superClass="ilg.gnumcueclipse.managedbuild.cross.riscv.option.printsize.hex" useByScannerDiscovery="false" value="false" valueType="boolean"/>
 							</tool>
