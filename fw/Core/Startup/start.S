@@ -64,6 +64,7 @@ done:
 */
 //Cкрипт для проверки команд slti,ori,andi,xor,xori,sll,slli,srl,srli,bne
 start:
+	li   x2, 0xFFFFAAA  //x2 = 268 434 090
 	addi x2, x0, 5      //x2 = 5
 	addi x3, x0, 12     //x3 = 12
 	addi x7, x3, -9     //x7 = 12  -  9   = 3
