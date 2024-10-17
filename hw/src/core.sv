@@ -175,7 +175,7 @@ module control_unit (
     always_comb
         case(ALUOp)
             2'b00:   ALUControl = 4'b0000;                                   //lw,sw,lui
-            2'b01:   ALUControl = 4'b0001;                                   //beq
+            2'b01:   ALUControl = 4'b0001;                                   //beq, bne
             default: case(funct3)
                         3'b000:  ALUControl = (RtypeSub) ? 4'b0001 : 4'b0000;//sub : add,addi
                         3'b001:  ALUControl = 4'b0110;                       //sll, slli
