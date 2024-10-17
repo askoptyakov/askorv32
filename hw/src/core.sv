@@ -27,19 +27,26 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
     logic [31:0] PCPlus4M,                                   WriteDataM, ALUResultM, ReadDataM;
     logic [31:0] PCPlus4W,                                               ALUResultW, ReadDataW, ResultW; 
 
+    logic        funct7b5;
+    logic [2: 0] funct3;
+    logic [6: 0] op;
+
     //Сигналы блока управления
-    logic RegWriteD, MemWriteD, JumpD, BranchD, ALUSrcD;                logic [1:0] ResultSrcD, ImmSrcD; logic [2:0] ALUControlD;
-    logic RegWriteE, MemWriteE, JumpE, BranchE, ALUSrcE, PCSrcE, ZeroE; logic [1:0] ResultSrcE;          logic [2:0] ALUControlE;
-    logic RegWriteM, MemWriteM;                                         logic [1:0] ResultSrcM;
-    logic RegWriteW;                                                    logic [1:0] ResultSrcW;
+    logic RegWriteD, MemWriteD, JumpD, BranchD, ALUSrcD, Funct3b0D;                logic [1:0] ResultSrcD, ImmSrcD; logic [2:0] ALUControlD;
+    logic RegWriteE, MemWriteE, JumpE, BranchE, ALUSrcE, Funct3b0E, PCSrcE, ZeroE; logic [1:0] ResultSrcE;          logic [2:0] ALUControlE;
+    logic RegWriteM, MemWriteM;                                                    logic [1:0] ResultSrcM;
+    logic RegWriteW;                                                               logic [1:0] ResultSrcW;
 
     //Сигналы блока предотвращения конфликтов
     logic [1:0] ForwardAE, ForwardBE;                   //Организация байпасирования
     logic       StallF, StallD, FlushD, FlushE;         //Организация приостановки и предсказателя branch
     //CONTROL UNIT//////////////////////////////////////////////////////////////////////////////////
-    control_unit cu (  .op(InstrD[6:0]), .funct3(InstrD[14:12]), .funct7b5(InstrD[30]),
-                        .RegWrite(RegWriteD), .ALUSrc(ALUSrcD), .MemWrite(MemWriteD), .Jump(JumpD), .Branch(BranchD),
-                        .ImmSrc(ImmSrcD), .ResultSrc(ResultSrcD), .ALUControl(ALUControlD));
+    assign funct7b5 = InstrD[30];
+    assign funct3   = InstrD[14:12];
+    assign op       = InstrD[6:0];
+    control_unit cu (  .op(op), .funct3(funct3), .funct7b5(funct7b5),
+                       .RegWrite(RegWriteD), .ALUSrc(ALUSrcD), .MemWrite(MemWriteD), .Jump(JumpD), .Branch(BranchD), .Funct3b0(Funct3b0D),
+                       .ImmSrc(ImmSrcD), .ResultSrc(ResultSrcD), .ALUControl(ALUControlD));
     conflict_prevention_unit #(CORE_TYPE) pu
                               (.RegWriteM(RegWriteM), .RegWriteW(RegWriteW),                                 
                                .Rs1E(Rs1E), .Rs2E(Rs2E), .RdM(RdM), .RdW(RdW),
@@ -76,9 +83,9 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
                                                                   {PCE, PCPlus4E, ImmExtE, RD1E, RD2E});
     regrf   #(3, CORE_TYPE) rf_decode     (clk, FlushE|rst, 1'b0, {Rs1D, Rs2D, RdD},
                                                                   {Rs1E, Rs2E, RdE});
-    regcontrol #(10, CORE_TYPE) rc_decode (clk, FlushE|rst, 1'b0, 
-                    {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[2:0], ALUSrcD}, 
-                    {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[2:0], ALUSrcE});
+    regcontrol #(11, CORE_TYPE) rc_decode (clk, FlushE|rst, 1'b0, 
+                    {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[2:0], ALUSrcD, Funct3b0D}, 
+                    {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[2:0], ALUSrcE, Funct3b0E});
     //EXECUTE///////////////////////////////////////////////////////////////////////////////////////
     execute #(CORE_TYPE) execute
              (.ALUSrc(ALUSrcE), .ForwardA(ForwardAE), .ForwardB(ForwardBE), .ALUControl(ALUControlE),
@@ -87,7 +94,7 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
               //Особенные
               .PCTarget(PCTargetE));
     ////Логика JUMP/BRANCH
-    assign PCSrcE = (ZeroE & BranchE) | JumpE;
+    assign PCSrcE = ((ZeroE ^ Funct3b0E) & BranchE) | JumpE; //Добавлен xor с dunct3[0] для команды bne
     ////////////////////////////////////////////////////////////////////////////////////////////////
     regdata    #(3, CORE_TYPE) rd_execute (clk, rst, 1'b0, {PCPlus4E, WriteDataE, ALUResultE},
                                                            {PCPlus4M, WriteDataM, ALUResultM});
@@ -137,7 +144,7 @@ module control_unit (
     input logic [2:0]   funct3,
     input logic         funct7b5,
     
-    output logic        RegWrite, ALUSrc, MemWrite, Jump, Branch,
+    output logic        RegWrite, ALUSrc, MemWrite, Jump, Branch, Funct3b0,
     output logic [1:0]  ImmSrc,ResultSrc,
     output logic [2:0]  ALUControl
 );
@@ -152,8 +159,8 @@ module control_unit (
         case(op)                     //A_BB_C_D_EE_F_GG_H
             7'b0000011: controls = 11'b1_00_1_0_01_0_00_0; //Команда lw
             7'b0100011: controls = 11'b0_01_1_1_00_0_00_0; //Команда sw
-            7'b0110011: controls = 11'b1_00_0_0_00_0_10_0; //Команды or, and, ???(тип R) 
-            7'b1100011: controls = 11'b0_10_0_0_00_1_01_0; //Команда beq
+            7'b0110011: controls = 11'b1_00_0_0_00_0_10_0; //Команды типf R
+            7'b1100011: controls = 11'b0_10_0_0_00_1_01_0; //Команда beq, bne
             7'b0010011: controls = 11'b1_00_1_0_00_0_10_0; //Команда addi
             7'b1101111: controls = 11'b1_11_0_0_10_0_00_1; //Команда jal
             default:    controls = 11'bx_xx_x_x_xx_x_xx_x; //Другие команды
@@ -169,12 +176,17 @@ module control_unit (
             2'b01:   ALUControl = 3'b001;                                   //beq
             default: case(funct3)
                         3'b000:  ALUControl = (RtypeSub) ? 3'b001 : 3'b000; //sub : add,addi
-                        3'b010:  ALUControl = 3'b101;                       //slt
-                        3'b110:  ALUControl = 3'b011;                       //or
-                        3'b111:  ALUControl = 3'b010;                       //and
+                        3'b001:  ALUControl = 3'b110;                       //sll, slli
+                        3'b010:  ALUControl = 3'b101;                       //slt, slti
+                        3'b100:  ALUControl = 3'b100;                       //xor, xori
+                        3'b101:  ALUControl = (funct7b5) ? 3'bxxx : 3'b111; //xxx : srl, srli                       
+                        3'b110:  ALUControl = 3'b011;                       //or, ori
+                        3'b111:  ALUControl = 3'b010;                       //and, andi
                         default: ALUControl = 3'bxxx;                       //Другие команды
                      endcase
         endcase
+    ////#cu.3 Прочие связи
+    assign Funct3b0 = funct3[0];
 endmodule
 
 module conflict_prevention_unit 
@@ -439,7 +451,10 @@ module execute #(CORE_TYPE) (
             3'b001: ALUResult = srcA - srcB;
             3'b010: ALUResult = srcA & srcB;
             3'b011: ALUResult = srcA | srcB;
+            3'b100: ALUResult = srcA ^ srcB;
             3'b101: ALUResult = (srcA < srcB)? 32'd1 : 32'd0;
+            3'b110: ALUResult = srcA << srcB[4:0];
+            3'b111: ALUResult = srcA >> srcB[4:0];
             default: ALUResult = 32'd0;
         endcase
 

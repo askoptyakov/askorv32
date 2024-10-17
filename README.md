@@ -6,7 +6,7 @@
 | JAL     | Jump and Link                       | &check;       |
 | JALR    | Jump and Link Register              | &cross;       |
 | BEQ     | Branch if Equal                     | &check;       |
-| BNE     | Branch if Not Equal                 | &cross;       |
+| BNE     | Branch if Not Equal                 | &check;       |
 | BLT     | Branch if Less Than                 | &cross;       |
 | BGE     | Branch if Greater or Equal          | &cross;       |
 | BLTU    | Branch if Less Than Unsigned        | &cross;       |
@@ -22,22 +22,22 @@
 | ADD     | Add                                 | &check;       |
 | ADDI    | Add Immediate                       | &check;       |
 | SUB     | Subtract                            | &check;       |
-| SLL     | Shift Left Logical                  | &cross;       |
-| SLLI    | Shift Left Logical Immediate        | &cross;       |
+| SLL     | Shift Left Logical                  | &check;       |
+| SLLI    | Shift Left Logical Immediate        | &check;       |
 | SLT     | Set Less Than                       | &check;       |
-| SLTI    | Set Less Than Immediate             | &cross;       |
+| SLTI    | Set Less Than Immediate             | &check;       |
 | SLTU    | Set Less Than Unsigned              | &cross;       |
 | SLTIU   | Set Less Than Unsigned Immediate    | &cross;       |
-| XOR     | Exclusive OR                        | &cross;       |
-| XORI    | Exclusive OR Immediate              | &cross;       |
-| SRL     | Shift Right Logical                 | &cross;       |
-| SRLI    | Shift Right Logical Immediate       | &cross;       |
+| XOR     | Exclusive OR                        | &check;       |
+| XORI    | Exclusive OR Immediate              | &check;       |
+| SRL     | Shift Right Logical                 | &check;       |
+| SRLI    | Shift Right Logical Immediate       | &check;       |
 | SRA     | Shift Right Arithmetic              | &cross;       |
 | SRAI    | Shift Right Arithmetic Immediate    | &cross;       |
 | OR      | OR                                  | &check;       |
-| ORI     | OR Immediate                        | &cross;       |
+| ORI     | OR Immediate                        | &check;       |
 | AND     | AND                                 | &check;       |
-| ANDI    | AND Immediate                       | &cross;       |
+| ANDI    | AND Immediate                       | &check;       |
 
 #### Полезные ссылки
 1. [Дополнительные материалы к серии книг Дэвид М. Харрис и Сара Л. Харрис "Цифровая схемотехника и архитектура компьютера"](https://pages.hmc.edu/harris/ddca/)
