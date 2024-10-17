@@ -15,6 +15,7 @@ hw/impl/*
 !hw/impl/pnr/*.posp
 hw/src/gwlib/*
 !hw/src/gwlib/*.v
+hw/src/gwlib/*_tmp.v
 hw/*.user
 
 # General
