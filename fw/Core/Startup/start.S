@@ -66,6 +66,11 @@ done:
 start:
 	li   x2, 0xFFFFAAA  //x2 = 268 434 090
 	addi x2, x0, 5      //x2 = 5
+	addi x3, x0, -17    //x3 = -17
+	srai x7, x3, 2		//x7 = -17 >>> 2  =-5
+	addi x2, x2, -4     //x2 = 5   -  4   = 1
+	sra  x3, x7, x2     //x3 = -5  >>> 1  =-3
+	addi x2, x3, 8      //x2 = -3  +  8   = 5
 	addi x3, x0, 12     //x3 = 12
 	addi x7, x3, -9     //x7 = 12  -  9   = 3
 	slti x4, x2, 33		//x4 = 5   <  33  = 1

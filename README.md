@@ -32,8 +32,8 @@
 | XORI    | Exclusive OR Immediate              | &check;       |
 | SRL     | Shift Right Logical                 | &check;       |
 | SRLI    | Shift Right Logical Immediate       | &check;       |
-| SRA     | Shift Right Arithmetic              | &cross;       |
-| SRAI    | Shift Right Arithmetic Immediate    | &cross;       |
+| SRA     | Shift Right Arithmetic              | &check;       |
+| SRAI    | Shift Right Arithmetic Immediate    | &check;       |
 | OR      | OR                                  | &check;       |
 | ORI     | OR Immediate                        | &check;       |
 | AND     | AND                                 | &check;       |

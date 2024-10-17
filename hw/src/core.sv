@@ -32,8 +32,8 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
     logic [6: 0] op;
 
     //Сигналы блока управления
-    logic RegWriteD, MemWriteD, JumpD, BranchD, ALUSrcD, Funct3b0D;                logic [1:0] ResultSrcD; logic [2:0] ALUControlD, ImmSrcD;
-    logic RegWriteE, MemWriteE, JumpE, BranchE, ALUSrcE, Funct3b0E, PCSrcE, ZeroE; logic [1:0] ResultSrcE; logic [2:0] ALUControlE;
+    logic RegWriteD, MemWriteD, JumpD, BranchD, ALUSrcD, Funct3b0D;                logic [1:0] ResultSrcD; logic [2:0] ImmSrcD; logic [3:0] ALUControlD;
+    logic RegWriteE, MemWriteE, JumpE, BranchE, ALUSrcE, Funct3b0E, PCSrcE, ZeroE; logic [1:0] ResultSrcE;                      logic [3:0] ALUControlE;
     logic RegWriteM, MemWriteM;                                                    logic [1:0] ResultSrcM;
     logic RegWriteW;                                                               logic [1:0] ResultSrcW;
 
@@ -46,7 +46,7 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
     assign op       = InstrD[6:0];
     control_unit cu (  .op(op), .funct3(funct3), .funct7b5(funct7b5),
                        .RegWrite(RegWriteD), .ALUSrc(ALUSrcD), .MemWrite(MemWriteD), .Jump(JumpD), .Branch(BranchD), .Funct3b0(Funct3b0D),
-                       .ResultSrc(ResultSrcD), .ALUControl(ALUControlD), .ImmSrc(ImmSrcD));
+                       .ResultSrc(ResultSrcD), .ImmSrc(ImmSrcD), .ALUControl(ALUControlD));
     conflict_prevention_unit #(CORE_TYPE) pu
                               (.RegWriteM(RegWriteM), .RegWriteW(RegWriteW),                                 
                                .Rs1E(Rs1E), .Rs2E(Rs2E), .RdM(RdM), .RdW(RdW),
@@ -83,9 +83,9 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
                                                                   {PCE, PCPlus4E, ImmExtE, RD1E, RD2E});
     regrf   #(3, CORE_TYPE) rf_decode     (clk, FlushE|rst, 1'b0, {Rs1D, Rs2D, RdD},
                                                                   {Rs1E, Rs2E, RdE});
-    regcontrol #(11, CORE_TYPE) rc_decode (clk, FlushE|rst, 1'b0, 
-                    {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[2:0], ALUSrcD, Funct3b0D}, 
-                    {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[2:0], ALUSrcE, Funct3b0E});
+    regcontrol #(12, CORE_TYPE) rc_decode (clk, FlushE|rst, 1'b0, 
+                    {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[3:0], ALUSrcD, Funct3b0D}, 
+                    {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[3:0], ALUSrcE, Funct3b0E});
     //EXECUTE///////////////////////////////////////////////////////////////////////////////////////
     execute #(CORE_TYPE) execute
              (.ALUSrc(ALUSrcE), .ForwardA(ForwardAE), .ForwardB(ForwardBE), .ALUControl(ALUControlE),
@@ -146,7 +146,8 @@ module control_unit (
     
     output logic        RegWrite, ALUSrc, MemWrite, Jump, Branch, Funct3b0,
     output logic [1:0]  ResultSrc,
-    output logic [2:0]  ALUControl, ImmSrc
+    output logic [2:0]  ImmSrc,
+    output logic [3:0]  ALUControl
 );
 
     logic [1:0] ALUOp;
@@ -156,7 +157,7 @@ module control_unit (
     //          A          BB        C         D          EE           F         GG        H
     ////#cu.1 Основной дешифратор
     always_comb
-        case(op)                     //A_BB_C_D_EE_F_GG_H
+        case(op)                     //A_BBB_C_D_EE_F_GG_H
             7'b0000011: controls = 12'b1_000_1_0_01_0_00_0; //Команда lw
             7'b0100011: controls = 12'b0_001_1_1_00_0_00_0; //Команда sw
             7'b0110011: controls = 12'b1_000_0_0_00_0_10_0; //Команды тип R
@@ -173,17 +174,17 @@ module control_unit (
     assign RtypeSub = funct7b5 & opb5;
     always_comb
         case(ALUOp)
-            2'b00:   ALUControl = 3'b000;                                   //lw,sw,lui
-            2'b01:   ALUControl = 3'b001;                                   //beq
+            2'b00:   ALUControl = 4'b0000;                                   //lw,sw,lui
+            2'b01:   ALUControl = 4'b0001;                                   //beq
             default: case(funct3)
-                        3'b000:  ALUControl = (RtypeSub) ? 3'b001 : 3'b000; //sub : add,addi
-                        3'b001:  ALUControl = 3'b110;                       //sll, slli
-                        3'b010:  ALUControl = 3'b101;                       //slt, slti
-                        3'b100:  ALUControl = 3'b100;                       //xor, xori
-                        3'b101:  ALUControl = (funct7b5) ? 3'bxxx : 3'b111; //xxx : srl, srli                       
-                        3'b110:  ALUControl = 3'b011;                       //or, ori
-                        3'b111:  ALUControl = 3'b010;                       //and, andi
-                        default: ALUControl = 3'bxxx;                       //Другие команды
+                        3'b000:  ALUControl = (RtypeSub) ? 4'b0001 : 4'b0000;//sub : add,addi
+                        3'b001:  ALUControl = 4'b0110;                       //sll, slli
+                        3'b010:  ALUControl = 4'b0101;                       //slt, slti
+                        3'b100:  ALUControl = 4'b0100;                       //xor, xori
+                        3'b101:  ALUControl = (funct7b5) ? 4'b1000 : 4'b0111;//sra, srai : srl, srli                       
+                        3'b110:  ALUControl = 4'b0011;                       //or, ori
+                        3'b111:  ALUControl = 4'b0010;                       //and, andi
+                        default: ALUControl = 4'bxxxx;                       //Другие команды
                      endcase
         endcase
     ////#cu.3 Прочие связи
@@ -401,7 +402,7 @@ endmodule
 module execute #(CORE_TYPE) (
     input  logic        ALUSrc,
     input  logic [ 1:0] ForwardA, ForwardB,
-    input  logic [ 2:0] ALUControl,
+    input  logic [ 3:0] ALUControl,
     input  logic [31:0] RD1, RD2, PC, ImmExt, ResultW, ALUResultM,
     output logic        Zero,
     output logic [31:0] ALUResult, WriteData,
@@ -449,14 +450,15 @@ module execute #(CORE_TYPE) (
     
     always_comb
         case (ALUControl)
-            3'b000: ALUResult = srcA + srcB;
-            3'b001: ALUResult = srcA - srcB;
-            3'b010: ALUResult = srcA & srcB;
-            3'b011: ALUResult = srcA | srcB;
-            3'b100: ALUResult = srcA ^ srcB;
-            3'b101: ALUResult = (srcA < srcB)? 32'd1 : 32'd0;
-            3'b110: ALUResult = srcA << srcB[4:0];
-            3'b111: ALUResult = srcA >> srcB[4:0];
+            4'b0000: ALUResult = srcA + srcB;
+            4'b0001: ALUResult = srcA - srcB;
+            4'b0010: ALUResult = srcA & srcB;
+            4'b0011: ALUResult = srcA | srcB;
+            4'b0100: ALUResult = srcA ^ srcB;
+            4'b0101: ALUResult = (srcA < srcB)? 32'd1 : 32'd0;
+            4'b0110: ALUResult = srcA << srcB[4:0];
+            4'b0111: ALUResult = srcA >> srcB[4:0];
+            4'b1000: ALUResult = $signed(srcA) >>> srcB[4:0];
             default: ALUResult = 32'd0;
         endcase
 

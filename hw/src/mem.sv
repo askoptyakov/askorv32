@@ -18,7 +18,7 @@ module imem #(parameter [0:0] MEMORY_TYPE = 0) //Память команд (ROM)
         );
     end else begin                  //#0 - Синтезированная память
         //Вариант подгрузки инструкций из внешнего файла - удобный
-        reg [31:0] imem [0:39];
+        reg [31:0] imem [0:49];
         initial $readmemh("mem_init/i.mem", imem);
         assign data = imem[addr];
         /* //Вариант подгрузки инструкций мультиплексором - первоначальный
