@@ -38,3 +38,6 @@
 | ORI     | OR Immediate                        | &cross;       |
 | AND     | AND                                 | &check;       |
 | ANDI    | AND Immediate                       | &cross;       |
+
+#### Полезные ссылки
+1. [Дополнительные материалы к серии книг Дэвид М. Харрис и Сара Л. Харрис "Цифровая схемотехника и архитектура компьютера"](https://pages.hmc.edu/harris/ddca/)
