@@ -1,0 +1,14 @@
+Using Python3.X;
+Merge the C-bin file into the FPGA bit-stream file as BRAM initial data. 
+This needs the informaiotn of ILM location at the Block RAM of GW FPGA. 
+Such ILM locatoin is described in the bsram_site_file called "bram_loc.txt". 
+
+After running the script, a new bit-stream file will be generated. 
+Its name is the original bit-stream file name with a prefix "new_".
+
+Usage:
+script <binary_data_file> <bsram_site_file> <fs_file>
+
+e.g:
+mergebin.py demo.bin bram-loc.txt AE250_eval_16KLM_GW2A18_V2_0_40MHz.fs
+It will generate a new bit-stream file named as "new_AE250_eval_16KLM_GW2A18_V2_0_40MHz.fs".
