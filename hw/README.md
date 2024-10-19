@@ -1,5 +1,5 @@
 #### Структура процессора
-![Структура процессора](info/core_structure.png)
+![Структура процессора](info/core_structure.svg)
 
 #### Таблица истинности основного дешифратора
 |Команда|  op   |RegWrite|ImmSrc|AluSrc|MemWrite|ResultSrc|Branch|ALUOp|Jump|
