@@ -32,20 +32,24 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
     logic [6: 0] op;
 
     //Сигналы блока управления
-    logic RegWriteD, MemWriteD, JumpD, BranchD, ALUSrcD, Funct3b0D;                logic [1:0] ResultSrcD; logic [2:0] ImmSrcD; logic [3:0] ALUControlD;
-    logic RegWriteE, MemWriteE, JumpE, BranchE, ALUSrcE, Funct3b0E, PCSrcE, ZeroE; logic [1:0] ResultSrcE;                      logic [3:0] ALUControlE;
-    logic RegWriteM, MemWriteM;                                                    logic [1:0] ResultSrcM;
-    logic RegWriteW;                                                               logic [1:0] ResultSrcW;
+    logic RegWriteD, MemWriteD, JumpD, BranchD, ALUSrcD;                 logic [1:0] ResultSrcD; logic [2:0] Funct3D, ImmSrcD; logic [3:0] ALUControlD;
+    logic RegWriteE, MemWriteE, JumpE, BranchE, ALUSrcE, PCSrcE, TakenE; logic [1:0] ResultSrcE; logic [2:0] Funct3E;          logic [3:0] ALUControlE;
+    logic RegWriteM, MemWriteM;                                          logic [1:0] ResultSrcM;
+    logic RegWriteW;                                                     logic [1:0] ResultSrcW;
 
     //Сигналы блока предотвращения конфликтов
     logic [1:0] ForwardAE, ForwardBE;                   //Организация байпасирования
     logic       StallF, StallD, FlushD, FlushE;         //Организация приостановки и предсказателя branch
+
+    //Сигналы блока условных переходов
+    logic [3:0] FlagsE;
+
     //CONTROL UNIT//////////////////////////////////////////////////////////////////////////////////
     assign funct7b5 = InstrD[30];
-    assign funct3   = InstrD[14:12];
+    assign funct3   = InstrD[14:12]; //FIXME: Объединить с Funct3D!
     assign op       = InstrD[6:0];
     control_unit cu (  .op(op), .funct3(funct3), .funct7b5(funct7b5),
-                       .RegWrite(RegWriteD), .ALUSrc(ALUSrcD), .MemWrite(MemWriteD), .Jump(JumpD), .Branch(BranchD), .Funct3b0(Funct3b0D),
+                       .RegWrite(RegWriteD), .ALUSrc(ALUSrcD), .MemWrite(MemWriteD), .Jump(JumpD), .Branch(BranchD),
                        .ResultSrc(ResultSrcD), .ImmSrc(ImmSrcD), .ALUControl(ALUControlD));
     conflict_prevention_unit #(CORE_TYPE) pu
                               (.RegWriteM(RegWriteM), .RegWriteW(RegWriteW),                                 
@@ -74,27 +78,29 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
                                  .Addr1(Rs1D), .Addr2(Rs2D), .Addr3(RdW), .Imm(ImmD),
                                  .Result(ResultW),
                                  .RD1(RD1D), .RD2(RD2D), .ImmExt(ImmExtD));
-    assign Rs1D = InstrD[19:15];
-    assign Rs2D = InstrD[24:20];
-    assign RdD  = InstrD[11:7];
-    assign ImmD = InstrD[31:7];
+    assign Rs1D    = InstrD[19:15];
+    assign Rs2D    = InstrD[24:20];
+    assign RdD     = InstrD[11:7];
+    assign ImmD    = InstrD[31:7];
+    assign Funct3D = InstrD[14:12];
     ////////////////////////////////////////////////////////////////////////////////////////////////
     regdata #(5, CORE_TYPE) rd_decode     (clk, FlushE|rst, 1'b0, {PCD, PCPlus4D, ImmExtD, RD1D, RD2D},
                                                                   {PCE, PCPlus4E, ImmExtE, RD1E, RD2E});
     regrf   #(3, CORE_TYPE) rf_decode     (clk, FlushE|rst, 1'b0, {Rs1D, Rs2D, RdD},
                                                                   {Rs1E, Rs2E, RdE});
-    regcontrol #(12, CORE_TYPE) rc_decode (clk, FlushE|rst, 1'b0, 
-                    {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[3:0], ALUSrcD, Funct3b0D}, 
-                    {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[3:0], ALUSrcE, Funct3b0E});
+    regcontrol #(14, CORE_TYPE) rc_decode (clk, FlushE|rst, 1'b0, 
+                    {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[3:0], ALUSrcD, Funct3D[2:0]}, 
+                    {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[3:0], ALUSrcE, Funct3E[2:0]});
     //EXECUTE///////////////////////////////////////////////////////////////////////////////////////
     execute #(CORE_TYPE) execute
              (.ALUSrc(ALUSrcE), .ForwardA(ForwardAE), .ForwardB(ForwardBE), .ALUControl(ALUControlE),
               .RD1(RD1E), .RD2(RD2E), .PC(PCE), .ImmExt(ImmExtE), .ResultW(ResultW), .ALUResultM(ALUResultM),
-              .Zero(ZeroE), .ALUResult(ALUResultE), .WriteData(WriteDataE),
+              .Flags(FlagsE), .ALUResult(ALUResultE), .WriteData(WriteDataE),
               //Особенные
               .PCTarget(PCTargetE));
+    branch_unit bu (.Branch(BranchE), .funct3(Funct3E), .Flags(FlagsE), .taken(TakenE));
     ////Логика JUMP/BRANCH
-    assign PCSrcE = ((ZeroE ^ Funct3b0E) & BranchE) | JumpE; //Добавлен xor с dunct3[0] для команды bne
+    assign PCSrcE = TakenE | JumpE;
     ////////////////////////////////////////////////////////////////////////////////////////////////
     regdata    #(3, CORE_TYPE) rd_execute (clk, rst, 1'b0, {PCPlus4E, WriteDataE, ALUResultE},
                                                            {PCPlus4M, WriteDataM, ALUResultM});
@@ -144,7 +150,7 @@ module control_unit (
     input logic [2:0]   funct3,
     input logic         funct7b5,
     
-    output logic        RegWrite, ALUSrc, MemWrite, Jump, Branch, Funct3b0,
+    output logic        RegWrite, ALUSrc, MemWrite, Jump, Branch,
     output logic [1:0]  ResultSrc,
     output logic [2:0]  ImmSrc,
     output logic [3:0]  ALUControl
@@ -188,7 +194,31 @@ module control_unit (
                      endcase
         endcase
     ////#cu.3 Прочие связи
-    assign Funct3b0 = funct3[0];
+
+endmodule
+
+module branch_unit (
+    input  logic       Branch,
+    input  logic [2:0] funct3,
+    input  logic [3:0] Flags,
+    output logic       taken
+);
+
+    logic v, c, n, z;               //флаги: overflow, carry out, negative, zero
+    logic cond;                     //1 - улсовие перехода выполнено
+    assign {v,c,n,z} = Flags;
+    assign taken = cond & Branch;
+
+    always_comb
+        case (funct3)
+            3'b000: cond = z;       //beq
+            3'b001: cond = ~z;      //bne
+            3'b100: cond = n ^ v;   //blt
+            3'b101: cond = ~(n ^ v); //bge
+            3'b110: cond = ~c;      //bltu
+            3'b111: cond = c;       //bgeu
+            default: cond = 1'b0;
+        endcase
 endmodule
 
 module conflict_prevention_unit 
@@ -404,7 +434,7 @@ module execute #(CORE_TYPE) (
     input  logic [ 1:0] ForwardA, ForwardB,
     input  logic [ 3:0] ALUControl,
     input  logic [31:0] RD1, RD2, PC, ImmExt, ResultW, ALUResultM,
-    output logic        Zero,
+    output logic [ 3:0] Flags, //используются для операций branch
     output logic [31:0] ALUResult, WriteData,
     //Особенные
     output logic [31:0] PCTarget
@@ -419,6 +449,7 @@ module execute #(CORE_TYPE) (
     //так и расширенное знаком непосредственное значение ImmExt в зависимости
     //от сигнала управления ALUSrc
     
+    //#1 Мультиплексоры байпасирования конвейерного ядра на входе операндов АЛУ
     logic [31:0] Amux, Bmux;
     //logic [31:0] Aabc [2:0] = {ALUResultM, ResultW, RD1};//{RD1, ResultW, ALUResultM};
     //logic [31:0] Babc [2:0] = {ALUResultM, ResultW, RD2};//{RD2, ResultW, ALUResultM};
@@ -443,31 +474,46 @@ module execute #(CORE_TYPE) (
             endcase
     end
     endgenerate
-    
+
+    //#2 АЛУ
     logic [31:0] srcA, srcB;
     assign srcA = Amux;
     assign srcB = (ALUSrc)? ImmExt : Bmux; //Мультипелксор для выбора второго операнда АЛУ: RD2 или ImmExt
     
+    logic        v,c,n,z;       //флаги: overflow, carry out, negative, zero
+    logic        cout;          //переполнение сумматора
+    logic        isAddSub;      //1 - сложение/вычитание; 0 - прочие команды 
+    logic [31:0] condinvb, sum;
+
+    assign Flags = {v,c,n,z};
+    assign condinvb = ALUControl[0] ? ~srcB : srcB;
+    assign {cout, sum} = srcA + condinvb + ALUControl[0];
+    assign isAddSub = ~ALUControl[3] & ~ALUControl[2] & ~ALUControl[1] |
+                      ~ALUControl[3] & ~ALUControl[1] &  ALUControl[0];
+
     always_comb
         case (ALUControl)
-            4'b0000: ALUResult = srcA + srcB;
-            4'b0001: ALUResult = srcA - srcB;
+            4'b0000: ALUResult = sum;
+            4'b0001: ALUResult = sum;
             4'b0010: ALUResult = srcA & srcB;
             4'b0011: ALUResult = srcA | srcB;
             4'b0100: ALUResult = srcA ^ srcB;
-            4'b0101: ALUResult = (srcA < srcB)? 32'd1 : 32'd0;
+            4'b0101: ALUResult = sum[31] ^ v;
             4'b0110: ALUResult = srcA << srcB[4:0];
             4'b0111: ALUResult = srcA >> srcB[4:0];
             4'b1000: ALUResult = $signed(srcA) >>> srcB[4:0];
-            default: ALUResult = 32'd0;
+            default: ALUResult = 32'dx;
         endcase
 
-    assign Zero = &(~ALUResult);
+    assign z = &(~ALUResult);//(ALUResult == 32'b0);//Так сделано в книжке, мне кажется мой вариант свёртки правильнее
+    assign n = ALUResult[31];
+    assign c = cout & isAddSub;
+    assign v = ~(ALUControl[0] ^ srcA[31] ^ srcB[31]) & (srcA[31] ^ sum[31]) & isAddSub;
 
-    //#Сумматор текущего счётчика инструкций PC и расширенного непосредственного числа ImmExt.
+    //#3 Сумматор текущего счётчика инструкций PC и расширенного непосредственного числа ImmExt.
     assign PCTarget = PC + ImmExt;
 
-    //#Прочие связи
+    //#4 Транслирование сигналов и прочие связи
     assign WriteData = Bmux;
 
 endmodule

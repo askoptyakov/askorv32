@@ -64,6 +64,32 @@ done:
 */
 //Cкрипт для проверки команд slti,ori,andi,xor,xori,sll,slli,srl,srli,bne
 start:
+	addi x2, x0, 1		//x2 = 1
+	addi x3, x0, 2		//x3 = 2
+	addi x7, x0, 7		//x7 = 7
+	addi x4, x0, 11		//x4 = 11
+	addi x5, x0, 15		//x5 = 15
+	add  x9, x2, x3     //x9 = 1 + 2 = 3
+beq0:
+	addi x2, x2, 1      //x2 = 1   +  1   = 2
+	beq  x2, x3, beq0	//pc = (2 == 2)? beq0 : pc + 4    #1:первый проход; 0: второй проход
+bne0:
+	addi x2, x2, 2      //x2 = 5
+	bne  x2, x7, bne0	//pc = (5 != 7)? bne0 : pc + 4    #1:первый проход; 0: второй проход
+blt0:
+	addi x2, x2, 2		//x2 = 9
+	blt  x2, x4, blt0	//pc = (9 < 11)? blt0 : pc + 4    #1:первый проход; 0: второй проход
+bge0:
+	sub  x2, x2, x3		//x2 = 11  -  2   = 9
+	bge  x2, x7, bge0	//pc = (9 >= 7)? bge0 : pc + 4   #1:первый/второй проход; 0: третий проход
+bltu0:
+	addi x2, x2, -3		//x2 = 5   -  3   = 2
+	bltu x2, x9, bltu0	//pc = (2 < 3)? bltu0 : pc + 4    #1:первый проход; 0: второй проход
+	addi x2, x2, -12    //x2 = -1  - 12   = -13
+bgeu0:
+	add   x2, x2, x7	//x2 = -13  +  7   = -6
+	bgeu  x2, x7, bgeu0	//pc = (-6 >= 7)? bgeu0 : pc + 4   #1:первый/второй проход; 0: третий проход
+
 	li   x2, 0xFFFFAAA  //x2 = 268 434 090
 	addi x2, x0, 5      //x2 = 5
 	addi x3, x0, -17    //x3 = -17

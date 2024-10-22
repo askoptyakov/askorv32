@@ -7,10 +7,10 @@
 | JALR    | Jump and Link Register              | &cross;       |
 | BEQ     | Branch if Equal                     | &check;       |
 | BNE     | Branch if Not Equal                 | &check;       |
-| BLT     | Branch if Less Than                 | &cross;       |
-| BGE     | Branch if Greater or Equal          | &cross;       |
-| BLTU    | Branch if Less Than Unsigned        | &cross;       |
-| BGEU    | Branch if Greater or Equal Unsigned | &cross;       |
+| BLT     | Branch if Less Than                 | &check;       |
+| BGE     | Branch if Greater or Equal          | &check;       |
+| BLTU    | Branch if Less Than Unsigned        | &check;       |
+| BGEU    | Branch if Greater or Equal Unsigned | &check;       |
 | LB      | Load Byte                           | &cross;       |
 | LH      | Load Half                           | &cross;       |
 | LW      | Load Word                           | &check;       |
