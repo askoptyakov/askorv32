@@ -27,6 +27,11 @@
 3'b111: ALUResult = $signed({($sra | $srai) ? srcA[31] : 1'b0, srcA}) >>> srcB[4:0];
 В таком случае также можно будет уменьшить разрядность ALUControl до 3ёх, но потребуется дополнительные
 флаги о том что выполняется команда sra или srai.
+6. Упёрся в частоту при синтезировании однотактного ядра на этапе добавления блока загрузки/выгрузки (LSU).
+Частота процессора 27MHz. А в проблемной конфигурации (однотактное ядро с синтезированной памятью)
+частота ещё в 3 раза ниже. Можно немного немного уменьшить временные задержки, если сделать несколько
+параллельных цепей расширения знака. Возможно это повлияет на работу конвейерного ядра при увеличении
+частоты, необходимо обратить на это внимание в дальнейшем. 
 */
 
 //============================================================================================== 
@@ -40,8 +45,8 @@
 `define SYNTH_MEM 0
 //============================================================================================== 
  
-module top #(parameter [0:0] CORE_TYPE   = `PIPELINE_CORE,
-             parameter [0:0] MEMORY_TYPE = `BSRAM_MEM)   
+module top #(parameter [0:0] CORE_TYPE   = `SINGLECYCLE_CORE,
+             parameter [0:0] MEMORY_TYPE = `SYNTH_MEM)   
             (input  logic       clk,     //Вход тактирования
              input  logic       rst_n,   //Вход сброса (кнопка S2)
              output logic [5:0] led      //Выход на 6 светодиодов
@@ -49,16 +54,16 @@ module top #(parameter [0:0] CORE_TYPE   = `PIPELINE_CORE,
     //#0 Настройка тактирования
     //DESCRIPTION: Для однотактного ядра при использовании BSAM делаем псевдооднотактный процессор
     //с тремя тактами на одну инструкцию. Тактируем imem и dmem 2ым и 3ьим тактом.
-    //logic clk_div2;
-    //always_ff @(posedge clk) clk_div2 <= ~clk_div2;
+    logic clk_div2;
+    always_ff @(posedge clk) clk_div2 <= ~clk_div2;
 
     logic clk_core, clk_imem, clk_dmem;
     generate if (MEMORY_TYPE & CORE_TYPE) begin   //#1 - Для однотактного ядра с BSRAM
-        divideby3 divideby3(.clk(clk), .clk_div3(clk_core), .clk_imem(clk_imem), .clk_dmem(clk_dmem));
+        divideby3 divideby3(.clk(clk_div2), .clk_div3(clk_core), .clk_imem(clk_imem), .clk_dmem(clk_dmem));
     end else begin                                //#0 - Прочие конфигурации
-        assign clk_core = clk;
-        assign clk_imem = clk;
-        assign clk_dmem = clk;
+        assign clk_core = clk_div2;
+        assign clk_imem = clk_div2;
+        assign clk_dmem = clk_div2;
     end
     endgenerate
     
@@ -87,7 +92,7 @@ module top #(parameter [0:0] CORE_TYPE   = `PIPELINE_CORE,
     logic [10:0] imem_addr;
         //Интерфейс памяти данных
     logic [31:0] dmem_ReadData;
-    logic        dmem_Write;
+    logic [ 3:0] dmem_Write;
     logic [31:0] dmem_Addr, dmem_WriteData;
         //Ядро
     core #(.CORE_TYPE(CORE_TYPE),
@@ -101,7 +106,7 @@ module top #(parameter [0:0] CORE_TYPE   = `PIPELINE_CORE,
     //#3 Подключаем память
     imem #(MEMORY_TYPE) imem(.clk(clk_imem), .rst(rst_sync|imem_rst), .re(imem_re), .addr(imem_addr), .data(imem_data));
 
-    dmem #(MEMORY_TYPE) dmem(.clk(clk_dmem), .reset(rst_sync), .we(dmem_Write),
+    dmem #(MEMORY_TYPE) dmem(.clk(clk_dmem), .reset(rst_sync), .wstrb(dmem_Write),
                              .a(dmem_Addr), .wd(dmem_WriteData),
                              .rd(dmem_ReadData));
 endmodule

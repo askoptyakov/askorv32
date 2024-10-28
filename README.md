@@ -11,13 +11,13 @@
 | BGE     | Branch if Greater or Equal          | &check;       |
 | BLTU    | Branch if Less Than Unsigned        | &check;       |
 | BGEU    | Branch if Greater or Equal Unsigned | &check;       |
-| LB      | Load Byte                           | &cross;       |
-| LH      | Load Half                           | &cross;       |
+| LB      | Load Byte                           | &check;       |
+| LH      | Load Half                           | &check;       |
 | LW      | Load Word                           | &check;       |
-| LBU     | Load Byte Unsigned                  | &cross;       |
-| LHU     | Load Half Unsigned                  | &cross;       |
-| SB      | Store Byte                          | &cross;       |
-| SH      | Store Half                          | &cross;       |
+| LBU     | Load Byte Unsigned                  | &check;       |
+| LHU     | Load Half Unsigned                  | &check;       |
+| SB      | Store Byte                          | &check;       |
+| SH      | Store Half                          | &check;       |
 | SW      | Store Word                          | &check;       |
 | ADD     | Add                                 | &check;       |
 | ADDI    | Add Immediate                       | &check;       |

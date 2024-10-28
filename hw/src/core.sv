@@ -2,14 +2,14 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
               parameter [0:0] MEMORY_TYPE = 1)//1 - BSRAM;            0 - Синтезированная
              (input  logic        clk,      //Вход тактирования
               input  logic        rst,      //Вход сброса (кнопка S2)
-              output logic [5:0]  out,      //Выход на 6 светодиодов
+              output logic [ 5:0] out,      //Выход на 6 светодиодов
               //Интерфейс памяти команд
               input  logic [31:0] imem_data,
               output logic        imem_re, imem_rst,
               output logic [10:0] imem_addr,
               //Интерфейс памяти данных
-              input logic [31:0]  dmem_ReadData,
-              output logic        dmem_Write,
+              input  logic [31:0] dmem_ReadData,
+              output logic [ 3:0] dmem_Write,
               output logic [31:0] dmem_Addr, dmem_WriteData
 );
     
@@ -21,7 +21,7 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
 
     logic [24:0] ImmD;
 
-    logic [31:0] PCPlus4F,      PCF, InstrF;
+    logic [31:0] PCPlus4F, PCF, InstrF;
     logic [31:0] PCPlus4D, PCD, InstrD, ImmExtD, RD1D, RD2D;
     logic [31:0] PCPlus4E, PCE,         ImmExtE, RD1E, RD2E, WriteDataE, ALUResultE, PCTargetE;
     logic [31:0] PCPlus4M,                                   WriteDataM, ALUResultM, ReadDataM;
@@ -34,8 +34,8 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
     //Сигналы блока управления
     logic RegWriteD, MemWriteD, JumpD, BranchD, ALUSrcD;                 logic [1:0] ResultSrcD; logic [2:0] Funct3D, ImmSrcD; logic [3:0] ALUControlD;
     logic RegWriteE, MemWriteE, JumpE, BranchE, ALUSrcE, PCSrcE, TakenE; logic [1:0] ResultSrcE; logic [2:0] Funct3E;          logic [3:0] ALUControlE;
-    logic RegWriteM, MemWriteM;                                          logic [1:0] ResultSrcM;
-    logic RegWriteW;                                                     logic [1:0] ResultSrcW;
+    logic RegWriteM, MemWriteM;                                          logic [1:0] ResultSrcM; logic [2:0] Funct3M;
+    logic RegWriteW;                                                     logic [1:0] ResultSrcW; logic [2:0] Funct3W;
 
     //Сигналы блока предотвращения конфликтов
     logic [1:0] ForwardAE, ForwardBE;                   //Организация байпасирования
@@ -106,10 +106,11 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
                                                            {PCPlus4M, WriteDataM, ALUResultM});
     regrf      #(1, CORE_TYPE) rf_execute (clk, rst, 1'b0, {RdE},
                                                            {RdM});
-    regcontrol #(4, CORE_TYPE) rc_execute (clk, rst, 1'b0, {RegWriteE, ResultSrcE[1:0], MemWriteE}, 
-                                                           {RegWriteM, ResultSrcM[1:0], MemWriteM});
+    regcontrol #(7, CORE_TYPE) rc_execute (clk, rst, 1'b0, {RegWriteE, ResultSrcE[1:0], MemWriteE, Funct3E[2:0]}, 
+                                                           {RegWriteM, ResultSrcM[1:0], MemWriteM, Funct3M[2:0]});
     //MEMORY////////////////////////////////////////////////////////////////////////////////////////
-    memory memory ( .MemWrite(MemWriteM), .ALUResult(ALUResultM), .WriteData(WriteDataM),
+    memory memory ( .MemWrite(MemWriteM), .Funct3(Funct3M),
+                    .ALUResult(ALUResultM), .WriteData(WriteDataM),
                     .ReadData(ReadDataM),
                     //Интерфейс памяти данных
                     .dmem_ReadData(dmem_ReadData),
@@ -121,10 +122,10 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
                                                                     {PCPlus4W, ALUResultW});
     regrf      #(1, CORE_TYPE)           rf_memory (clk, rst, 1'b0, {RdM},
                                                                     {RdW});
-    regcontrol #(3, CORE_TYPE)           rc_memory (clk, rst, 1'b0, {RegWriteM, ResultSrcM[1:0]}, 
-                                                                    {RegWriteW, ResultSrcW[1:0]});
+    regcontrol #(6, CORE_TYPE)           rc_memory (clk, rst, 1'b0, {RegWriteM, ResultSrcM[1:0], Funct3M[2:0]}, 
+                                                                    {RegWriteW, ResultSrcW[1:0], Funct3W[2:0]});
     //WRITEBACK/////////////////////////////////////////////////////////////////////////////////////
-    writeback writeback (   .ResultSrc(ResultSrcW),
+    writeback writeback (   .ResultSrc(ResultSrcW), .Funct3(Funct3W),
                             .ALUResult(ALUResultW), .ReadData(ReadDataW), .PCPlus4(PCPlus4W),
                             //Особенные
                             .Result(ResultW));
@@ -214,7 +215,7 @@ module branch_unit (
             3'b000: cond = z;       //beq
             3'b001: cond = ~z;      //bne
             3'b100: cond = n ^ v;   //blt
-            3'b101: cond = ~(n ^ v); //bge
+            3'b101: cond = ~(n ^ v);//bge
             3'b110: cond = ~c;      //bltu
             3'b111: cond = c;       //bgeu
             default: cond = 1'b0;
@@ -520,38 +521,119 @@ endmodule
 
 module memory (
     input logic         MemWrite,
+    input logic  [ 2:0] Funct3,
     input logic  [31:0] ALUResult, WriteData,
     output logic [31:0] ReadData,
     //Интерфейс памяти данных
     input logic  [31:0] dmem_ReadData,
-    output logic        dmem_Write,
+    output logic [ 3:0] dmem_Write,
     output logic [31:0] dmem_Addr, dmem_WriteData
 );
+    
+    logic [1:0] MemWordSize;
+    assign MemWordSize = Funct3[1:0];
+
+    logic [ 3:0] DataWrite;
+
+    always_comb 
+        case (MemWordSize)
+            2'b00:      begin //1 байт
+                            dmem_WriteData = WriteData[7:0] << {ALUResult[1:0], 3'b000}; // {4{WriteData[7:0]}};
+                            DataWrite      = 4'b0001 << ALUResult[1:0];
+                        end
+            2'b01:      begin //2 байта
+                            dmem_WriteData = {2{WriteData[15:0]}}; //WriteData[15:0] << {ALUResult[1], {4{1'b0}};
+                            DataWrite      = ALUResult[1] ? 4'b1100: 4'b0011; //4'b0011 << {ALUResult[1], 1'b0};
+                        end
+            default:    begin //4 байта
+                            dmem_WriteData = WriteData;
+                            DataWrite      = 4'b1111;
+                        end
+        endcase
+
+    
+    assign ReadData   = dmem_ReadData;
+    assign dmem_Write = MemWrite ? DataWrite : 4'b0000;
+    assign dmem_Addr  = ALUResult;
 
     //#dmem - Память данных//
     //DESCRIPTION: Память типа RAM доступна для чтения/записи. Имеет один вход
     //адреса dmem_Addr, выход считанных данных dmem_ReadData, а также вход записи
     //данных dmem_WriteData по сигналу разрешения записи dmem_Write. Выведен внешний
     //интерфейс для подключенияп памяти.
-    assign dmem_WriteData = WriteData;
-    assign dmem_Addr = ALUResult; 
-    assign dmem_Write = MemWrite;
-    assign ReadData = dmem_ReadData;
 
 endmodule
 
 module writeback (
     input  logic [ 1:0] ResultSrc,
+    input  logic [ 2:0] Funct3,
     input  logic [31:0] ALUResult, ReadData, PCPlus4,
     //Особенные
     output logic [31:0] Result
 );
+    
+    logic       Unsigned;
+    logic [1:0] MemWordSize;
+    assign {Unsigned, MemWordSize} = Funct3;
 
-    always_comb //Мультиплексор для выбора данных на запись в рег. файл:
+    logic [31:0] ShData;
+    logic [31:0] ShDataExt;
+
+    ///Вариант описания №1(Из picoRV)
+    /*
+    //#1 Блок сдвига
+    always_comb 
+        case (MemWordSize)
+            2'b00:      begin //1 байт
+                            case (ALUResult[1:0])
+                                2'b00: ShData = {24'd0, ReadData[ 7: 0]};
+                                2'b01: ShData = {24'd0, ReadData[15: 8]};
+                                2'b10: ShData = {24'd0, ReadData[23:16]};
+                                2'b11: ShData = {24'd0, ReadData[31:24]};
+                            endcase
+                        end
+            2'b01:      begin //2 байта
+                            case (ALUResult[1])
+                                1'b0: ShData = {16'd0, ReadData[15: 0]};
+                                1'b1: ShData = {16'd0, ReadData[31:16]};
+                            endcase
+                        end
+            default:    begin //4 байта
+                            ShData       = ReadData;
+                        end
+        endcase
+    
+    //#2 Расширение знаком
+    always_comb 
+        case (MemWordSize)
+            2'b00:  ShDataExt = Unsigned ? ShData : {{24{ShData[7]}},ShData[7:0]};     //1 байт
+            2'b01:  ShDataExt = Unsigned ? ShData : {{16{ShData[15]}},ShData[15:0]};   //2 байта
+            default:ShDataExt = ShData;                                                //4 байта
+        endcase
+    */
+    ///Вариант описания №2 (Занимает меньше ячеек)
+    
+    //#1 Блок сдвига
+    wire [4:0] shift;
+    assign shift = MemWordSize[0] ? {ALUResult[1],   4'b0000} : {ALUResult[1:0], 3'b000 };
+    assign ShData = (MemWordSize[1]) ? ReadData : ReadData >> shift;
+    //assign ShData = ReadData >> {ALUResult[1] & ~MemWordSize[1], ALUResult[0] & ~|MemWordSize, 3'b000}; //Занимает на 100 больше ячеек
+    
+    //#2 Расширение знаком
+    always_comb 
+        case (MemWordSize)
+            2'b00:  ShDataExt = {Unsigned ? 24'd0 : {24{ShData[7]}}, ShData[7:0]};    //1 байт
+            2'b01:  ShDataExt = {Unsigned ? 16'd0 : {16{ShData[15]}},ShData[15:0]};   //2 байта
+            default:ShDataExt = ShData;                                               //4 байта
+        endcase
+    
+
+    //#2 Мультиплексор для выбора данных на запись в рег. файл:
+    always_comb 
         case (ResultSrc)
-            2'b00:   Result = ALUResult;   //Результат вычисления АЛУ                         
-            2'b01:   Result = ReadData;    //Результат выгрузки из памяти данных
-            2'b10:   Result = PCPlus4;     //Значение текущего значения счётчика с приращением +4
+            2'b00:   Result = ALUResult;      //Результат вычисления АЛУ                         
+            2'b01:   Result = ShDataExt; //Результат выгрузки из памяти данных
+            2'b10:   Result = PCPlus4;        //Значение текущего значения счётчика с приращением +4
             default: Result = 0;
         endcase
 

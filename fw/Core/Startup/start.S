@@ -64,6 +64,15 @@ done:
 */
 //Cкрипт для проверки команд slti,ori,andi,xor,xori,sll,slli,srl,srli,bne
 start:
+	addi x2, x0, 128	//x2 = 128
+	sb	 x2, 2(x0)		//dmem[2] <- 128
+	li   x3, 32768  	//x3 = 32768
+	lb	 x7, 2(x0)		//x7 -> dmem[2]  = 4 294 967 168
+	lbu	 x4, 2(x0)		//x4 -> dmem[2]  = 128
+	sh	 x3, 7(x0)		//dmem[7] <- 32768
+	lh	 x7, 7(x0)		//x7 -> dmem[7]  = 4 294 934 528
+	lhu	 x4, 7(x0)		//x4 -> dmem[7]  = 32768
+
 	addi x2, x0, 1		//x2 = 1
 	addi x3, x0, 2		//x3 = 2
 	addi x7, x0, 7		//x7 = 7
