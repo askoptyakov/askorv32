@@ -65,7 +65,8 @@ done:
 //Cкрипт для проверки команд slti,ori,andi,xor,xori,sll,slli,srl,srli,bne
 start:
 	la   x2, 0xFFFFAAA  //x2 = 268 434 090
-
+	jal	 funct0         //pc = funct0, ra = pc + 4      #Переход к funct0
+	addi x3, x0, 518	//x3 = 518 						#Должно проскочить эту операцию
 	addi x2, x0, 128	//x2 = 128
 	sb	 x2, 2(x0)		//dmem[2] <- 128
 	li   x3, 32768  	//x3 = 32768
@@ -151,4 +152,7 @@ end:
 	sw   x2, -64(x3)    //      dmem[4] <- 25
 done:
 	beq  x2, x2, done   //pc = (25 == 25)? done : pc + 4  #Истина, бесконечный цикл
+funct0:
+	addi x2, x2, 1
+	jalr x1, x1, 4
 .end

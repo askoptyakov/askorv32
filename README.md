@@ -1,43 +1,10 @@
-#### Текущая задача: Добавление целочисленных инструкций RISC-V (RV32I)
-| Команда | Описание                            |&check;/&cross;|
-|---------|-------------------------------------|:-------------:|
-| LUI     | Load Upper Immediate                | &check;       |
-| AUIPC   | Add Upper Immediate to PC           | &cross;       |
-| JAL     | Jump and Link                       | &check;       |
-| JALR    | Jump and Link Register              | &cross;       |
-| BEQ     | Branch if Equal                     | &check;       |
-| BNE     | Branch if Not Equal                 | &check;       |
-| BLT     | Branch if Less Than                 | &check;       |
-| BGE     | Branch if Greater or Equal          | &check;       |
-| BLTU    | Branch if Less Than Unsigned        | &check;       |
-| BGEU    | Branch if Greater or Equal Unsigned | &check;       |
-| LB      | Load Byte                           | &check;       |
-| LH      | Load Half                           | &check;       |
-| LW      | Load Word                           | &check;       |
-| LBU     | Load Byte Unsigned                  | &check;       |
-| LHU     | Load Half Unsigned                  | &check;       |
-| SB      | Store Byte                          | &check;       |
-| SH      | Store Half                          | &check;       |
-| SW      | Store Word                          | &check;       |
-| ADD     | Add                                 | &check;       |
-| ADDI    | Add Immediate                       | &check;       |
-| SUB     | Subtract                            | &check;       |
-| SLL     | Shift Left Logical                  | &check;       |
-| SLLI    | Shift Left Logical Immediate        | &check;       |
-| SLT     | Set Less Than                       | &check;       |
-| SLTI    | Set Less Than Immediate             | &check;       |
-| SLTU    | Set Less Than Unsigned              | &check;       |
-| SLTIU   | Set Less Than Unsigned Immediate    | &check;       |
-| XOR     | Exclusive OR                        | &check;       |
-| XORI    | Exclusive OR Immediate              | &check;       |
-| SRL     | Shift Right Logical                 | &check;       |
-| SRLI    | Shift Right Logical Immediate       | &check;       |
-| SRA     | Shift Right Arithmetic              | &check;       |
-| SRAI    | Shift Right Arithmetic Immediate    | &check;       |
-| OR      | OR                                  | &check;       |
-| ORI     | OR Immediate                        | &check;       |
-| AND     | AND                                 | &check;       |
-| ANDI    | AND Immediate                       | &check;       |
+#### Текущие задачи
+1. Добавить возможность расширения памяти BSRAM данных/инструкций до 32кБ.
+2. Разработать скрипт на python для быстрой подмены данных в файлах verilog инициализации BSRAM после компиляции СИ проекта в GOWIN GMD (для отладки). 
+3. Опробовать компиляцию скриптов на СИ с вызовом функций.
+4. Создать внутреннее периферийное устройство для подключения внешней расширительной платы GPIO.
+5. Написать драйвер на СИ под внутреннее периферийное устройство для организации возможности управления внешней расширительной платой GPIO.
+6. Использовать железный блок DSP для организации АЛУ. Сделать возможность выбора между синтезированным АЛУ и железным АЛУ.
 
 #### Полезные ссылки
 1. [Дополнительные материалы к серии книг Дэвид М. Харрис и Сара Л. Харрис "Цифровая схемотехника и архитектура компьютера"](https://pages.hmc.edu/harris/ddca/)

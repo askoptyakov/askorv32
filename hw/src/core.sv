@@ -32,8 +32,8 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
     logic [6: 0] op;
 
     //Сигналы блока управления
-    logic RegWriteD, MemWriteD, JumpD, BranchD, ALUSrcD;                 logic [1:0] ResultSrcD; logic [2:0] Funct3D, ImmSrcD; logic [3:0] ALUControlD;
-    logic RegWriteE, MemWriteE, JumpE, BranchE, ALUSrcE, PCSrcE, TakenE; logic [1:0] ResultSrcE; logic [2:0] Funct3E;          logic [3:0] ALUControlE;
+    logic RegWriteD, MemWriteD, JumpD, BranchD, JALSrcD;                 logic [1:0] ResultSrcD; logic [2:0] Funct3D, ALUSrcD, ImmSrcD; logic [3:0] ALUControlD;
+    logic RegWriteE, MemWriteE, JumpE, BranchE, JALSrcE, PCSrcE, TakenE; logic [1:0] ResultSrcE; logic [2:0] Funct3E, ALUSrcE;          logic [3:0] ALUControlE;
     logic RegWriteM, MemWriteM;                                          logic [1:0] ResultSrcM; logic [2:0] Funct3M;
     logic RegWriteW;                                                     logic [1:0] ResultSrcW; logic [2:0] Funct3W;
 
@@ -49,8 +49,8 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
     assign funct3   = InstrD[14:12]; //FIXME: Объединить с Funct3D!
     assign op       = InstrD[6:0];
     control_unit cu (  .op(op), .funct3(funct3), .funct7b5(funct7b5),
-                       .RegWrite(RegWriteD), .ALUSrc(ALUSrcD), .MemWrite(MemWriteD), .Jump(JumpD), .Branch(BranchD),
-                       .ResultSrc(ResultSrcD), .ImmSrc(ImmSrcD), .ALUControl(ALUControlD));
+                       .RegWrite(RegWriteD), .MemWrite(MemWriteD), .Jump(JumpD), .Branch(BranchD), .JALSrc(JALSrcD),
+                       .ResultSrc(ResultSrcD), .ImmSrc(ImmSrcD), .ALUSrc(ALUSrcD), .ALUControl(ALUControlD));
     conflict_prevention_unit #(CORE_TYPE) pu
                               (.RegWriteM(RegWriteM), .RegWriteW(RegWriteW),                                 
                                .Rs1E(Rs1E), .Rs2E(Rs2E), .RdM(RdM), .RdW(RdW),
@@ -88,12 +88,12 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
                                                                   {PCE, PCPlus4E, ImmExtE, RD1E, RD2E});
     regrf   #(3, CORE_TYPE) rf_decode     (clk, FlushE|rst, 1'b0, {Rs1D, Rs2D, RdD},
                                                                   {Rs1E, Rs2E, RdE});
-    regcontrol #(14, CORE_TYPE) rc_decode (clk, FlushE|rst, 1'b0, 
-                    {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[3:0], ALUSrcD, Funct3D[2:0]}, 
-                    {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[3:0], ALUSrcE, Funct3E[2:0]});
+    regcontrol #(17, CORE_TYPE) rc_decode (clk, FlushE|rst, 1'b0, 
+                    {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[3:0], ALUSrcD[2:0], Funct3D[2:0], JALSrcD}, 
+                    {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[3:0], ALUSrcE[2:0], Funct3E[2:0], JALSrcE});
     //EXECUTE///////////////////////////////////////////////////////////////////////////////////////
     execute #(CORE_TYPE) execute
-             (.ALUSrc(ALUSrcE), .ForwardA(ForwardAE), .ForwardB(ForwardBE), .ALUControl(ALUControlE),
+             (.JALSrc(JALSrcE), .ForwardA(ForwardAE), .ForwardB(ForwardBE), .ALUSrc(ALUSrcE), .ALUControl(ALUControlE),
               .RD1(RD1E), .RD2(RD2E), .PC(PCE), .ImmExt(ImmExtE), .ResultW(ResultW), .ALUResultM(ALUResultM),
               .Flags(FlagsE), .ALUResult(ALUResultE), .WriteData(WriteDataE),
               //Особенные
@@ -151,28 +151,31 @@ module control_unit (
     input logic [2:0]   funct3,
     input logic         funct7b5,
     
-    output logic        RegWrite, ALUSrc, MemWrite, Jump, Branch,
+    output logic        RegWrite, MemWrite, Jump, Branch, JALSrc,
     output logic [1:0]  ResultSrc,
-    output logic [2:0]  ImmSrc,
+    output logic [2:0]  ImmSrc, ALUSrc,
     output logic [3:0]  ALUControl
 );
 
     logic [1:0] ALUOp;
 
-    logic [11:0] controls; //Сборка сигналов управлеиня
-    assign {RegWrite, ImmSrc[2:0], ALUSrc, MemWrite, ResultSrc[1:0], Branch, ALUOp[1:0], Jump} = controls;
-    //          A          BB        C         D          EE           F         GG        H
+    logic [14:0] controls; //Сборка сигналов управлеиня
+                                 //A[2:1] B[0]
+    assign {RegWrite, ImmSrc[2:0], ALUSrc[2:0], MemWrite, ResultSrc[1:0], Branch, ALUOp[1:0], Jump, JALSrc} = controls;
+    //          A          BB           C           D          EE           F         GG        H      I
     ////#cu.1 Основной дешифратор
     always_comb
-        casez(op)                    //A_BBB_C_D_EE_F_GG_H
-            7'b0000011: controls = 12'b1_000_1_0_01_0_00_0; //Команда lw
-            7'b0100011: controls = 12'b0_001_1_1_00_0_00_0; //Команда sw
-            7'b0110011: controls = 12'b1_000_0_0_00_0_10_0; //Команды тип R
-            7'b1100011: controls = 12'b0_010_0_0_00_1_01_0; //Команда тип B
-            7'b0010011: controls = 12'b1_000_1_0_00_0_10_0; //Команда тип I
-            7'b1101111: controls = 12'b1_011_0_0_10_0_00_1; //Команда jal
-            7'b0?10111: controls = 12'b1_100_1_0_00_0_00_0; //Команда тип U
-            default:    controls = 12'bx_xxx_x_x_xx_x_xx_x; //Другие команды
+        casez(op)                    //A_BBB_CCC_D_EE_F_GG_H_I
+            7'b0000011: controls = 15'b1_000_001_0_01_0_00_0_0; //Команда lw
+            7'b0100011: controls = 15'b0_001_001_1_00_0_00_0_0; //Команда sw
+            7'b0110011: controls = 15'b1_000_000_0_00_0_10_0_0; //Команды тип R
+            7'b1100011: controls = 15'b0_010_000_0_00_1_01_0_0; //Команда тип B
+            7'b0010011: controls = 15'b1_000_001_0_00_0_10_0_0; //Команда тип I
+            7'b1101111: controls = 15'b1_011_000_0_10_0_00_1_0; //Команда jal
+            7'b1100111: controls = 15'b1_000_000_0_10_0_00_1_1; //Команда jalr
+            7'b0010111: controls = 15'b1_100_011_0_00_0_00_0_0; //Команда auipc
+            7'b0110111: controls = 15'b1_100_101_0_00_0_00_0_0; //Команда lui
+            default:    controls = 15'bx_xxx_xxx_x_xx_x_xx_x_x; //Другие команды
         endcase
     ////#cu.2 Дешифратор АЛУ
     logic opb5;
@@ -432,8 +435,9 @@ module decode
 endmodule
 
 module execute #(CORE_TYPE) (
-    input  logic        ALUSrc,
+    input  logic        JALSrc,
     input  logic [ 1:0] ForwardA, ForwardB,
+    input  logic [ 2:0] ALUSrc, 
     input  logic [ 3:0] ALUControl,
     input  logic [31:0] RD1, RD2, PC, ImmExt, ResultW, ALUResultM,
     output logic [ 3:0] Flags, //используются для операций branch
@@ -452,35 +456,44 @@ module execute #(CORE_TYPE) (
     //от сигнала управления ALUSrc
     
     //#1 Мультиплексоры байпасирования конвейерного ядра на входе операндов АЛУ
-    logic [31:0] Amux, Bmux;
+    logic [31:0] SrcAforward, SrcBforward;
     //logic [31:0] Aabc [2:0] = {ALUResultM, ResultW, RD1};//{RD1, ResultW, ALUResultM};
     //logic [31:0] Babc [2:0] = {ALUResultM, ResultW, RD2};//{RD2, ResultW, ALUResultM};
-    //assign Amux = Aabc[ForwardA];
-    //assign Bmux = Babc[ForwardB];
+    //assign SrcAforward = Aabc[ForwardA];
+    //assign SrcBforward = Babc[ForwardB];
     
     generate if (CORE_TYPE) begin   //#1 - Однотактное ядро
-        assign Amux = RD1;
-        assign Bmux = RD2;        
+        assign SrcAforward = RD1;
+        assign SrcBforward = RD2;        
     end else begin                  //#0 - Конвеерное ядро
         always_comb
             case (ForwardA)
-                  2'b01: Amux = ResultW;
-                  2'b10: Amux = ALUResultM;
-                default: Amux = RD1;
+                  2'b01: SrcAforward = ResultW;
+                  2'b10: SrcAforward = ALUResultM;
+                default: SrcAforward = RD1;
             endcase
         always_comb
             case (ForwardB)
-                  2'b01: Bmux = ResultW;
-                  2'b10: Bmux = ALUResultM;
-                default: Bmux = RD2;
+                  2'b01: SrcBforward = ResultW;
+                  2'b10: SrcBforward = ALUResultM;
+                default: SrcBforward = RD2;
             endcase
     end
     endgenerate
 
     //#2 АЛУ
+    logic        ALUSrcB;
+    logic [ 1:0] ALUSrcA;
     logic [31:0] srcA, srcB;
-    assign srcA = Amux;
-    assign srcB = (ALUSrc)? ImmExt : Bmux; //Мультипелксор для выбора второго операнда АЛУ: RD2 или ImmExt
+
+    assign {ALUSrcA, ALUSrcB} = ALUSrc;
+    always_comb
+        case (ALUSrcA)
+            2'b01: srcA = PC;
+            2'b10: srcA = 32'd0;
+          default: srcA = SrcAforward;
+        endcase
+    assign srcB = (ALUSrcB) ? ImmExt : SrcBforward; //Мультипелксор для выбора второго операнда АЛУ: RD2 или ImmExt
     
     wire        v,c,n,z;       //флаги: overflow, carry out, negative, zero
     logic        cout;          //переполнение сумматора
@@ -513,11 +526,16 @@ module execute #(CORE_TYPE) (
     assign c = cout & isAddSub;
     assign v = ~(ALUControl[0] ^ srcA[31] ^ srcB[31]) & (srcA[31] ^ sum[31]) & isAddSub;
 
-    //#3 Сумматор текущего счётчика инструкций PC и расширенного непосредственного числа ImmExt.
-    assign PCTarget = PC + ImmExt;
+    //#3 Сумматор для инструкций JAL/JALR с мультиплексором по первому операнду. Мультиплесора подаёт на один из входов
+    //сумматора текущее счётчика инструкций PC или значение со входа SrcAforward основного АЛУ(учтено байпасирование для конвейерного
+    //процессора) в зависимости от сигнала управления JALSrc. На второй вход сумматора подаётся расширенное значение
+    //непосредственного числа ImmExt.
+    logic [31:0] JALOp;
+    assign JALOp = (JALSrc) ? SrcAforward : PC;
+    assign PCTarget = JALOp + ImmExt;
 
     //#4 Транслирование сигналов и прочие связи
-    assign WriteData = Bmux;
+    assign WriteData = SrcBforward;
 
 endmodule
 
