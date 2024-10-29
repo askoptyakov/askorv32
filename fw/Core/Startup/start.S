@@ -76,6 +76,13 @@ start:
 	addi x2, x0, 1		//x2 = 1
 	addi x3, x0, 2		//x3 = 2
 	addi x7, x0, 7		//x7 = 7
+	addi x9, x0, -5		//x9 = -5
+	slt  x4, x9, x3		//x4 = -5 < 2 = 1
+	sltu x4, x9, x3		//x5 = -5 < 2 = 0
+	slti x4, x9, -2     //x4 = -5 < -2 = 1
+	sltiu x4, x9, -2    //x5 = -5 < -2 = 1
+	slti x4, x9, 2      //x4 = -5 < 2 = 1
+	sltiu x4, x9, 2     //x4 = -5 < 2 = 0
 	addi x4, x0, 11		//x4 = 11
 	addi x5, x0, 15		//x5 = 15
 	add  x9, x2, x3     //x9 = 1 + 2 = 3

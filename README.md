@@ -26,8 +26,8 @@
 | SLLI    | Shift Left Logical Immediate        | &check;       |
 | SLT     | Set Less Than                       | &check;       |
 | SLTI    | Set Less Than Immediate             | &check;       |
-| SLTU    | Set Less Than Unsigned              | &cross;       |
-| SLTIU   | Set Less Than Unsigned Immediate    | &cross;       |
+| SLTU    | Set Less Than Unsigned              | &check;       |
+| SLTIU   | Set Less Than Unsigned Immediate    | &check;       |
 | XOR     | Exclusive OR                        | &check;       |
 | XORI    | Exclusive OR Immediate              | &check;       |
 | SRL     | Shift Right Logical                 | &check;       |

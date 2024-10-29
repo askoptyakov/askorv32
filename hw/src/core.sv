@@ -187,6 +187,7 @@ module control_unit (
                         3'b000:  ALUControl = (RtypeSub) ? 4'b0001 : 4'b0000;//sub : add,addi
                         3'b001:  ALUControl = 4'b0110;                       //sll, slli
                         3'b010:  ALUControl = 4'b0101;                       //slt, slti
+                        3'b011:  ALUControl = 4'b1001;                       //sltu, sltiu
                         3'b100:  ALUControl = 4'b0100;                       //xor, xori
                         3'b101:  ALUControl = (funct7b5) ? 4'b1000 : 4'b0111;//sra, srai : srl, srli                       
                         3'b110:  ALUControl = 4'b0011;                       //or, ori
@@ -194,7 +195,7 @@ module control_unit (
                         default: ALUControl = 4'bxxxx;                       //Другие команды
                      endcase
         endcase
-    ////#cu.3 Прочие связи
+    ////#cu.3 Прочие связи 
 
 endmodule
 
@@ -481,7 +482,7 @@ module execute #(CORE_TYPE) (
     assign srcA = Amux;
     assign srcB = (ALUSrc)? ImmExt : Bmux; //Мультипелксор для выбора второго операнда АЛУ: RD2 или ImmExt
     
-    logic        v,c,n,z;       //флаги: overflow, carry out, negative, zero
+    wire        v,c,n,z;       //флаги: overflow, carry out, negative, zero
     logic        cout;          //переполнение сумматора
     logic        isAddSub;      //1 - сложение/вычитание; 0 - прочие команды 
     logic [31:0] condinvb, sum;
@@ -494,15 +495,16 @@ module execute #(CORE_TYPE) (
 
     always_comb
         case (ALUControl)
-            4'b0000: ALUResult = sum;
-            4'b0001: ALUResult = sum;
-            4'b0010: ALUResult = srcA & srcB;
-            4'b0011: ALUResult = srcA | srcB;
-            4'b0100: ALUResult = srcA ^ srcB;
-            4'b0101: ALUResult = sum[31] ^ v;
-            4'b0110: ALUResult = srcA << srcB[4:0];
-            4'b0111: ALUResult = srcA >> srcB[4:0];
-            4'b1000: ALUResult = $signed(srcA) >>> srcB[4:0];
+            4'b0000: ALUResult = sum;                           //ADD
+            4'b0001: ALUResult = sum;                           //SUB
+            4'b0010: ALUResult = srcA & srcB;                   //AND
+            4'b0011: ALUResult = srcA | srcB;                   //OR
+            4'b0100: ALUResult = srcA ^ srcB;                   //XOR
+            4'b0101: ALUResult = {31'd0, sum[31] ^ v};          //SLT
+            4'b0110: ALUResult = srcA << srcB[4:0];             //SLL
+            4'b0111: ALUResult = srcA >> srcB[4:0];             //SRL
+            4'b1000: ALUResult = $signed(srcA) >>> srcB[4:0];   //SRA
+            4'b1001: ALUResult = {31'd0, ~cout};                //SLTU
             default: ALUResult = 32'dx;
         endcase
 

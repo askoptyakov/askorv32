@@ -469,6 +469,7 @@
                 <Signal>riscv/writeback/ShDataExt[1]</Signal>
                 <Signal>riscv/writeback/ShDataExt[0]</Signal>
             </Bus>
+            <Signal capture_enable="true">riscv/execute/isAddSub</Signal>
         </SignalList>
         <Triggers>
             <Trigger index="0">
@@ -531,7 +532,7 @@
         </Triggers>
         <MatchUnits>
             <MatchUnit index="0" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="0" value1="0" trigger="0"/>
-            <MatchUnit index="1" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="00000000000000000000000000000000" value1="00000000000000000000000000000000" trigger="1"/>
+            <MatchUnit index="1" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="00000000000000000000000000100000" value1="00000000000000000000000000000000" trigger="1"/>
             <MatchUnit index="2" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
             <MatchUnit index="3" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
             <MatchUnit index="4" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
@@ -551,5 +552,5 @@
             <Expression>M0&amp;M1</Expression>
         </Expressions>
     </AoCore>
-    <GAO_ID>0110111000000001</GAO_ID>
+    <GAO_ID>0000100010101011</GAO_ID>
 </GAO_CONFIG>
