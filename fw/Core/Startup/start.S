@@ -64,6 +64,8 @@ done:
 */
 //Cкрипт для проверки команд slti,ori,andi,xor,xori,sll,slli,srl,srli,bne
 start:
+	la   x2, 0xFFFFAAA  //x2 = 268 434 090
+
 	addi x2, x0, 128	//x2 = 128
 	sb	 x2, 2(x0)		//dmem[2] <- 128
 	li   x3, 32768  	//x3 = 32768

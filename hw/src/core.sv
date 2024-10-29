@@ -164,14 +164,14 @@ module control_unit (
     //          A          BB        C         D          EE           F         GG        H
     ////#cu.1 Основной дешифратор
     always_comb
-        case(op)                     //A_BBB_C_D_EE_F_GG_H
+        casez(op)                    //A_BBB_C_D_EE_F_GG_H
             7'b0000011: controls = 12'b1_000_1_0_01_0_00_0; //Команда lw
             7'b0100011: controls = 12'b0_001_1_1_00_0_00_0; //Команда sw
             7'b0110011: controls = 12'b1_000_0_0_00_0_10_0; //Команды тип R
-            7'b1100011: controls = 12'b0_010_0_0_00_1_01_0; //Команда beq, bne
+            7'b1100011: controls = 12'b0_010_0_0_00_1_01_0; //Команда тип B
             7'b0010011: controls = 12'b1_000_1_0_00_0_10_0; //Команда тип I
             7'b1101111: controls = 12'b1_011_0_0_10_0_00_1; //Команда jal
-            7'b0110111: controls = 12'b1_100_1_0_00_0_00_0; //Команда lui
+            7'b0?10111: controls = 12'b1_100_1_0_00_0_00_0; //Команда тип U
             default:    controls = 12'bx_xxx_x_x_xx_x_xx_x; //Другие команды
         endcase
     ////#cu.2 Дешифратор АЛУ
@@ -181,7 +181,7 @@ module control_unit (
     assign RtypeSub = funct7b5 & opb5;
     always_comb
         case(ALUOp)
-            2'b00:   ALUControl = 4'b0000;                                   //lw,sw,lui
+            2'b00:   ALUControl = 4'b0000;                                   //lw,sw,lui,auipc
             2'b01:   ALUControl = 4'b0001;                                   //beq, bne
             default: case(funct3)
                         3'b000:  ALUControl = (RtypeSub) ? 4'b0001 : 4'b0000;//sub : add,addi
