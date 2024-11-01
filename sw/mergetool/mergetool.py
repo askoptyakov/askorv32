@@ -1,3 +1,6 @@
+#Для создания исполнительного файла EXE используем строку:
+#pyinstaller --noconsole --onefile sw/mergetool/mergetool.py
+
 import re
 from sys import argv
 #0.1 Соотносим блоки BSRAM и начальные позиции записи в строке *.fs
@@ -19,7 +22,8 @@ inputPosp = argv[2]
 inputFs = argv[3]
 output = argv[4]
 #1 Открываем бинарник mcu
-with open(inputBin, "rb") as file:#with open("../../fw/Debug/riscv.bin", "rb") as file:
+with open(inputBin, "rb") as file:
+#with open("fw/Debug/riscv.bin", "rb") as file:
     binary_data = file.read()
 #2 Преобразуем машинный код в 4 строки для BSRAM и заполняем строки до полного обьема
 bsram = [[],[],[],[]]
@@ -36,26 +40,26 @@ for i in range(4):
         bsram[i].append(0)                                                                          #Добавляем в массив 
 #3 Анализируем файл размещения BSRAM в плис *.posp
 with open(inputPosp, "r") as file:                                                   #Открываем *.posp
+#with open("hw/impl/pnr/riscv.posp", "r") as file:
     text_data = file.read()
 imem_list = re.findall("imem.*", text_data)                                                         #Ищем место где размещается память инструкций(imem)
+print(imem_list)
 bsram_loc = []
 for string in imem_list:
-    block0 = re.findall('([0-9]+ )', string)                                                        #Одна или несколько цифр перед пробелом это номер представления BSRAM
-    block1 = re.findall('(R[0-9]+)', string)                                                        #Цифра вместе с буквой R определяет зону расположения блока BSRAM
-    block2 = re.findall(r'(\[[0-9]+\])', string)                                                    #Цифра в квадратных скобках показывает расположение блока BSRAM в строке
-    bsram_loc.append([block0[0], block1[0], block2[0]])
-    #print(bsram_loc)
+    num_list = re.findall('[0-9]+', string)                                                                                                
+    bsram_loc.append([num_list[1], num_list[2], num_list[3]])
 for i , string in enumerate(bsram_loc):                                                             #Удаляем все символы из строк и преобразовываем строки в числа
     for j, element in enumerate(string):
         if (j == 1):                                                                                #Если элемент 1, то происходит замена, на:                                                                           
             match element:                                                                          #Свитч R10, R28
-                case 'R10': bsram_loc[i][j] = 0                                                     #Заменяем R10 на 0
-                case 'R28': bsram_loc[i][j] = 1                                                     #Заменяем R28 на 1
+                case '10': bsram_loc[i][j] = 0                                                     #Заменяем R10 на 0
+                case '28': bsram_loc[i][j] = 1                                                     #Заменяем R28 на 1
                 case _: print(element,'Ошибка! Сектор BSRAM не существует!')                        #Несуществующий сектор BSRAM
-        else: bsram_loc[i][j] = int(re.sub('[^0-9]', '', element))                                  #Откидываем квадратные скобки
-bsram_loc.sort()                                                                                    #Сортируем строки по порядку расположения BSRAM в проекте плис
+        else: bsram_loc[i][j] = int(element)                                  #Откидываем квадратные скобки
+bsram_loc.sort()                                                                                  #Сортируем строки по порядку расположения BSRAM в проекте плис
 #4 Подменяем нужные фрагменты в файле *.fs
 with open(inputFs, "r") as file:                                                                    #Открываем *.fs и выгрузим все строки отдельно в список
+#with open("hw/impl/pnr/ao_0.fs", "r") as file:
     conf_data = file.readlines()
 for bsram_num in range(4):                                                                          #Сначала определим какой блок BSRAM и стартовый адрес записи
     bsram_zone = bsram_loc[bsram_num][1]                                                            #Зона в которой располагается BSRAM: 0 - R10; 1 - R28;       
@@ -99,5 +103,6 @@ for bsram_num in range(4):                                                      
                 case 2: shift_str = shift_str - 128                                                 #Начальная позиция для третьего прохода
                 case 3: shift_str = shift_str + 191                                                 #Начальная позиция для четвертого прохода
     print('Блок BSRAM', bsram_num, 'записан!')   
-with open(output, "w") as file:   #with open("../../fw/Debug/riscv.fs", "w") as file:                                                     #Запись данных в новый файл riscv.fs
+with open(output, "w") as file:                                                                     #Запись данных в новый файл riscv.fs
+#with open("fw/Debug/riscv.fs", "w") as file:
     file.writelines(conf_data)

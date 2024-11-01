@@ -29,8 +29,8 @@ module mem #(parameter bit MEMORY_TYPE =    0, //Тип памяти: 1 - BSRAM;
                     ) bsram (
                         .DO({dout_empty[23:0],dout[(j*8)+7:j*8]}),
                         .CLK(clk), .OCE(1'b0), .CE(re), .RESET(reset),
-                        .WRE(wstrb[j]), .BLKSEL({1'b0, a[12], a[11]}),
-                        .AD({a[10:0],{3{1'b0}}}),
+                        .WRE(wstrb[j]), .BLKSEL({1'b0, a[14], a[13]}),
+                        .AD({a[12:2],{3{1'b0}}}),
                         .DI({{24{1'b0}},wd[(j*8)+7:j*8]}));
             end
             assign bsram_out[i] = dout;
