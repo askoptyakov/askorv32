@@ -7,6 +7,7 @@ fw/Release/*
 !fw/Release/riscv.bin
 !fw/Release/riscv.fs
 !fw/Release/riscv.lst
+fw/test
 
 # hw
 hw/impl/*

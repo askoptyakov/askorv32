@@ -1,12 +1,13 @@
-module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное ядро; 0 - Конвеерное ядро
-              parameter [0:0] MEMORY_TYPE = 1)//1 - BSRAM;            0 - Синтезированная
-             (input  logic        clk,      //Вход тактирования
-              input  logic        rst,      //Вход сброса (кнопка S2)
-              output logic [ 5:0] out,      //Выход на 6 светодиодов
+module core #(parameter bit CORE_TYPE = 1, //       Тип процессора: 1 - Однотактный; 0 - Конвейерный;
+              parameter bit IMEM_TYPE = 0, //Тип памяти инструкций: 1 - BSRAM;       0 - Синтезированная;
+              parameter bit DMEM_TYPE = 0) //    Тип памяти данных: 1 - BSRAM;       0 - Синтезированная;
+             (input  logic        clk,       //Вход тактирования
+              input  logic        rst,       //Вход сброса (кнопка S2)
+              output logic [ 5:0] out,       //Выход на 6 светодиодов
               //Интерфейс памяти команд
               input  logic [31:0] imem_data,
               output logic        imem_re, imem_rst,
-              output logic [10:0] imem_addr,
+              output logic [31:0] imem_addr,
               //Интерфейс памяти данных
               input  logic [31:0] dmem_ReadData,
               output logic [ 3:0] dmem_Write,
@@ -70,9 +71,9 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
                     //Предсказание перехода branch
                     .StallD(StallD), .FlushD(FlushD));
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    regmem  #(CORE_TYPE, MEMORY_TYPE) rm_fetch (clk, FlushD|rst, StallD, InstrF, InstrD);
-    regdata #(2, CORE_TYPE)           rd_fetch (clk, FlushD|rst, StallD, {PCF, PCPlus4F},
-                                                                         {PCD, PCPlus4D});
+    regmem  #(CORE_TYPE, IMEM_TYPE) rm_fetch (clk, FlushD|rst, StallD, InstrF, InstrD);
+    regdata #(2, CORE_TYPE)         rd_fetch (clk, FlushD|rst, StallD, {PCF, PCPlus4F},
+                                                                       {PCD, PCPlus4D});
     //DECODE////////////////////////////////////////////////////////////////////////////////////////
     decode #(CORE_TYPE) decode(  .clk(clk), .rst(rst), .RegWrite(RegWriteW), .ImmSrc(ImmSrcD),
                                  .Addr1(Rs1D), .Addr2(Rs2D), .Addr3(RdW), .Imm(ImmD),
@@ -117,13 +118,13 @@ module core #(parameter [0:0] CORE_TYPE = 1,  //1 - Однотактное яд�
                     .dmem_Write(dmem_Write), .dmem_Addr(dmem_Addr),
                     .dmem_WriteData(dmem_WriteData));
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    regmem     #(CORE_TYPE, MEMORY_TYPE) rm_memory (clk, rst, 1'b0, ReadDataM, ReadDataW);
-    regdata    #(2, CORE_TYPE)           rd_memory (clk, rst, 1'b0, {PCPlus4M, ALUResultM},
-                                                                    {PCPlus4W, ALUResultW});
-    regrf      #(1, CORE_TYPE)           rf_memory (clk, rst, 1'b0, {RdM},
-                                                                    {RdW});
-    regcontrol #(6, CORE_TYPE)           rc_memory (clk, rst, 1'b0, {RegWriteM, ResultSrcM[1:0], Funct3M[2:0]}, 
-                                                                    {RegWriteW, ResultSrcW[1:0], Funct3W[2:0]});
+    regmem     #(CORE_TYPE, DMEM_TYPE) rm_memory (clk, rst, 1'b0, ReadDataM, ReadDataW);
+    regdata    #(2, CORE_TYPE)         rd_memory (clk, rst, 1'b0, {PCPlus4M, ALUResultM},
+                                                                  {PCPlus4W, ALUResultW});
+    regrf      #(1, CORE_TYPE)         rf_memory (clk, rst, 1'b0, {RdM},
+                                                                  {RdW});
+    regcontrol #(6, CORE_TYPE)         rc_memory (clk, rst, 1'b0, {RegWriteM, ResultSrcM[1:0], Funct3M[2:0]}, 
+                                                                  {RegWriteW, ResultSrcW[1:0], Funct3W[2:0]});
     //WRITEBACK/////////////////////////////////////////////////////////////////////////////////////
     writeback writeback (   .ResultSrc(ResultSrcW), .Funct3(Funct3W),
                             .ALUResult(ALUResultW), .ReadData(ReadDataW), .PCPlus4(PCPlus4W),
@@ -227,7 +228,7 @@ module branch_unit (
 endmodule
 
 module conflict_prevention_unit 
-  #(parameter CORE_TYPE = 0)
+  #(parameter bit CORE_TYPE = 0)
    (input  logic       RegWriteM, RegWriteW,
     input  logic [4:0] Rs1E, Rs2E, RdM, RdW,    
     output logic [1:0] ForwardA, ForwardB,
@@ -287,7 +288,7 @@ module fetch (
     //Интерфейс памяти инструкций
     input  logic [31:0] imem_data,
     output logic        imem_re, imem_rst,
-    output logic [10:0] imem_addr,
+    output logic [31:0] imem_addr,
 
     //Предсказание перехода branch
     input logic         StallD, FlushD
@@ -315,13 +316,13 @@ module fetch (
     //извлекается инструкция Instr. Выведен внешний интерфейс для подключения
     //памяти на шины imem_addr и imem_data.
     assign Instr = imem_data;
-    assign imem_addr = PC[12:2];
+    assign imem_addr = PC[31:0];
     assign imem_re = ~StallD;
     assign imem_rst = FlushD; //Чтобы сбросить выход памяти инструкций в BSRAM
 endmodule
 
 module decode 
-  #(parameter CORE_TYPE = 0)
+  #(parameter bit CORE_TYPE = 0)
    (input logic         clk, rst, RegWrite,
     input logic  [ 2:0] ImmSrc,
     input logic  [ 4:0] Addr1, Addr2, Addr3,
@@ -434,8 +435,9 @@ module decode
 
 endmodule
 
-module execute #(CORE_TYPE) (
-    input  logic        JALSrc,
+module execute
+  #(parameter bit CORE_TYPE = 0)
+   (input  logic        JALSrc,
     input  logic [ 1:0] ForwardA, ForwardB,
     input  logic [ 2:0] ALUSrc, 
     input  logic [ 3:0] ALUControl,
@@ -631,8 +633,8 @@ module writeback (
             default:ShDataExt = ShData;                                                //4 байта
         endcase
     */
+
     ///Вариант описания №2 (Занимает меньше ячеек)
-    
     //#1 Блок сдвига
     wire [4:0] shift;
     assign shift = MemWordSize[0] ? {ALUResult[1],   4'b0000} : {ALUResult[1:0], 3'b000 };
@@ -660,8 +662,8 @@ module writeback (
 endmodule
 
 module regdata
-          #(parameter QUANTITY = 2, //Количество регистров без регистра выхода памяти
-            parameter CORE_TYPE = 0)
+          #(parameter int QUANTITY = 2, //Количество регистров без регистра выхода памяти
+            parameter bit CORE_TYPE = 0)
           (input  logic        clk, rst, en,
            input  logic [31:0] d [QUANTITY-1:0],
            output logic [31:0] q [QUANTITY-1:0]);
@@ -682,8 +684,8 @@ module regdata
 endmodule
 
 module regrf
-          #(parameter QUANTITY = 2, //Количество адресных регистров регистрового файла
-            parameter CORE_TYPE = 0)
+          #(parameter int QUANTITY = 2, //Количество адресных регистров регистрового файла
+            parameter bit CORE_TYPE = 0)
           (input  logic        clk, rst, en,
            input  logic [4:0] d [QUANTITY-1:0],
            output logic [4:0] q [QUANTITY-1:0]);
@@ -703,8 +705,8 @@ module regrf
 
 endmodule
 
-module regmem #(parameter CORE_TYPE = 0, //Количество регистров без регистра выхода памяти
-                parameter MEMORY_TYPE = 0)
+module regmem #(parameter bit CORE_TYPE = 0, //Количество регистров без регистра выхода памяти
+                parameter bit MEMORY_TYPE = 0)
                (input  logic        clk, rst, en,
                 input  logic [31:0] dm,
                 output logic [31:0] qm);
@@ -726,8 +728,8 @@ module regmem #(parameter CORE_TYPE = 0, //Количество регистро
 endmodule
 
 module regcontrol
-          #(parameter WIDTH = 2,
-            parameter CORE_TYPE = 0)
+          #(parameter int WIDTH = 2,
+            parameter bit CORE_TYPE = 0)
           (input  logic             clk, rst, en,
            input  logic [WIDTH-1:0] d,
            output logic [WIDTH-1:0] q);

@@ -39,14 +39,25 @@
 //============================================================================================== 
 //#1 CORE_TYPE #
 `define SINGLECYCLE_CORE 1
-`define PIPELINE_CORE 0
+`define PIPELINE_CORE    0
 //#2 MEMORY_TYPE #
-`define BSRAM_MEM 1
-`define SYNTH_MEM 0
+`define BSRAM_MEM        1
+`define SYNTH_MEM        0
+//DSECRIPTION:
+//1) Максимальная суммарная память BSRAM_IMEM_SIZE + BSRAM_DMEM_SIZE = 48кБ.
 //============================================================================================== 
- 
-module top #(parameter [0:0] CORE_TYPE   = `SINGLECYCLE_CORE,
-             parameter [0:0] MEMORY_TYPE = `SYNTH_MEM)   
+    
+module top #(parameter bit CORE_TYPE       = `SINGLECYCLE_CORE,
+                //Настройки памяти инструкций
+             parameter bit IMEM_TYPE       =        `BSRAM_MEM,
+             parameter int BSRAM_IMEM_SIZE =                 8, //кБайт (поддерживаемые значения 8/16/32)
+             parameter int SYNTH_IMEM_SIZE =               100, //слов по 4 Байт
+             parameter     IMEM_INIT_FILE  =  "mem_init/i.mem",
+                //Настройки памяти данных
+             parameter bit DMEM_TYPE       =        `BSRAM_MEM,
+             parameter int BSRAM_DMEM_SIZE =                 8, //кБайт (поддерживаемые значения 8/16/32)
+             parameter int SYNTH_DMEM_SIZE =                10, //слов по 4 Байт
+             parameter     DMEM_INIT_FILE  =  "mem_init/d.mem")   
             (input  logic       clk,     //Вход тактирования
              input  logic       rst_n,   //Вход сброса (кнопка S2)
              output logic [5:0] led      //Выход на 6 светодиодов
@@ -58,9 +69,9 @@ module top #(parameter [0:0] CORE_TYPE   = `SINGLECYCLE_CORE,
     always_ff @(posedge clk) clk_div2 <= ~clk_div2;
 
     logic clk_core, clk_imem, clk_dmem;
-    generate if (MEMORY_TYPE & CORE_TYPE) begin   //#1 - Для однотактного ядра с BSRAM
+    generate if ((IMEM_TYPE | DMEM_TYPE) & CORE_TYPE) begin   //#1 - Для однотактного ядра с BSRAM
         divideby3 divideby3(.clk(clk_div2), .clk_div3(clk_core), .clk_imem(clk_imem), .clk_dmem(clk_dmem));
-    end else begin                                //#0 - Прочие конфигурации
+    end else begin                                            //#0 - Прочие конфигурации
         assign clk_core = clk_div2;
         assign clk_imem = clk_div2;
         assign clk_dmem = clk_div2;
@@ -89,14 +100,13 @@ module top #(parameter [0:0] CORE_TYPE   = `SINGLECYCLE_CORE,
         //Интерфейс памяти команд
     logic [31:0] imem_data;
     logic        imem_re, imem_rst;
-    logic [10:0] imem_addr;
+    logic [31:0] imem_addr;
         //Интерфейс памяти данных
     logic [31:0] dmem_ReadData;
     logic [ 3:0] dmem_Write;
     logic [31:0] dmem_Addr, dmem_WriteData;
         //Ядро
-    core #(.CORE_TYPE(CORE_TYPE),
-           .MEMORY_TYPE(MEMORY_TYPE))
+    core #(CORE_TYPE, IMEM_TYPE, DMEM_TYPE)
            riscv  
           (.clk(clk_core), .rst(rst_sync), .out(led),                                            //Системные
            .imem_data(imem_data), .imem_re(imem_re), .imem_rst(imem_rst), .imem_addr(imem_addr), //Интерфейс памяти команд
@@ -104,9 +114,13 @@ module top #(parameter [0:0] CORE_TYPE   = `SINGLECYCLE_CORE,
            .dmem_Addr(dmem_Addr), .dmem_WriteData(dmem_WriteData));
    
     //#3 Подключаем память
-    imem #(MEMORY_TYPE) imem(.clk(clk_imem), .rst(rst_sync|imem_rst), .re(imem_re), .addr(imem_addr), .data(imem_data));
+    mem #(IMEM_TYPE, SYNTH_IMEM_SIZE, BSRAM_IMEM_SIZE, IMEM_INIT_FILE) imem
+          (.clk(clk_imem), .reset(rst_sync|imem_rst), .re(imem_re), .wstrb(4'b0000),
+           .a(imem_addr), .wd(32'd0),
+           .rd(imem_data));
 
-    dmem #(MEMORY_TYPE) dmem(.clk(clk_dmem), .reset(rst_sync), .wstrb(dmem_Write),
-                             .a(dmem_Addr), .wd(dmem_WriteData),
-                             .rd(dmem_ReadData));
+    mem #(DMEM_TYPE, SYNTH_DMEM_SIZE, BSRAM_DMEM_SIZE, DMEM_INIT_FILE) dmem
+          (.clk(clk_dmem), .reset(rst_sync), .re(1'b1), .wstrb(dmem_Write),
+           .a(dmem_Addr), .wd(dmem_WriteData),
+           .rd(dmem_ReadData));
 endmodule

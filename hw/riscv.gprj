@@ -7,8 +7,6 @@
     <FileList>
         <File path="src/clock.sv" type="file.verilog" enable="1"/>
         <File path="src/core.sv" type="file.verilog" enable="1"/>
-        <File path="src/gwlib/bsram.v" type="file.verilog" enable="1"/>
-        <File path="src/gwlib/bsram_imem.v" type="file.verilog" enable="1"/>
         <File path="src/mem.sv" type="file.verilog" enable="1"/>
         <File path="src/top.sv" type="file.verilog" enable="1"/>
         <File path="src/riscv.cst" type="file.cst" enable="1"/>

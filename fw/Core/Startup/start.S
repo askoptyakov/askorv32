@@ -150,6 +150,10 @@ around:
 end:
 	add  x2, x2, x9     //x2 = 7   +  18  = 25
 	sw   x2, -64(x3)    //      dmem[4] <- 25
+
+	//la   x7, 9000
+	//sw	 x3, 0(x7)
+	//lw   x4, 0(x7)
 done:
 	beq  x2, x2, done   //pc = (25 == 25)? done : pc + 4  #Истина, бесконечный цикл
 funct0:

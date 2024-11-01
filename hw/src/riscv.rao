@@ -409,101 +409,6 @@
                 <Signal>riscv/decode/ImmExt[1]</Signal>
                 <Signal>riscv/decode/ImmExt[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/decode/Imm[31:7]">
-                <Signal>riscv/decode/Imm[31]</Signal>
-                <Signal>riscv/decode/Imm[30]</Signal>
-                <Signal>riscv/decode/Imm[29]</Signal>
-                <Signal>riscv/decode/Imm[28]</Signal>
-                <Signal>riscv/decode/Imm[27]</Signal>
-                <Signal>riscv/decode/Imm[26]</Signal>
-                <Signal>riscv/decode/Imm[25]</Signal>
-                <Signal>riscv/decode/Imm[24]</Signal>
-                <Signal>riscv/decode/Imm[23]</Signal>
-                <Signal>riscv/decode/Imm[22]</Signal>
-                <Signal>riscv/decode/Imm[21]</Signal>
-                <Signal>riscv/decode/Imm[20]</Signal>
-                <Signal>riscv/decode/Imm[19]</Signal>
-                <Signal>riscv/decode/Imm[18]</Signal>
-                <Signal>riscv/decode/Imm[17]</Signal>
-                <Signal>riscv/decode/Imm[16]</Signal>
-                <Signal>riscv/decode/Imm[15]</Signal>
-                <Signal>riscv/decode/Imm[14]</Signal>
-                <Signal>riscv/decode/Imm[13]</Signal>
-                <Signal>riscv/decode/Imm[12]</Signal>
-                <Signal>riscv/decode/Imm[11]</Signal>
-                <Signal>riscv/decode/Imm[10]</Signal>
-                <Signal>riscv/decode/Imm[9]</Signal>
-                <Signal>riscv/decode/Imm[8]</Signal>
-                <Signal>riscv/decode/Imm[7]</Signal>
-            </Bus>
-            <Bus capture_enable="true" name="riscv/execute/srcA[31:0]">
-                <Signal>riscv/execute/srcA[31]</Signal>
-                <Signal>riscv/execute/srcA[30]</Signal>
-                <Signal>riscv/execute/srcA[29]</Signal>
-                <Signal>riscv/execute/srcA[28]</Signal>
-                <Signal>riscv/execute/srcA[27]</Signal>
-                <Signal>riscv/execute/srcA[26]</Signal>
-                <Signal>riscv/execute/srcA[25]</Signal>
-                <Signal>riscv/execute/srcA[24]</Signal>
-                <Signal>riscv/execute/srcA[23]</Signal>
-                <Signal>riscv/execute/srcA[22]</Signal>
-                <Signal>riscv/execute/srcA[21]</Signal>
-                <Signal>riscv/execute/srcA[20]</Signal>
-                <Signal>riscv/execute/srcA[19]</Signal>
-                <Signal>riscv/execute/srcA[18]</Signal>
-                <Signal>riscv/execute/srcA[17]</Signal>
-                <Signal>riscv/execute/srcA[16]</Signal>
-                <Signal>riscv/execute/srcA[15]</Signal>
-                <Signal>riscv/execute/srcA[14]</Signal>
-                <Signal>riscv/execute/srcA[13]</Signal>
-                <Signal>riscv/execute/srcA[12]</Signal>
-                <Signal>riscv/execute/srcA[11]</Signal>
-                <Signal>riscv/execute/srcA[10]</Signal>
-                <Signal>riscv/execute/srcA[9]</Signal>
-                <Signal>riscv/execute/srcA[8]</Signal>
-                <Signal>riscv/execute/srcA[7]</Signal>
-                <Signal>riscv/execute/srcA[6]</Signal>
-                <Signal>riscv/execute/srcA[5]</Signal>
-                <Signal>riscv/execute/srcA[4]</Signal>
-                <Signal>riscv/execute/srcA[3]</Signal>
-                <Signal>riscv/execute/srcA[2]</Signal>
-                <Signal>riscv/execute/srcA[1]</Signal>
-                <Signal>riscv/execute/srcA[0]</Signal>
-            </Bus>
-            <Bus capture_enable="true" name="riscv/execute/srcB[31:0]">
-                <Signal>riscv/execute/srcB[31]</Signal>
-                <Signal>riscv/execute/srcB[30]</Signal>
-                <Signal>riscv/execute/srcB[29]</Signal>
-                <Signal>riscv/execute/srcB[28]</Signal>
-                <Signal>riscv/execute/srcB[27]</Signal>
-                <Signal>riscv/execute/srcB[26]</Signal>
-                <Signal>riscv/execute/srcB[25]</Signal>
-                <Signal>riscv/execute/srcB[24]</Signal>
-                <Signal>riscv/execute/srcB[23]</Signal>
-                <Signal>riscv/execute/srcB[22]</Signal>
-                <Signal>riscv/execute/srcB[21]</Signal>
-                <Signal>riscv/execute/srcB[20]</Signal>
-                <Signal>riscv/execute/srcB[19]</Signal>
-                <Signal>riscv/execute/srcB[18]</Signal>
-                <Signal>riscv/execute/srcB[17]</Signal>
-                <Signal>riscv/execute/srcB[16]</Signal>
-                <Signal>riscv/execute/srcB[15]</Signal>
-                <Signal>riscv/execute/srcB[14]</Signal>
-                <Signal>riscv/execute/srcB[13]</Signal>
-                <Signal>riscv/execute/srcB[12]</Signal>
-                <Signal>riscv/execute/srcB[11]</Signal>
-                <Signal>riscv/execute/srcB[10]</Signal>
-                <Signal>riscv/execute/srcB[9]</Signal>
-                <Signal>riscv/execute/srcB[8]</Signal>
-                <Signal>riscv/execute/srcB[7]</Signal>
-                <Signal>riscv/execute/srcB[6]</Signal>
-                <Signal>riscv/execute/srcB[5]</Signal>
-                <Signal>riscv/execute/srcB[4]</Signal>
-                <Signal>riscv/execute/srcB[3]</Signal>
-                <Signal>riscv/execute/srcB[2]</Signal>
-                <Signal>riscv/execute/srcB[1]</Signal>
-                <Signal>riscv/execute/srcB[0]</Signal>
-            </Bus>
             <Bus capture_enable="true" name="riscv/execute/ALUResult[31:0]">
                 <Signal>riscv/execute/ALUResult[31]</Signal>
                 <Signal>riscv/execute/ALUResult[30]</Signal>
@@ -537,6 +442,40 @@
                 <Signal>riscv/execute/ALUResult[2]</Signal>
                 <Signal>riscv/execute/ALUResult[1]</Signal>
                 <Signal>riscv/execute/ALUResult[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="riscv/fetch/Instr[31:0]">
+                <Signal>riscv/fetch/Instr[31]</Signal>
+                <Signal>riscv/fetch/Instr[30]</Signal>
+                <Signal>riscv/fetch/Instr[29]</Signal>
+                <Signal>riscv/fetch/Instr[28]</Signal>
+                <Signal>riscv/fetch/Instr[27]</Signal>
+                <Signal>riscv/fetch/Instr[26]</Signal>
+                <Signal>riscv/fetch/Instr[25]</Signal>
+                <Signal>riscv/fetch/Instr[24]</Signal>
+                <Signal>riscv/fetch/Instr[23]</Signal>
+                <Signal>riscv/fetch/Instr[22]</Signal>
+                <Signal>riscv/fetch/Instr[21]</Signal>
+                <Signal>riscv/fetch/Instr[20]</Signal>
+                <Signal>riscv/fetch/Instr[19]</Signal>
+                <Signal>riscv/fetch/Instr[18]</Signal>
+                <Signal>riscv/fetch/Instr[17]</Signal>
+                <Signal>riscv/fetch/Instr[16]</Signal>
+                <Signal>riscv/fetch/Instr[15]</Signal>
+                <Signal>riscv/fetch/Instr[14]</Signal>
+                <Signal>riscv/fetch/Instr[13]</Signal>
+                <Signal>riscv/fetch/Instr[12]</Signal>
+                <Signal>riscv/fetch/Instr[11]</Signal>
+                <Signal>riscv/fetch/Instr[10]</Signal>
+                <Signal>riscv/fetch/Instr[9]</Signal>
+                <Signal>riscv/fetch/Instr[8]</Signal>
+                <Signal>riscv/fetch/Instr[7]</Signal>
+                <Signal>riscv/fetch/Instr[6]</Signal>
+                <Signal>riscv/fetch/Instr[5]</Signal>
+                <Signal>riscv/fetch/Instr[4]</Signal>
+                <Signal>riscv/fetch/Instr[3]</Signal>
+                <Signal>riscv/fetch/Instr[2]</Signal>
+                <Signal>riscv/fetch/Instr[1]</Signal>
+                <Signal>riscv/fetch/Instr[0]</Signal>
             </Bus>
         </SignalList>
         <Triggers>
@@ -600,7 +539,7 @@
         </Triggers>
         <MatchUnits>
             <MatchUnit index="0" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="0" value1="0" trigger="0"/>
-            <MatchUnit index="1" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="00000000000000000000000000101000" value1="00000000000000000000000000000000" trigger="1"/>
+            <MatchUnit index="1" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="00000000000000000000000000010100" value1="00000000000000000000000000000000" trigger="1"/>
             <MatchUnit index="2" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
             <MatchUnit index="3" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
             <MatchUnit index="4" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
@@ -620,5 +559,5 @@
             <Expression>M0&amp;M1</Expression>
         </Expressions>
     </AoCore>
-    <GAO_ID>0011011110111010</GAO_ID>
+    <GAO_ID>0010101001111111</GAO_ID>
 </GAO_CONFIG>
