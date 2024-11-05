@@ -3,7 +3,6 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
               parameter bit DMEM_TYPE = 0) //    Тип памяти данных: 1 - BSRAM;       0 - Синтезированная;
              (input  logic        clk,       //Вход тактирования
               input  logic        rst,       //Вход сброса (кнопка S2)
-              output logic [ 5:0] out,       //Выход на 6 светодиодов
               //Интерфейс памяти команд
               input  logic [31:0] imem_data,
               output logic        imem_re, imem_rst,
@@ -131,7 +130,6 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
                             //Особенные
                             .Result(ResultW));
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    assign out = dmem_ReadData[5:0];
 
 endmodule
 

@@ -47,7 +47,7 @@
 //1) Максимальная суммарная память BSRAM_IMEM_SIZE + BSRAM_DMEM_SIZE = 48кБ.
 //============================================================================================== 
     
-module top #(parameter bit CORE_TYPE       = `SINGLECYCLE_CORE,
+module top #(parameter bit CORE_TYPE       = `PIPELINE_CORE,
                 //Настройки памяти инструкций
              parameter bit IMEM_TYPE       =        `BSRAM_MEM,
              parameter int BSRAM_IMEM_SIZE =                 8, //кБайт (поддерживаемые значения 8/16/32)
@@ -108,19 +108,28 @@ module top #(parameter bit CORE_TYPE       = `SINGLECYCLE_CORE,
         //Ядро
     core #(CORE_TYPE, IMEM_TYPE, DMEM_TYPE)
            riscv  
-          (.clk(clk_core), .rst(rst_sync), .out(led),                                            //Системные
+          (.clk(clk_core), .rst(rst_sync),                                                       //Системные
            .imem_data(imem_data), .imem_re(imem_re), .imem_rst(imem_rst), .imem_addr(imem_addr), //Интерфейс памяти команд
            .dmem_ReadData(dmem_ReadData), .dmem_Write(dmem_Write),                               //Интерфейс памяти данных
            .dmem_Addr(dmem_Addr), .dmem_WriteData(dmem_WriteData));
    
-    //#3 Подключаем память
+    //#3 Подключаем память инструкций
     mem #(IMEM_TYPE, SYNTH_IMEM_SIZE, BSRAM_IMEM_SIZE, IMEM_INIT_FILE) imem
           (.clk(clk_imem), .reset(rst_sync|imem_rst), .re(imem_re), .wstrb(4'b0000),
            .a(imem_addr), .wd(32'd0),
            .rd(imem_data));
 
+    //#4 Подключаем память данных и периферийные модули
+    logic [ 3:0] mem_Write, leds_Write;
+
+    assign mem_Write = (dmem_Addr != 32'h11000000)? dmem_Write : 4'b0000;
+    assign leds_Write =(dmem_Addr == 32'h11000000)? dmem_Write : 4'b0000;
+
     mem #(DMEM_TYPE, SYNTH_DMEM_SIZE, BSRAM_DMEM_SIZE, DMEM_INIT_FILE) dmem
-          (.clk(clk_dmem), .reset(rst_sync), .re(1'b1), .wstrb(dmem_Write),
+          (.clk(clk_dmem), .reset(rst_sync), .re(1'b1), .wstrb(mem_Write),
            .a(dmem_Addr), .wd(dmem_WriteData),
            .rd(dmem_ReadData));
+
+    always_ff @(posedge clk) if (&leds_Write) led <= dmem_WriteData[5:0];
+
 endmodule

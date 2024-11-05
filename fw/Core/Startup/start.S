@@ -3,66 +3,68 @@
  * @file		start.S
  * @author		Alexander Koptyakov
  * @device		AskoRV32
- * @brief		Startup
- ******************************************************************************************
+ * @brief		Ассемблерный код инициализации процессора
+ *****************************************************************************************
  */
- 
 
-
-	//.section .text
-.text
+.section .text
 .balign 16
 
 .globl start
 
-/* //Скрипт для проверки приостановки конвейера от конфликта данных инстр. lw
 start:
-	addi x2, x0, 5      //x2 = 5
-	addi x3, x0, 12     //x3 = 12
-	addi x7, x3, -9     //x7 = 12  -  9   = 3
-	or   x4, x7, x2     //x4 = 3  OR  5   = 7
-	and  x5, x3, x4     //x5 = 12 AND 7   = 4
-	add  x5, x5, x4     //x5 = 4   +  7   = 11
-	sw   x5, -12(x3)    //      dmem[0]  <- 11
-	addi x7, x0, 5      //x7 = 5
-	addi x9, x0, 6      //x9 = 6
-	lw   x2, 0(x0)      //x2 -> dmem[0]   = 11
-	add  x8, x2, x4     //x8 = 11  +  7   = 18
-	sub  x9, x8, x3     //x9 = 18  -  12  = 6
-	addi x2, x0, 56     //x2 = 56
-	add  x3, x2, x9     //x3 = 56  +  6   = 62
+  	la sp, _estack
+	#Инициализация регистрового файла нулевыми значениями
+	/*
+	addi x1, zero, 0
+	//addi x2, zero, 0 //sp(stack pointer)
+	//addi x3, zero, 0 //gp(global pointer)
+	addi x4, zero, 0
+	addi x5, zero, 0
+	addi x6, zero, 0
+	addi x7, zero, 0
+	addi x8, zero, 0
+	addi x9, zero, 0
+	addi x10, zero, 0
+	addi x11, zero, 0
+	addi x12, zero, 0
+	addi x13, zero, 0
+	addi x14, zero, 0
+	addi x15, zero, 0
+	addi x16, zero, 0
+	addi x17, zero, 0
+	addi x18, zero, 0
+	addi x19, zero, 0
+	addi x20, zero, 0
+	addi x21, zero, 0
+	addi x22, zero, 0
+	addi x23, zero, 0
+	addi x24, zero, 0
+	addi x25, zero, 0
+	addi x26, zero, 0
+	addi x27, zero, 0
+	addi x28, zero, 0
+	addi x29, zero, 0
+	addi x30, zero, 0
+	addi x31, zero, 0
+	*/
+
+# Инициализация секции bss нулевыми значениями
+	la a0, _sbss
+	la a1, _ebss
+	bge a0, a1, end_init_bss
+loop_init_bss:
+	sw zero, 0(a0)
+	addi a0, a0, 4
+	blt a0, a1, loop_init_bss
+end_init_bss:
+
+# Переход к функции main
+	call main
 
 .end
-*/
-/*
-//Основной скрипт
-start:
-	addi x2, x0, 5      //x2 = 5
-	addi x3, x0, 12     //x3 = 12
-	addi x7, x3, -9     //x7 = 12  -  9   = 3
-	or   x4, x7, x2     //x4 = 3  OR  5   = 7
-	and  x5, x3, x4     //x5 = 12 AND 7   = 4
-	add  x5, x5, x4     //x5 = 4   +  7   = 11
-	beq  x5, x7, end    //pc = (11 == 3)? end : pc + 4    #Ложь
-	slt  x4, x3, x4     //x4 = 12  <  7   = 0
-	beq  x4, x0, around //pc = (0 == 0)? around : pc + 4  #Истина, переход к around
-	addi x5, x0, 0      //!x5= 0   +  0   = 0             #Не выполняется
-around:
-	slt  x4, x7, x2     //x4 = 3   <  5   = 1
-	add  x7, x4, x5     //x7 = 1   +  11  = 12
-	sub  x7, x7, x2     //x7 = 12  -  5   = 7
-	sw   x7, -12(x3)    //      dmem[0] <- 7
-	lw   x2, 0(x0)      //x2 -> dmem[0]  = 7
-	add  x9, x2, x5     //x9 = 7   +  11  = 18
-	jal  x3, end        //pc = end, x3 = 0x44             #Переход к end
-	addi x2, x0, 1      //!x2= 0   +  1   = 1
-end:
-	add  x2, x2, x9     //x2 = 7   +  18  = 25
-	sw   x2, -64(x3)    //      dmem[4] <- 25
-done:
-	beq  x2, x2, done   //pc = (25 == 25)? done : pc + 4  #Истина, бесконечный цикл
-*/
-//Cкрипт для проверки команд slti,ori,andi,xor,xori,sll,slli,srl,srli,bne
+
+/* //Для тестов иснтрукций процессора
 start:
 	la   x2, 0xFFFFAAA  //x2 = 268 434 090
 	jal	 funct0         //pc = funct0, ra = pc + 4      #Переход к funct0
@@ -160,3 +162,4 @@ funct0:
 	addi x2, x2, 1
 	jalr x1, x1, 4
 .end
+*/
