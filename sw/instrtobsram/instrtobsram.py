@@ -1,7 +1,7 @@
 import re
 from sys import argv
 
-string_list = [['#File_format=Hex'], ['#Address_depth=2048'], ['#Data_width=[32]']]
+string_list = [['#File_format=Hex'], ['#Address_depth=2048'], ['#Data_width=32']]
 input = argv[1]
 output = argv[2]
 
