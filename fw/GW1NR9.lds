@@ -36,6 +36,7 @@ SECTIONS {			/* Описание секций памяти */
     .data : AT (LOADADDR(.text) + LENGTH(IMEM))
     {
         . = ALIGN(4);
+        _sdata = .; 
         *(.data)           /* .data sections */
         *(.data*)          /* .data* sections */
         *(.sdata)           /* .sdata sections */
@@ -43,6 +44,7 @@ SECTIONS {			/* Описание секций памяти */
         
         . = ALIGN(4);
     	_edata = .;
+    	PROVIDE(__global_pointer$ = _sdata + 0x7F0);
     } >DMEM
      
     .bss :

@@ -5,16 +5,14 @@
 #define WRITE_GPIO(dir, value) { (*(volatile unsigned *)dir) = (value); }
 
 int globalvar = 5;
-int globalvar1 = 105;
-
+int c;
 
 int main(void) {
-	unsigned int c;
+	c = 1;
 	while(1) {
-		c = c + 1;
-		//WRITE_GPIO(GPIO_LEDs, ~c);
-		WRITE_GPIO(GPIO_LEDs, globalvar);
-		for(int i = 0; i<100000; i++);
-		WRITE_GPIO(GPIO_LEDs, globalvar1);
+		globalvar = globalvar + c;
+		//glob = glob + globalvar + globalvar1;
+		WRITE_GPIO(GPIO_LEDs, ~globalvar);
+		for(int i = 0; i<500000; i++);
 	}
 }

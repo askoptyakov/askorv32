@@ -11,9 +11,15 @@
 .balign 16
 
 .globl start
+.global main
 
 start:
+	.option push
+	.option norelax
+	la gp, __global_pointer$
+	.option pop
   	la sp, _estack
+
 	#Инициализация регистрового файла нулевыми значениями
 	/*
 	addi x1, zero, 0
