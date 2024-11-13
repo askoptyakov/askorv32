@@ -8,6 +8,7 @@
         <File path="src/clock.sv" type="file.verilog" enable="1"/>
         <File path="src/core.sv" type="file.verilog" enable="1"/>
         <File path="src/mem.sv" type="file.verilog" enable="1"/>
+        <File path="src/periph.sv" type="file.verilog" enable="1"/>
         <File path="src/top.sv" type="file.verilog" enable="1"/>
         <File path="src/riscv.cst" type="file.cst" enable="1"/>
         <File path="src/riscv.rao" type="file.gao" enable="1"/>

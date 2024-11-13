@@ -49,12 +49,12 @@ module mem #(parameter bit MEMORY_TYPE =    0, //Тип памяти: 1 - BSRAM;
     end else begin                  //#0 - Синтезированная память
         logic [31:0] mem [0:SYNTH_SIZE-1];
         initial $readmemh(INIT_FILE, mem);
-        assign rd = mem[a>>2'd2];
+        assign rd = mem[a[14:2]];
         always @(posedge clk) begin
-            if (wstrb[0]) mem[a>>2'd2][7:0]  <= wd[7:0];
-            if (wstrb[1]) mem[a>>2'd2][15:8] <= wd[15:8];
-            if (wstrb[2]) mem[a>>2'd2][23:16] <= wd[23:16];
-            if (wstrb[3]) mem[a>>2'd2][31:24] <= wd[31:24];
+            if (wstrb[0]) mem[a[14:2]][7:0]  <= wd[7:0];
+            if (wstrb[1]) mem[a[14:2]][15:8] <= wd[15:8];
+            if (wstrb[2]) mem[a[14:2]][23:16] <= wd[23:16];
+            if (wstrb[3]) mem[a[14:2]][31:24] <= wd[31:24];
         end
     end
     endgenerate    

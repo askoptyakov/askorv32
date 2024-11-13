@@ -1,39 +1,3 @@
-/* Заметки:
-1. Для штатной работы однотактного ядра (SINGLECYCLE_CORE) необходима асинхронная память инструкций
-и данных, которая может быть получена при варианте синтезируемой на ячейках памяти(SYNTH_MEM). В
-таком режиме ядро практически полностью является комбинационным и может работать на общей частоте
-тактирования (clk), одна инструкция выполняется за один такт. Если же использовать внутреннюю
-память плис (BSRAM_MEM), которая является синхронной, то ядро становистя псевдо однотактным
-поскольку данные записываются и считываются из памяти по переднему фронту тактового сигнала и для
-одной инструкции необходимо уже 3 такта. Первый такт приходит на тактирования всех узлов ядра,
-кроме памяти инструкций, которая тактируется от второго такта, и памяти данных, которая тактируется
-от третьего такта. Думаю что реализвация однотактного ядра с синхронной памятью возможна при
-2 тактах, необходима !дополнительная проработка!
-2. При использовании памяти BSRAM в конвеерном ядре межстадийным регистром является сама память
-поскольку она явлется синхронной и выдаёт данные на выход по такту. При использовании синтезированной
-памяти в конвеерном ядре нужен дополнительный межстадийный регистр поскольку память асинхронная и
-необходимо разделить стадии регистрами. Для однотактного ядра межстадийный регистр не нужен, связь
-явлется проводником.
-3. Связано с пунктом 2. При разработке приостановки конвейера, всвязи с конфликтом при выполнении
-инструкции lw, необходимо задержать межстадийный регистр (fetch-decode) на один такт. Поскольку в
-конвейерном ядре с памятью BSRAM межстадийным регистром является сама память приходится отключать
-тактирование памяти на 1 такт подачей сигнала imem_re на контакт ce (clock enable) BSRAM. В текущей
-конфигурации кода появилось очень длинная связь именно логическая, сложная для понимания, но не
-нарушающая и не ухудшающая параметры ядра. Возможно пересмотреть.
-4. Не очень нравится как реализованы интерфейсы мамяти в ядре. Может лучше достать их из модулей
-стадий конвейера и поместить в главный модуль core. Подумать.
-5. Можно сократить одну операцию в модуле АЛУ, если объединить вместе операции арифметического
-и логического сдвига с предварительной подготовкой знакового бита, согласно следующему выражению:
-3'b111: ALUResult = $signed({($sra | $srai) ? srcA[31] : 1'b0, srcA}) >>> srcB[4:0];
-В таком случае также можно будет уменьшить разрядность ALUControl до 3ёх, но потребуется дополнительные
-флаги о том что выполняется команда sra или srai.
-6. Упёрся в частоту при синтезировании однотактного ядра на этапе добавления блока загрузки/выгрузки (LSU).
-Частота процессора 27MHz. А в проблемной конфигурации (однотактное ядро с синтезированной памятью)
-частота ещё в 3 раза ниже. Можно немного немного уменьшить временные задержки, если сделать несколько
-параллельных цепей расширения знака. Возможно это повлияет на работу конвейерного ядра при увеличении
-частоты, необходимо обратить на это внимание в дальнейшем. 
-*/
-
 //============================================================================================== 
 // Определения настроек ядра
 //============================================================================================== 
@@ -46,26 +10,27 @@
 //DSECRIPTION:
 //1) Максимальная суммарная память BSRAM_IMEM_SIZE + BSRAM_DMEM_SIZE = 48кБ.
 //============================================================================================== 
-    
-module top #(parameter bit CORE_TYPE       = `PIPELINE_CORE,
+        
+module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
                 //Настройки памяти инструкций
              parameter bit IMEM_TYPE       =        `BSRAM_MEM,
              parameter int BSRAM_IMEM_SIZE =                 8, //кБайт (поддерживаемые значения 8/16/32)
-             parameter int SYNTH_IMEM_SIZE =               100, //слов по 4 Байт
+             parameter int SYNTH_IMEM_SIZE =               256, //слов по 4 Байт
              parameter     IMEM_INIT_FILE  =  "mem_init/i.mem",
                 //Настройки памяти данных
-             parameter bit DMEM_TYPE       =        `BSRAM_MEM,
+             parameter bit DMEM_TYPE       =        `BSRAM_MEM, 
              parameter int BSRAM_DMEM_SIZE =                 8, //кБайт (поддерживаемые значения 8/16/32)
-             parameter int SYNTH_DMEM_SIZE =                10, //слов по 4 Байт
+             parameter int SYNTH_DMEM_SIZE =               256, //слов по 4 Байт
              parameter     DMEM_INIT_FILE  =  "mem_init/d.mem")   
             (input  logic       clk,     //Вход тактирования
              input  logic       rst_n,   //Вход сброса (кнопка S2)
-             output logic [5:0] led      //Выход на 6 светодиодов
+             output logic [5:0] led,      //Выход на 6 светодиодов
+             inout        [2:0] GPIO
 );
-    //#0 Настройка тактирования
+    //#0 Настройка тактирования 
     //DESCRIPTION: Для однотактного ядра при использовании BSAM делаем псевдооднотактный процессор
     //с тремя тактами на одну инструкцию. Тактируем imem и dmem 2ым и 3ьим тактом.
-    logic clk_div2;
+    logic clk_div2; 
     always_ff @(posedge clk) clk_div2 <= ~clk_div2;
 
     logic clk_core, clk_imem, clk_dmem;
@@ -106,6 +71,7 @@ module top #(parameter bit CORE_TYPE       = `PIPELINE_CORE,
     logic [ 3:0] dmem_Write;
     logic [31:0] dmem_Addr, dmem_WriteData;
         //Ядро
+    
     core #(CORE_TYPE, IMEM_TYPE, DMEM_TYPE)
            riscv  
           (.clk(clk_core), .rst(rst_sync),                                                       //Системные
@@ -120,16 +86,95 @@ module top #(parameter bit CORE_TYPE       = `PIPELINE_CORE,
            .rd(imem_data));
 
     //#4 Подключаем память данных и периферийные модули
-    logic [ 3:0] mem_Write, leds_Write;
+    
+    //-0- Основной мультиплексор
+    logic [ 3:0] mem_Write, leds_Write, tm_Write;
+    logic [31:0] mem_Addr, leds_Addr, tm_Addr;
+    logic [31:0] mem_WriteData, leds_WriteData, tm_WriteData;
+    logic [31:0] mem_ReadData, leds_ReadData, tm_ReadData;
 
-    assign mem_Write = (dmem_Addr != 32'h11000000)? dmem_Write : 4'b0000;
-    assign leds_Write =(dmem_Addr == 32'h11000000)? dmem_Write : 4'b0000;
+    mem_mux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(3),
+              .MATCH_ADDR ({32'h10000000, 32'h11000000, 32'h12000000}),
+              .MATCH_MASK ({32'hff000000, 32'hff000000, 32'hff000000}))
+            mem_mux
+             (.clk(clk_dmem), .rst(rst_sync),
+              // Интерфейс мастера
+              .mWrite(dmem_Write),
+              .mAddr (dmem_Addr), .mWData(dmem_WriteData), 
+              .mRData(dmem_ReadData),
+              // Интерфейс подчинённых
+              .sWrite({mem_Write,    leds_Write,    tm_Write}),
+              .sAddr ({mem_Addr,     leds_Addr,     tm_Addr}),
+              .sWData({mem_WriteData,leds_WriteData,tm_WriteData}),
+              .sRData({mem_ReadData, leds_ReadData, tm_ReadData}));
 
+    //-1- Память данных
     mem #(DMEM_TYPE, SYNTH_DMEM_SIZE, BSRAM_DMEM_SIZE, DMEM_INIT_FILE) dmem
           (.clk(clk_dmem), .reset(rst_sync), .re(1'b1), .wstrb(mem_Write),
-           .a(dmem_Addr), .wd(dmem_WriteData),
-           .rd(dmem_ReadData));
+           .a(mem_Addr), .wd(mem_WriteData),
+           .rd(mem_ReadData));
+    
+    //-2- Встроенные светодиоды(6шт.) 
+    always_ff @(posedge clk_dmem) begin
+        if (&leds_Write) led <= leds_WriteData[5:0];
+        //leds_ReadData <= led;
+    end
 
-    always_ff @(posedge clk) if (&leds_Write) led <= dmem_WriteData[5:0];
+    generate if (DMEM_TYPE) begin   //#1 - Память BSRAM
+        always_ff @(posedge clk_dmem) begin
+            leds_ReadData <= led;
+    end
+    end else begin                    //#0 - Синтезированная память
+        assign leds_ReadData = led;
+    end
+    endgenerate
+    //-3- Внешний модуль tm1638
+    //>>0x00 - Семисегментный индикатор
+    //>>0x04 - Светодиоды/Кнопки
+    //<<0x08 - Кнопки
+    logic [ 7:0] tm_key, tm_led;
+    logic [31:0] tm_digit;
+    
+    always_ff @(posedge clk_dmem)
+        case (tm_Addr[3:2])
+            0 : begin
+                    if (tm_Write[0]) tm_digit[7:0]   <= tm_WriteData[7:0];
+                    if (tm_Write[1]) tm_digit[15:8]  <= tm_WriteData[15:8];
+                    if (tm_Write[2]) tm_digit[23:16] <= tm_WriteData[23:16];
+                    if (tm_Write[3]) tm_digit[31:24] <= tm_WriteData[31:24];
+                    //tm_ReadData <= tm_digit;
+                end
+            1 : begin
+                    if (tm_Write[0]) tm_led[7:0]   <= tm_WriteData[7:0];
+                    //tm_ReadData <= {24'd0, tm_led[7:0]};
+                end
+            //2 :     tm_ReadData <= {24'd0, tm_key[7:0]};
+      //default :     tm_ReadData <= 32'd0;
+        endcase
+
+
+    generate if (DMEM_TYPE) begin   //#1 - Память BSRAM
+        always_ff @(posedge clk_dmem)
+            case (tm_Addr[3:2])
+                0 : tm_ReadData <= tm_digit;
+                1 : tm_ReadData <= {24'd0, tm_led[7:0]};
+                2 : tm_ReadData <= {24'd0, tm_key[7:0]};
+          default : tm_ReadData <= 32'd0;
+            endcase
+    end else begin                    //#0 - Синтезированная память
+        always_comb
+            case (tm_Addr[3:2])
+                0 : tm_ReadData = tm_digit;
+                1 : tm_ReadData = {24'd0, tm_led[7:0]};
+                2 : tm_ReadData = {24'd0, tm_key[7:0]};
+          default : tm_ReadData = 32'd0;
+            endcase
+    end
+    endgenerate
+
+    tm1638_board_controller #(.clk_mhz(27)) tm1638
+        (.clk(clk_dmem), .rst(rst_sync),
+         .digit_in(tm_digit), .ledr(tm_led), .keys(tm_key),
+         .sio_dio(GPIO[0]), .sio_clk(GPIO[1]), .sio_stb(GPIO[2]));
 
 endmodule
