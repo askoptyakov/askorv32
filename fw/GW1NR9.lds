@@ -8,11 +8,11 @@
  */
  
  
-ENTRY(start) 		/* Точка входа */
+ENTRY(start) 		 /* Точка входа */
 
-_stack_size = 0x100 ;  /* Требуемый объем стека */
+_stack_size = 0x100; /* Требуемый объем стека */
 
-MEMORY 				/* Определение типа и размера памяти */
+MEMORY 				 /* Определение типа и размера памяти */
 {
     IMEM : ORIGIN = 0x00000000, LENGTH = 32K   /* Расположение и ширина памяти инструкций IMEM */
     DMEM : ORIGIN = 0x10000000, LENGTH = 32K   /* Расположение и ширина памяти данных     DMEM */
@@ -44,7 +44,7 @@ SECTIONS {			/* Описание секций памяти */
         
         . = ALIGN(4);
     	_edata = .;
-    	PROVIDE(__global_pointer$ = _sdata + 0x7F0);*/
+    	PROVIDE(__global_pointer$ = _sdata + 0x7F0);
     } >DMEM
      
     .bss :
