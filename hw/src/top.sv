@@ -24,7 +24,7 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
              parameter     DMEM_INIT_FILE  =  "mem_init/d.mem")   
             (input  logic       clk,     //Вход тактирования
              input  logic       rst_n,   //Вход сброса (кнопка S2)
-             output logic [5:0] led,      //Выход на 6 светодиодов
+             inout        [5:0] led,     //Выход на 6 светодиодов
              inout        [2:0] GPIO
 );
     //#0 Настройка тактирования 
@@ -93,10 +93,10 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     logic [31:0] mem_WriteData, leds_WriteData, tm_WriteData;
     logic [31:0] mem_ReadData, leds_ReadData, tm_ReadData;
 
-    mem_mux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(3),
+    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(3),
               .MATCH_ADDR ({32'h10000000, 32'h11000000, 32'h12000000}),
               .MATCH_MASK ({32'hff000000, 32'hff000000, 32'hff000000}))
-            mem_mux
+            memmux
              (.clk(clk_dmem), .rst(rst_sync),
               // Интерфейс мастера
               .mWrite(dmem_Write),
@@ -114,67 +114,16 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
            .a(mem_Addr), .wd(mem_WriteData),
            .rd(mem_ReadData));
     
-    //-2- Встроенные светодиоды(6шт.) 
-    always_ff @(posedge clk_dmem) begin
-        if (&leds_Write) led <= leds_WriteData[5:0];
-        //leds_ReadData <= led;
-    end
+    //-2- Встроенные светодиоды(6шт.)
+    logic [25:0] empty_gpio;
+    gpio_top #(DMEM_TYPE) gpio
+              (.clk(clk_dmem), .rst(rst_sync),
+               .Write(leds_Write), .Addr(leds_Addr), .WData(leds_WriteData), .RData(leds_ReadData),
+               .io_ports({empty_gpio[25:0], led[5:0]}));
 
-    generate if (DMEM_TYPE) begin   //#1 - Память BSRAM
-        always_ff @(posedge clk_dmem) begin
-            leds_ReadData <= led;
-    end
-    end else begin                    //#0 - Синтезированная память
-        assign leds_ReadData = led;
-    end
-    endgenerate
     //-3- Внешний модуль tm1638
-    //>>0x00 - Семисегментный индикатор
-    //>>0x04 - Светодиоды/Кнопки
-    //<<0x08 - Кнопки
-    logic [ 7:0] tm_key, tm_led;
-    logic [31:0] tm_digit;
-    
-    always_ff @(posedge clk_dmem)
-        case (tm_Addr[3:2])
-            0 : begin
-                    if (tm_Write[0]) tm_digit[7:0]   <= tm_WriteData[7:0];
-                    if (tm_Write[1]) tm_digit[15:8]  <= tm_WriteData[15:8];
-                    if (tm_Write[2]) tm_digit[23:16] <= tm_WriteData[23:16];
-                    if (tm_Write[3]) tm_digit[31:24] <= tm_WriteData[31:24];
-                    //tm_ReadData <= tm_digit;
-                end
-            1 : begin
-                    if (tm_Write[0]) tm_led[7:0]   <= tm_WriteData[7:0];
-                    //tm_ReadData <= {24'd0, tm_led[7:0]};
-                end
-            //2 :     tm_ReadData <= {24'd0, tm_key[7:0]};
-      //default :     tm_ReadData <= 32'd0;
-        endcase
-
-
-    generate if (DMEM_TYPE) begin   //#1 - Память BSRAM
-        always_ff @(posedge clk_dmem)
-            case (tm_Addr[3:2])
-                0 : tm_ReadData <= tm_digit;
-                1 : tm_ReadData <= {24'd0, tm_led[7:0]};
-                2 : tm_ReadData <= {24'd0, tm_key[7:0]};
-          default : tm_ReadData <= 32'd0;
-            endcase
-    end else begin                    //#0 - Синтезированная память
-        always_comb
-            case (tm_Addr[3:2])
-                0 : tm_ReadData = tm_digit;
-                1 : tm_ReadData = {24'd0, tm_led[7:0]};
-                2 : tm_ReadData = {24'd0, tm_key[7:0]};
-          default : tm_ReadData = 32'd0;
-            endcase
-    end
-    endgenerate
-
-    tm1638_board_controller #(.clk_mhz(27)) tm1638
-        (.clk(clk_dmem), .rst(rst_sync),
-         .digit_in(tm_digit), .ledr(tm_led), .keys(tm_key),
-         .sio_dio(GPIO[0]), .sio_clk(GPIO[1]), .sio_stb(GPIO[2]));
-
+    tm1638_top #(DMEM_TYPE) tm1638
+                (.clk(clk_dmem), .rst(rst_sync),
+                 .Write(tm_Write), .Addr(tm_Addr), .WData(tm_WriteData), .RData(tm_ReadData),
+                 .tm_dio(GPIO[0]), .tm_clk(GPIO[1]), .tm_stb(GPIO[2]));
 endmodule

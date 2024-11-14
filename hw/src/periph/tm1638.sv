@@ -1,55 +1,60 @@
-module mem_mux
-  #(parameter                      MEMORY_TYPE = 0, 
-    parameter                      SLAVES      = 2, //Количество подчинённых устройств
-    parameter    [(SLAVES*32)-1:0] MATCH_ADDR  = 0,
-    parameter    [(SLAVES*32)-1:0] MATCH_MASK  = 0)
+module tm1638_top 
+  #(parameter                      MEMORY_TYPE = 0)
    (input  logic                   clk, rst,
-    // Интерфейс мастера
-    input  logic            [ 3:0] mWrite,
-    input  logic            [31:0] mAddr, mWData, 
-    output logic            [31:0] mRData,
-    // Интерфейс подчинённых
-    output logic [(SLAVES* 4)-1:0] sWrite,
-    output logic [(SLAVES*32)-1:0] sAddr, sWData,
-    input  logic [(SLAVES*32)-1:0] sRData
-); 
+    // Интерфейс обмена
+    input  logic            [ 3:0] Write,
+    input  logic            [31:0] Addr, WData, 
+    output logic            [31:0] RData,
+    // Физические подключения
+    output logic                   tm_clk,
+    output logic                   tm_stb,
+    inout  logic                   tm_dio
+);
+    //Карта регистров:
+    //>>0x00 - Установка значения на семисегментный индикатор(отображает HEX)
+    //>>0x04 - Установка значения на светодиоды
+    //<<0x08 - Состояние кнопок
     
-    logic [SLAVES-1:0] match;
-    generate
-        for(genvar i=0; i<SLAVES ; i=i+1) begin : addr_match
-            assign match[i] = (mAddr & MATCH_MASK[i*32+:32]) == MATCH_ADDR[i*32+:32];//rvfpga
-            //assign match[i] = ~|((mAddr ^ MATCH_ADDR[i*32+:32]) & MATCH_MASK[i*32+:32]);//picotiny
-            assign sWrite[i*4+:4] = mWrite & {4{match[i]}}; 
-        end
+    logic [ 7:0] tm_key, tm_led;
+    logic [31:0] tm_digit;
+    
+    always_ff @(posedge clk)
+        case (Addr[3:2])
+            0 : begin
+                    if (Write[0]) tm_digit[7:0]   <= WData[7:0];
+                    if (Write[1]) tm_digit[15:8]  <= WData[15:8];
+                    if (Write[2]) tm_digit[23:16] <= WData[23:16];
+                    if (Write[3]) tm_digit[31:24] <= WData[31:24];
+                end
+            1 : begin
+                    if (Write[0]) tm_led[7:0]     <= WData[7:0];
+                end
+        endcase
+
+    generate if (MEMORY_TYPE) begin   //#1 - Память BSRAM
+        always_ff @(posedge clk)
+            case (Addr[3:2])
+                0 : RData <= tm_digit;
+                1 : RData <= {24'd0, tm_led[7:0]};
+                2 : RData <= {24'd0, tm_key[7:0]};
+          default : RData <= 32'd0;
+            endcase
+    end else begin                    //#0 - Синтезированная память
+        always_comb
+            case (Addr[3:2])
+                0 : RData = tm_digit;
+                1 : RData = {24'd0, tm_led[7:0]};
+                2 : RData = {24'd0, tm_key[7:0]};
+          default : RData = 32'd0;
+            endcase
+    end
     endgenerate
 
-    localparam SSEL_WIDTH  = $clog2(SLAVES);
-    logic [SSEL_WIDTH-1:0] ssel;
-    always_comb begin
-        ssel = '0;
-        for (int i = 0; i < SLAVES; i++) begin
-            if (match[i]) begin
-                ssel = i;
-                break;
-            end
-        end
-    end
- 
-    assign sAddr  = {SLAVES{mAddr }};
-    assign sWData = {SLAVES{mWData}};
-    
-    //Для памяти BSRAM сигнал выбора устройства должен быть регистровым,
-    //а для синтезированной памяти сигнал выбора устройства должен быть комбинационным.
-    generate if (MEMORY_TYPE) begin   //#1 - Память BSRAM
-        logic [SSEL_WIDTH-1:0] ssel_r;
-        always_ff @(posedge clk, posedge rst)
-            if (rst) ssel_r <= SSEL_WIDTH'('0);
-            else     ssel_r <= ssel;
-        assign mRData = sRData[ssel_r*32+:32];
-    end else begin                    //#0 - Синтезированная память
-        assign mRData = sRData[ssel*32+:32];
-    end
-    endgenerate
+    tm1638_board_controller #(.clk_mhz(27)) tm1638_board_controller
+        (.clk(clk), .rst(rst),
+         .digit_in(tm_digit), .ledr(tm_led), .keys(tm_key),
+         .sio_dio(tm_dio), .sio_clk(tm_clk), .sio_stb(tm_stb));
+
 endmodule
 
 /*============================================================================

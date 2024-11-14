@@ -1,6 +1,8 @@
 #include "main.h"
 
-#define GPIO_LEDs   0x11000000
+#define GPIO_OEs    0x11000000
+#define GPIO_OUTs   0x11000004
+#define GPIO_INs    0x11000008
 #define TM_SEGMETs  0x12000000
 #define TM_LEDs		0x12000004
 #define TM_KEYs		0x12000008
@@ -14,14 +16,16 @@ unsigned int dig_transform(unsigned int digit);
 //unsigned int globalvar = 5;
 unsigned int c;
 unsigned int keys = 0;
+unsigned int tn_keys = 0;
 
 int main(void) {
 	c = 1;
-	//unsigned int d;
+	WRITE_REG(GPIO_OEs,  0xFFFFFFFF); //Все порты на выход
 	while(1) {
 		c = c + 1;
 		//#Светодиоды tangnano
-		WRITE_REG(GPIO_LEDs,  ~c);
+		WRITE_REG(GPIO_OUTs,  ~c);
+		//tn_keys = READ_GPIO(GPIO_INs);
 		//#Светодиоды tm1638
 		keys = READ_GPIO(TM_KEYs);
 		WRITE_REG(TM_LEDs, keys);

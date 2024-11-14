@@ -378,40 +378,6 @@
                 <Signal>riscv/WriteDataE[1]</Signal>
                 <Signal>riscv/WriteDataE[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="tm_ReadData[31:0]">
-                <Signal>tm_ReadData[31]</Signal>
-                <Signal>tm_ReadData[30]</Signal>
-                <Signal>tm_ReadData[29]</Signal>
-                <Signal>tm_ReadData[28]</Signal>
-                <Signal>tm_ReadData[27]</Signal>
-                <Signal>tm_ReadData[26]</Signal>
-                <Signal>tm_ReadData[25]</Signal>
-                <Signal>tm_ReadData[24]</Signal>
-                <Signal>tm_ReadData[23]</Signal>
-                <Signal>tm_ReadData[22]</Signal>
-                <Signal>tm_ReadData[21]</Signal>
-                <Signal>tm_ReadData[20]</Signal>
-                <Signal>tm_ReadData[19]</Signal>
-                <Signal>tm_ReadData[18]</Signal>
-                <Signal>tm_ReadData[17]</Signal>
-                <Signal>tm_ReadData[16]</Signal>
-                <Signal>tm_ReadData[15]</Signal>
-                <Signal>tm_ReadData[14]</Signal>
-                <Signal>tm_ReadData[13]</Signal>
-                <Signal>tm_ReadData[12]</Signal>
-                <Signal>tm_ReadData[11]</Signal>
-                <Signal>tm_ReadData[10]</Signal>
-                <Signal>tm_ReadData[9]</Signal>
-                <Signal>tm_ReadData[8]</Signal>
-                <Signal>tm_ReadData[7]</Signal>
-                <Signal>tm_ReadData[6]</Signal>
-                <Signal>tm_ReadData[5]</Signal>
-                <Signal>tm_ReadData[4]</Signal>
-                <Signal>tm_ReadData[3]</Signal>
-                <Signal>tm_ReadData[2]</Signal>
-                <Signal>tm_ReadData[1]</Signal>
-                <Signal>tm_ReadData[0]</Signal>
-            </Bus>
             <Bus capture_enable="true" name="riscv/ReadDataW[31:0]">
                 <Signal>riscv/ReadDataW[31]</Signal>
                 <Signal>riscv/ReadDataW[30]</Signal>
@@ -504,131 +470,6 @@
                 <Signal>riscv/RdW[1]</Signal>
                 <Signal>riscv/RdW[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="mem_mux/match[2:0]">
-                <Signal>mem_mux/match[2]</Signal>
-                <Signal>mem_mux/match[1]</Signal>
-                <Signal>mem_mux/match[0]</Signal>
-            </Bus>
-            <Bus capture_enable="true" name="mem_mux/ssel[1:0]">
-                <Signal>mem_mux/ssel[1]</Signal>
-                <Signal>mem_mux/ssel[0]</Signal>
-            </Bus>
-            <Bus capture_enable="true" name="mem_mux/sWrite[11:0]">
-                <Signal>mem_mux/sWrite[11]</Signal>
-                <Signal>mem_mux/sWrite[10]</Signal>
-                <Signal>mem_mux/sWrite[9]</Signal>
-                <Signal>mem_mux/sWrite[8]</Signal>
-                <Signal>mem_mux/sWrite[7]</Signal>
-                <Signal>mem_mux/sWrite[6]</Signal>
-                <Signal>mem_mux/sWrite[5]</Signal>
-                <Signal>mem_mux/sWrite[4]</Signal>
-                <Signal>mem_mux/sWrite[3]</Signal>
-                <Signal>mem_mux/sWrite[2]</Signal>
-                <Signal>mem_mux/sWrite[1]</Signal>
-                <Signal>mem_mux/sWrite[0]</Signal>
-            </Bus>
-            <Bus capture_enable="false" name="mem_mux/sRData[95:0]">
-                <Signal>mem_mux/sRData[95]</Signal>
-                <Signal>mem_mux/sRData[94]</Signal>
-                <Signal>mem_mux/sRData[93]</Signal>
-                <Signal>mem_mux/sRData[92]</Signal>
-                <Signal>mem_mux/sRData[91]</Signal>
-                <Signal>mem_mux/sRData[90]</Signal>
-                <Signal>mem_mux/sRData[89]</Signal>
-                <Signal>mem_mux/sRData[88]</Signal>
-                <Signal>mem_mux/sRData[87]</Signal>
-                <Signal>mem_mux/sRData[86]</Signal>
-                <Signal>mem_mux/sRData[85]</Signal>
-                <Signal>mem_mux/sRData[84]</Signal>
-                <Signal>mem_mux/sRData[83]</Signal>
-                <Signal>mem_mux/sRData[82]</Signal>
-                <Signal>mem_mux/sRData[81]</Signal>
-                <Signal>mem_mux/sRData[80]</Signal>
-                <Signal>mem_mux/sRData[79]</Signal>
-                <Signal>mem_mux/sRData[78]</Signal>
-                <Signal>mem_mux/sRData[77]</Signal>
-                <Signal>mem_mux/sRData[76]</Signal>
-                <Signal>mem_mux/sRData[75]</Signal>
-                <Signal>mem_mux/sRData[74]</Signal>
-                <Signal>mem_mux/sRData[73]</Signal>
-                <Signal>mem_mux/sRData[72]</Signal>
-                <Signal>mem_mux/sRData[71]</Signal>
-                <Signal>mem_mux/sRData[70]</Signal>
-                <Signal>mem_mux/sRData[69]</Signal>
-                <Signal>mem_mux/sRData[68]</Signal>
-                <Signal>mem_mux/sRData[67]</Signal>
-                <Signal>mem_mux/sRData[66]</Signal>
-                <Signal>mem_mux/sRData[65]</Signal>
-                <Signal>mem_mux/sRData[64]</Signal>
-                <Signal>mem_mux/sRData[63]</Signal>
-                <Signal>mem_mux/sRData[62]</Signal>
-                <Signal>mem_mux/sRData[61]</Signal>
-                <Signal>mem_mux/sRData[60]</Signal>
-                <Signal>mem_mux/sRData[59]</Signal>
-                <Signal>mem_mux/sRData[58]</Signal>
-                <Signal>mem_mux/sRData[57]</Signal>
-                <Signal>mem_mux/sRData[56]</Signal>
-                <Signal>mem_mux/sRData[55]</Signal>
-                <Signal>mem_mux/sRData[54]</Signal>
-                <Signal>mem_mux/sRData[53]</Signal>
-                <Signal>mem_mux/sRData[52]</Signal>
-                <Signal>mem_mux/sRData[51]</Signal>
-                <Signal>mem_mux/sRData[50]</Signal>
-                <Signal>mem_mux/sRData[49]</Signal>
-                <Signal>mem_mux/sRData[48]</Signal>
-                <Signal>mem_mux/sRData[47]</Signal>
-                <Signal>mem_mux/sRData[46]</Signal>
-                <Signal>mem_mux/sRData[45]</Signal>
-                <Signal>mem_mux/sRData[44]</Signal>
-                <Signal>mem_mux/sRData[43]</Signal>
-                <Signal>mem_mux/sRData[42]</Signal>
-                <Signal>mem_mux/sRData[41]</Signal>
-                <Signal>mem_mux/sRData[40]</Signal>
-                <Signal>mem_mux/sRData[39]</Signal>
-                <Signal>mem_mux/sRData[38]</Signal>
-                <Signal>mem_mux/sRData[37]</Signal>
-                <Signal>mem_mux/sRData[36]</Signal>
-                <Signal>mem_mux/sRData[35]</Signal>
-                <Signal>mem_mux/sRData[34]</Signal>
-                <Signal>mem_mux/sRData[33]</Signal>
-                <Signal>mem_mux/sRData[32]</Signal>
-                <Signal>mem_mux/sRData[31]</Signal>
-                <Signal>mem_mux/sRData[30]</Signal>
-                <Signal>mem_mux/sRData[29]</Signal>
-                <Signal>mem_mux/sRData[28]</Signal>
-                <Signal>mem_mux/sRData[27]</Signal>
-                <Signal>mem_mux/sRData[26]</Signal>
-                <Signal>mem_mux/sRData[25]</Signal>
-                <Signal>mem_mux/sRData[24]</Signal>
-                <Signal>mem_mux/sRData[23]</Signal>
-                <Signal>mem_mux/sRData[22]</Signal>
-                <Signal>mem_mux/sRData[21]</Signal>
-                <Signal>mem_mux/sRData[20]</Signal>
-                <Signal>mem_mux/sRData[19]</Signal>
-                <Signal>mem_mux/sRData[18]</Signal>
-                <Signal>mem_mux/sRData[17]</Signal>
-                <Signal>mem_mux/sRData[16]</Signal>
-                <Signal>mem_mux/sRData[15]</Signal>
-                <Signal>mem_mux/sRData[14]</Signal>
-                <Signal>mem_mux/sRData[13]</Signal>
-                <Signal>mem_mux/sRData[12]</Signal>
-                <Signal>mem_mux/sRData[11]</Signal>
-                <Signal>mem_mux/sRData[10]</Signal>
-                <Signal>mem_mux/sRData[9]</Signal>
-                <Signal>mem_mux/sRData[8]</Signal>
-                <Signal>mem_mux/sRData[7]</Signal>
-                <Signal>mem_mux/sRData[6]</Signal>
-                <Signal>mem_mux/sRData[5]</Signal>
-                <Signal>mem_mux/sRData[4]</Signal>
-                <Signal>mem_mux/sRData[3]</Signal>
-                <Signal>mem_mux/sRData[2]</Signal>
-                <Signal>mem_mux/sRData[1]</Signal>
-                <Signal>mem_mux/sRData[0]</Signal>
-            </Bus>
-            <Bus capture_enable="false" name="mem_mux/ssel_r[1:0]">
-                <Signal>mem_mux/ssel_r[1]</Signal>
-                <Signal>mem_mux/ssel_r[0]</Signal>
-            </Bus>
         </SignalList>
         <Triggers>
             <Trigger index="0">
@@ -674,20 +515,7 @@
                     </Bus>
                 </SignalList>
             </Trigger>
-            <Trigger index="2">
-                <SignalList>
-                    <Bus restorename="tm1638/keys[7:0]">
-                        <Signal>tm1638/keys[7]</Signal>
-                        <Signal>tm1638/keys[6]</Signal>
-                        <Signal>tm1638/keys[5]</Signal>
-                        <Signal>tm1638/keys[4]</Signal>
-                        <Signal>tm1638/keys[3]</Signal>
-                        <Signal>tm1638/keys[2]</Signal>
-                        <Signal>tm1638/keys[1]</Signal>
-                        <Signal>tm1638/keys[0]</Signal>
-                    </Bus>
-                </SignalList>
-            </Trigger>
+            <Trigger index="2"/>
             <Trigger index="3"/>
             <Trigger index="4"/>
             <Trigger index="5"/>
@@ -705,7 +533,7 @@
         <MatchUnits>
             <MatchUnit index="0" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="0" value1="0" trigger="0"/>
             <MatchUnit index="1" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="00000000000000000000000001001100" value1="00000000000000000000000000000000" trigger="1"/>
-            <MatchUnit index="2" enabled="1" match_type="2" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="2" value0="00000000" value1="00000000" trigger="2"/>
+            <MatchUnit index="2" enabled="0" match_type="2" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="2" value0="00000000" value1="00000000" trigger="2"/>
             <MatchUnit index="3" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
             <MatchUnit index="4" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
             <MatchUnit index="5" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
@@ -724,5 +552,5 @@
             <Expression>M1</Expression>
         </Expressions>
     </AoCore>
-    <GAO_ID>0001010010010110</GAO_ID>
+    <GAO_ID>1010000010001010</GAO_ID>
 </GAO_CONFIG>
