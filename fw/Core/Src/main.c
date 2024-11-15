@@ -1,14 +1,6 @@
 #include "main.h"
-
-#define GPIO_OEs    0x11000000
-#define GPIO_OUTs   0x11000004
-#define GPIO_INs    0x11000008
-#define TM_SEGMETs  0x12000000
-#define TM_LEDs		0x12000004
-#define TM_KEYs		0x12000008
-
-#define WRITE_REG(dir, value) { (*(volatile unsigned *)dir) = (value); }
-#define READ_GPIO(dir) (*(volatile unsigned *)dir)
+#include "gpio.h"
+#include "tm1638.h"
 
 /*Прототипы функций*/
 unsigned int dig_transform(unsigned int digit);
@@ -19,20 +11,23 @@ unsigned int keys = 0;
 unsigned int tn_keys = 0;
 
 int main(void) {
+	//#1 Инициализация периферийных устройства
+	GPIO_Init();
+	TM1638_Init();
 	c = 1;
-	WRITE_REG(GPIO_OEs,  0xFFFFFFFF); //Все порты на выход
+	GPIO_PinsMode(0xFFFFFFFF); //Все порты на выход
 	while(1) {
 		c = c + 1;
 		//#Светодиоды tangnano
-		WRITE_REG(GPIO_OUTs,  ~c);
-		//tn_keys = READ_GPIO(GPIO_INs);
+		GPIO_WritePins(~c);
+
 		//#Светодиоды tm1638
-		keys = READ_GPIO(TM_KEYs);
-		WRITE_REG(TM_LEDs, keys);
-		//WRITE_REG(TM_LEDs,  globalvar);
+		keys = TM1638_ReadKeys();
+		TM1638_WriteLeds(keys);
+
 		//#Сегментный индикатор tm1638
-		//WRITE_REG(TM_SEGMETs, c);
-		WRITE_REG(TM_SEGMETs, dig_transform(c));
+		//TM1638_WriteSegs(c);
+		TM1638_WriteSegs(dig_transform(c));
 		for(int i = 0; i<100000; i++);
 	}
 }
