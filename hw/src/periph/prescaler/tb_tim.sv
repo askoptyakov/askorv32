@@ -1,20 +1,38 @@
 
 module tb_tim;
 
-    //localparam clk_mhz = 1,
     //------------------------------------------------------------------------
     logic       clk;
     logic       rst;
-    logic divided_clk;
-    logic[31:0] presc;
+    logic       enable;
+    logic[15:0] prescaler;
+
+    logic[1:0]  counter_mode;
+    logic[15:0] counter_period;
+    logic[15:0] pulse;
+    logic out_1;
+    logic out_2;
     //------------------------------------------------------------------------
     // Экземпляр тестируемого модуля
-    div_clk div_tim 
+/*    
+    div_clk div_clk 
     (
         .clk      ( clk ),
         .rst      ( rst ),
-        .prescaler(presc),
-        .clk_pre  (divided_clk)     
+        .prescaler(prescaler),
+        .clk_pre  (enable)     
+    );
+*/
+    tim tim
+    (
+      .clk(clk),
+      .rst(rst),
+      .prescaler(prescaler),
+      .counter_mode(counter_mode),
+      .counter_period(counter_period),
+      .pulse(pulse),
+      .out_p_1(out_1),
+      .out_n_1(out_2)
     );
 
     //------------------------------------------------------------------------
@@ -45,10 +63,10 @@ module tb_tim;
 
       $dumpvars;
     `endif
-    presc <= 16;
+    counter_mode <= 0;
+    counter_period <= 4;
+    prescaler <= 3;
     #1000; // Длительность теста
-    presc <= 8;
-    #1000;
     $finish;
   end
 
