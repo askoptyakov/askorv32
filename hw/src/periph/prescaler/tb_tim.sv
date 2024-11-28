@@ -63,10 +63,22 @@ module tb_tim;
 
       $dumpvars;
     `endif
-    counter_mode <= 0;
-    counter_period <= 4;
-    prescaler <= 3;
+    prescaler <= 2;
+
+    counter_mode <= 2'b00;
+    counter_period <= 10;
+    pulse <= 5;
     #1000; // Длительность теста
+    rst <= 1'b1;
+    counter_mode <= 2'b01;
+    #5
+    rst <= 1'b0;
+    #1000
+    rst <= 1'b1;
+    counter_mode <= 2'b10;
+    #5
+    rst <= 1'b0;
+    #1000
     $finish;
   end
 
