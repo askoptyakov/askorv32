@@ -27,6 +27,7 @@ module tim (
 	input logic[1:0] counter_mode,
 	input logic[15:0] counter_period,
 	input logic[15:0] pulse,
+   input logic auto_reload_preload,
 
 	output logic out_p_1,
 	output logic out_n_1,
@@ -34,38 +35,41 @@ module tim (
 );
 
 	logic[15:0] counter_tim = 0;
+   logic[15:0] counter_period_tim = 0; // теневой(основной) регистр переполнени
 	logic enable;
 
-    div_clk div_tim 
+   div_clk div_tim 
     (
         .clk      ( clk ),
         .rst      ( rst ),
         .prescaler( prescaler ),
         .clk_pre  ( enable )     
     );
-
+   
    logic load;                    //переполнение  
    logic direction;               // 0 - вверх, 1 - вниз
-   wire up_down = counter_mode;   // 0 - счёт вверх, 1 - счёт вниз
  
    always_ff @(posedge clk or posedge rst) begin
       if (rst) begin
          counter_tim <= 0;
-         direction <= 0; // Начинаем с счета вверх
+         direction <= 0; // Начинаем с счета ввер
+         counter_period_tim <= counter_period;
       end 
       else if (enable) begin
+         if(~auto_reload_preload) counter_period_tim <= counter_period;
+         else if(load) counter_period_tim <= counter_period;
          case (counter_mode)
             2'b00: begin // Счет вверх
                if (load) counter_tim <= 0;
                else counter_tim <= counter_tim + 1;
             end
             2'b01: begin // Счет вниз
-               if (load) counter_tim <= counter_period;
+               if (load) counter_tim <= counter_period_tim;
                else counter_tim <= counter_tim - 1;
             end
             2'b10: begin // Счет вверх-вниз
                if (direction == 0) begin // Счет вверх
-                  if (counter_tim == counter_period) begin
+                  if (counter_tim == counter_period_tim) begin
                      direction <= 1; // Меняем направление на вниз
                      counter_tim <= counter_tim - 1;
                   end 
@@ -83,7 +87,7 @@ module tim (
       end
    end
 
-assign load = (counter_mode == 2'b00 && counter_tim == counter_period) ||
+assign load = (counter_mode == 2'b00 && counter_tim == counter_period_tim) ||
               (counter_mode == 2'b01 && counter_tim == 0);
 
 assign out_counter = counter_tim;

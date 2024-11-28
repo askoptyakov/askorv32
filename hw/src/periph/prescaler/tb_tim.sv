@@ -6,6 +6,7 @@ module tb_tim;
     logic       rst;
     logic       enable;
     logic[15:0] prescaler;
+    logic       auto_reload_preload;
 
     logic[1:0]  counter_mode;
     logic[15:0] counter_period;
@@ -31,6 +32,7 @@ module tb_tim;
       .counter_mode(counter_mode),
       .counter_period(counter_period),
       .pulse(pulse),
+      .auto_reload_preload(auto_reload_preload),
       .out_p_1(out_1),
       .out_n_1(out_2)
     );
@@ -65,6 +67,7 @@ module tb_tim;
     `endif
     prescaler <= 2;
 
+    auto_reload_preload <= 0;
     counter_mode <= 2'b00;
     counter_period <= 10;
     pulse <= 5;
@@ -76,9 +79,12 @@ module tb_tim;
     #1000
     rst <= 1'b1;
     counter_mode <= 2'b10;
+    auto_reload_preload <= 0;
     #5
     rst <= 1'b0;
-    #1000
+    #500
+    counter_period <= 15;
+    #500
     $finish;
   end
 
