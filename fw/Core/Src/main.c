@@ -2,6 +2,15 @@
 #include "gpio.h"
 #include "tm1638.h"
 
+#define STIM_Prescaler   	0x13000000
+#define STIM_CounterMode 	0x13000004
+#define STIM_CounterPeriod  0x13000008
+#define STIM_Pulse			0x1300000c
+#define STIM_OutCount	  	0x13000010
+
+#define READ_STIM(dir) (*(volatile unsigned *)dir)
+#define WRITE_STIM(dir, value) { (*(volatile unsigned *)dir) = (value); }
+
 /*Прототипы функций*/
 unsigned int dig_transform(unsigned int digit);
 
@@ -16,19 +25,32 @@ int main(void) {
 	TM1638_Init();
 	c = 1;
 	GPIO_PinsMode(0xFFFFFFFF); //Все порты на выход
+
+	//Инициализация переменных простого таймера
+	unsigned int count = 0;
+	unsigned int prescaler = 2;
+	WRITE_STIM(STIM_Prescaler, prescaler);
+	WRITE_STIM(STIM_CounterMode, 0);
+	WRITE_STIM(STIM_CounterPeriod, 100);
+
 	while(1) {
-		c = c + 1;
+		//#Считывание значения таймера
+		count = READ_STIM(STIM_OutCount);
+
+		//c = c + 1;
 		//#Светодиоды tangnano
-		GPIO_WritePins(~c);
+		//GPIO_WritePins(~c);
+		GPIO_WritePins(count);
 
 		//#Светодиоды tm1638
-		keys = TM1638_ReadKeys();
-		TM1638_WriteLeds(keys);
+		//keys = TM1638_ReadKeys();
+		//TM1638_WriteLeds(keys);
 
 		//#Сегментный индикатор tm1638
 		//TM1638_WriteSegs(c);
-		TM1638_WriteSegs(dig_transform(c));
-		for(int i = 0; i<100000; i++);
+		//TM1638_WriteSegs(dig_transform(c));
+
+		//for(int i = 0; i<100000; i++);
 	}
 }
 
