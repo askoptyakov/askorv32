@@ -88,14 +88,14 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     //#4 Подключаем память данных и периферийные модули
     
     //-0- Основной мультиплексор
-    logic [ 3:0] mem_Write, leds_Write, tm_Write;
-    logic [31:0] mem_Addr, leds_Addr, tm_Addr;
-    logic [31:0] mem_WriteData, leds_WriteData, tm_WriteData;
-    logic [31:0] mem_ReadData, leds_ReadData, tm_ReadData;
+    logic [ 3:0] mem_Write, leds_Write, tm_Write, tim_Write;
+    logic [31:0] mem_Addr, leds_Addr, tm_Addr, tim_Addr;
+    logic [31:0] mem_WriteData, leds_WriteData, tm_WriteData, tim_WriteData;
+    logic [31:0] mem_ReadData, leds_ReadData, tm_ReadData, tim_ReadData;
 
-    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(3),
-              .MATCH_ADDR ({32'h10000000, 32'h11000000, 32'h12000000}),
-              .MATCH_MASK ({32'hff000000, 32'hff000000, 32'hff000000}))
+    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(4),
+              .MATCH_ADDR ({32'h10000000, 32'h11000000, 32'h12000000, 32'h13000000}),
+              .MATCH_MASK ({32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000}))
             memmux
              (.clk(clk_dmem), .rst(rst_sync),
               // Интерфейс мастера
@@ -103,10 +103,10 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
               .mAddr (dmem_Addr), .mWData(dmem_WriteData), 
               .mRData(dmem_ReadData),
               // Интерфейс подчинённых
-              .sWrite({mem_Write,    leds_Write,    tm_Write}),
-              .sAddr ({mem_Addr,     leds_Addr,     tm_Addr}),
-              .sWData({mem_WriteData,leds_WriteData,tm_WriteData}),
-              .sRData({mem_ReadData, leds_ReadData, tm_ReadData}));
+              .sWrite({mem_Write,    leds_Write,    tm_Write,       tim_Write}),
+              .sAddr ({mem_Addr,     leds_Addr,     tm_Addr,        tim_Addr}),
+              .sWData({mem_WriteData,leds_WriteData,tm_WriteData,   tim_WriteData}),
+              .sRData({mem_ReadData, leds_ReadData, tm_ReadData,    tim_ReadData}));
 
     //-1- Память данных
     mem #(DMEM_TYPE, SYNTH_DMEM_SIZE, BSRAM_DMEM_SIZE, DMEM_INIT_FILE) dmem
@@ -126,4 +126,11 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
                 (.clk(clk_dmem), .rst(rst_sync),
                  .Write(tm_Write), .Addr(tm_Addr), .WData(tm_WriteData), .RData(tm_ReadData),
                  .tm_dio(GPIO[0]), .tm_clk(GPIO[1]), .tm_stb(GPIO[2]));
+
+    //-4- Модуль простого таймера
+    logic [31:0] empty_tim_port;
+    stim_top #(DMEM_TYPE) stim
+                (.clk(clk_dmem), .rst(rst_sync),
+                 .Write(tim_Write), .Addr(tim_Addr), .WData(tim_WriteData), .RData(tim_ReadData),
+                 .tim_out(empty_tim_port[31:0]));
 endmodule

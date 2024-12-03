@@ -71,7 +71,7 @@ module tb_tim;
     counter_mode <= 2'b00;
     counter_period <= 10;
     pulse <= 5;
-    #1000; // Длительность теста
+    #1010; // Длительность теста
     rst <= 1'b1;
     counter_mode <= 2'b01;
     #5
