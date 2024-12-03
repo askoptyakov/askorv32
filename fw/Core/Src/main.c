@@ -28,7 +28,7 @@ int main(void) {
 
 	//Инициализация переменных простого таймера
 	unsigned int count = 0;
-	unsigned int prescaler = 2;
+	unsigned int prescaler = 60000;
 	WRITE_STIM(STIM_Prescaler, prescaler);
 	WRITE_STIM(STIM_CounterMode, 0);
 	WRITE_STIM(STIM_CounterPeriod, 100);
@@ -40,15 +40,15 @@ int main(void) {
 		//c = c + 1;
 		//#Светодиоды tangnano
 		//GPIO_WritePins(~c);
-		GPIO_WritePins(count);
+		//GPIO_WritePins(count);
 
 		//#Светодиоды tm1638
 		//keys = TM1638_ReadKeys();
 		//TM1638_WriteLeds(keys);
 
 		//#Сегментный индикатор tm1638
-		//TM1638_WriteSegs(c);
-		//TM1638_WriteSegs(dig_transform(c));
+		TM1638_WriteSegs(count);
+		TM1638_WriteSegs(dig_transform(count));
 
 		//for(int i = 0; i<100000; i++);
 	}

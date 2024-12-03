@@ -49,7 +49,7 @@ module stim_top
     generate if (MEMORY_TYPE) begin   //#1 - Память BSRAM
         always_ff @(posedge clk)
             case (Addr[4:2])
-                0 : RData <= {16'd0, tim_presclaer[15:0]};
+                0 : RData <= tim_presclaer[31:0];
                 1 : RData <= {16'd0, tim_counter_mode[15:0]};
                 2 : RData <= {16'd0, tim_counter_period[15:0]};
                 3 : RData <= {16'd0, tim_pulse[15:0]};
@@ -59,7 +59,7 @@ module stim_top
     end else begin                    //#0 - Синтезированная память
         always_comb
             case (Addr[4:2])
-                0 : RData <= {16'd0, tim_presclaer[15:0]};
+                0 : RData <= tim_presclaer[31:0];
                 1 : RData <= {16'd0, tim_counter_mode[15:0]};
                 2 : RData <= {16'd0, tim_counter_period[15:0]};
                 3 : RData <= {16'd0, tim_pulse[15:0]};
@@ -69,9 +69,14 @@ module stim_top
     end
     endgenerate
 
+    wire auto_reload_preload = 1'b1; 
+    reg out_p_1,out_n_1;
+
     simple_tim simple_tim  (.clk(clk), .rst(rst),
-                            .prescaler(tim_presclaer), .counter_mode(tim_counter_mode), .counter_period(tim_counter_period),
-                            .pulse(tim_pulse), .out_counter(tim_counter));
+                            .prescaler(tim_presclaer[31:0]), .counter_mode(tim_counter_mode[1:0]), .counter_period(tim_counter_period[15:0]),
+                            .pulse(tim_pulse[15:0]),         .auto_reload_preload(auto_reload_preload), 
+                            .out_p_1(out_p_1),         .out_n_1(out_n_1), .out_counter(tim_counter[15:0]));
+    assign tim_out = out_p_1;
 
 endmodule
 
@@ -79,7 +84,7 @@ endmodule
 module simple_tim (
 	input logic clk,
 	input logic rst,
-	input logic[15:0] prescaler,
+	input logic[31:0] prescaler,
 	input logic[1:0] counter_mode,
 	input logic[15:0] counter_period,
 	input logic[15:0] pulse,
@@ -90,8 +95,8 @@ module simple_tim (
 	output logic[15:0] out_counter
 );
 
-	logic[15:0] counter_tim = 0;
-    logic[15:0] counter_period_tim = 0; // теневой(основной) регистр переполнения
+	logic[15:0] counter_tim = '0;
+    //logic[15:0] counter_period_tim; // теневой(основной) регистр переполнения
 	logic enable;
 
    div_clk div_tim 
@@ -102,70 +107,47 @@ module simple_tim (
         .clk_pre  ( enable )     
     );
    
-   logic load;                    //переполнение  
-   logic direction;               // 0 - вверх, 1 - вниз
+   //logic load;                    //переполнение  
+   //logic direction;               // 0 - вверх, 1 - вниз
  
-   always_ff @(posedge clk or posedge rst) begin
-      if (rst) begin
-         counter_tim <= 0;
-         direction <= 0; // Начинаем с счета вверх
-         counter_period_tim <= counter_period;
-      end 
-      else if (enable) begin
-         if(~auto_reload_preload) counter_period_tim <= counter_period;
-         else if(load) counter_period_tim <= counter_period;
-         case (counter_mode)
-            2'b00: begin // Счет вверх
-               if (load) counter_tim <= 0;
-               else counter_tim <= counter_tim + 1;
-            end
-            2'b01: begin // Счет вниз
-               if (load) counter_tim <= counter_period_tim;
-               else counter_tim <= counter_tim - 1;
-            end
-            2'b10: begin // Счет вверх-вниз
-               if (direction == 0) begin // Счет вверх
-                  if (counter_tim == counter_period_tim) begin
-                     direction <= 1; // Меняем направление на вниз
-                     counter_tim <= counter_tim - 1;
-                  end 
-                  else counter_tim <= counter_tim + 1;
-               end
-               else begin // Счет вниз
-                  if (counter_tim == 0) begin
-                     direction <= 0; // Меняем направление на вверх
-                     counter_tim <= counter_tim + 1;
-                  end 
-                  else counter_tim <= counter_tim - 1;
-               end
-            end
-         endcase
-      end
-   end
+	always @(posedge clk or posedge rst)
+		if (rst) begin
+			counter_tim <= '0;
+		end
+		else if (enable) begin
+			if(counter_mode == 0) begin
+				if (counter_period == counter_tim) counter_tim <= '0;
+				else counter_tim <= counter_tim + '1;
+			end
+		end
 
-assign load = (counter_mode == 2'b00 && counter_tim == counter_period_tim) ||
-              (counter_mode == 2'b01 && counter_tim == 0);
+	assign out_p_1 = (counter_tim == counter_period);
+	assign out_n_1 = ~out_p_1;
+    assign out_counter = counter_tim;
 
-assign out_counter = counter_tim;
-assign out_n_1 = counter_tim >= pulse;
-assign out_p_1 = ~out_n_1;
+//assign load = (counter_mode == 2'b00 && counter_tim == counter_period_tim) ||
+            //  (counter_mode == 2'b01 && counter_tim == 0);
+
+//assign out_counter = counter_tim;
+//assign out_n_1 = counter_tim >= pulse;
+//assign out_p_1 = ~out_n_1;
 
 endmodule
 
 module div_clk (
 input logic clk,     // Входной тактовый сигнал
 input logic rst,    // Сигнал сброса
-input logic[15:0] prescaler, // Коэффициент деления
+input logic[31:0] prescaler, // Коэффициент деления
 output logic clk_pre // Выходной деленный тактовый сигнал
 );
 
-   logic[15:0] counter = 0;
+   logic[31:0] counter = '0;
 
 	always @(posedge clk or posedge rst)
-		if (rst) counter <= 0;
+		if (rst) counter <= '0;
 		else begin
-			if (prescaler == counter) counter <= 0;
-			else counter <= counter + 1;
+			if (prescaler == counter) counter <= '0;
+			else counter <= counter + '1;
 		end
 
 	assign clk_pre = (counter == prescaler);

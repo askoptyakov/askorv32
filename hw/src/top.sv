@@ -132,5 +132,5 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     stim_top #(DMEM_TYPE) stim
                 (.clk(clk_dmem), .rst(rst_sync),
                  .Write(tim_Write), .Addr(tim_Addr), .WData(tim_WriteData), .RData(tim_ReadData),
-                 .tim_out(empty_tim_port[31:0]));
+                 .tim_out(empty_tim_port[0]));
 endmodule
