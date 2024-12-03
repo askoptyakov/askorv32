@@ -10,6 +10,7 @@
         <File path="src/mem.sv" type="file.verilog" enable="1"/>
         <File path="src/periph/gpio.sv" type="file.verilog" enable="1"/>
         <File path="src/periph/mux.sv" type="file.verilog" enable="1"/>
+        <File path="src/periph/simple_timer/tim.sv" type="file.verilog" enable="1"/>
         <File path="src/periph/tm1638.sv" type="file.verilog" enable="1"/>
         <File path="src/top.sv" type="file.verilog" enable="1"/>
         <File path="src/riscv.cst" type="file.cst" enable="1"/>
