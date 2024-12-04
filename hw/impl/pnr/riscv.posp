@@ -5,25 +5,18 @@
 //Part Number: GW1NR-LV9QN88PC6/I5
 //Device: GW1NR-9
 //Device Version: C
-//Created Time: Tue Dec  3 14:13:05 2024
+//Created Time: Wed Dec  4 15:42:00 2024
 
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_0_s PLACE_BSRAM_R10[2]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_2_s PLACE_BSRAM_R10[3]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_3_s PLACE_BSRAM_R10[1]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_5_s PLACE_BSRAM_R10[4]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_6_s PLACE_BSRAM_R10[0]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_7_s PLACE_BSRAM_R10[5]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_10_s PLACE_BSRAM_R10[6]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_1_s PLACE_BSRAM_R28[3]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_9_s PLACE_BSRAM_R10[7]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_11_s PLACE_BSRAM_R28[2]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_8_s PLACE_BSRAM_R28[4]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_4_s PLACE_BSRAM_R10[8]
+gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_0_s PLACE_BSRAM_R10[1]
+gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_1_s PLACE_BSRAM_R10[2]
+gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_2_s PLACE_BSRAM_R10[4]
+gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_4_s PLACE_BSRAM_R10[3]
+gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_3_s PLACE_BSRAM_R10[5]
+imem/cluster[0].sector[1].bsram PLACE_BSRAM_R10[6]
 imem/cluster[0].sector[3].bsram PLACE_BSRAM_R28[5]
-imem/cluster[0].sector[1].bsram PLACE_BSRAM_R28[6]
-imem/cluster[0].sector[2].bsram PLACE_BSRAM_R28[1]
-imem/cluster[0].sector[0].bsram PLACE_BSRAM_R28[7]
-dmem/cluster[0].sector[3].bsram PLACE_BSRAM_R28[8]
-dmem/cluster[0].sector[2].bsram PLACE_BSRAM_R28[9]
-dmem/cluster[0].sector[0].bsram PLACE_BSRAM_R28[10]
-dmem/cluster[0].sector[1].bsram PLACE_BSRAM_R10[9]
+imem/cluster[0].sector[2].bsram PLACE_BSRAM_R28[4]
+imem/cluster[0].sector[0].bsram PLACE_BSRAM_R28[6]
+dmem/cluster[0].sector[3].bsram PLACE_BSRAM_R28[3]
+dmem/cluster[0].sector[2].bsram PLACE_BSRAM_R28[7]
+dmem/cluster[0].sector[1].bsram PLACE_BSRAM_R28[2]
+dmem/cluster[0].sector[0].bsram PLACE_BSRAM_R28[8]

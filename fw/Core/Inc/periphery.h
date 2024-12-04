@@ -22,6 +22,7 @@
 /* Карта памяти периферийных устройств */
 #define   GPIO_BASE		(0x11000000U)
 #define TM1638_BASE		(0x12000000U)
+#define   STIM_BASE		(0x13000000U)
 
 /* Объявление структы регистров */
 typedef struct
@@ -37,9 +38,19 @@ typedef struct
   __IO uint32_t LEDS;   //0x04: Регистр данных на светодиодах вн. платы
   __IO uint32_t KEYS;  	//0x08: Регистр данных состояния кнопок вн. платы
 } TM1638_TypeDef;
-
+/*
+typedef struct
+{
+  __IO uint32_t SEGS;  	//0x00:
+  __IO uint32_t LEDS;   //0x04:
+  __IO uint32_t KEYS;  	//0x08:
+  __IO uint32_t LEDS;   //0x04:
+  __IO uint32_t KEYS;  	//0x08:
+} STIM_TypeDef;
+*/
 /* Объявление указатели на структуры данных */
 #define GPIO 	((GPIO_TypeDef*) 	GPIO_BASE)
 #define TM1638 	((TM1638_TypeDef*) 	TM1638_BASE)
+#define STIM 	((STIM_TypeDef*) 	STIM_BASE)
 
 #endif /* __PERIPHERY_H */

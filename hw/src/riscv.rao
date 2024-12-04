@@ -4,7 +4,183 @@
     <Mode>Standard</Mode>
     <AoCore index="0" sample_clock="clk_core" trig_type="0" storage_depth="16" window_num="1" capture_amount="16" implementation="0" trigger_pos="0" module_name="top" force_trigger_by_falling_edge="false" capture_init_data_enabled="false">
         <SignalList>
-            <Bus capture_enable="true" name="riscv/PCF[31:0]">
+            <Bus capture_enable="true" name="stim/simple_tim/prescaler[31:0]">
+                <Signal>stim/simple_tim/prescaler[31]</Signal>
+                <Signal>stim/simple_tim/prescaler[30]</Signal>
+                <Signal>stim/simple_tim/prescaler[29]</Signal>
+                <Signal>stim/simple_tim/prescaler[28]</Signal>
+                <Signal>stim/simple_tim/prescaler[27]</Signal>
+                <Signal>stim/simple_tim/prescaler[26]</Signal>
+                <Signal>stim/simple_tim/prescaler[25]</Signal>
+                <Signal>stim/simple_tim/prescaler[24]</Signal>
+                <Signal>stim/simple_tim/prescaler[23]</Signal>
+                <Signal>stim/simple_tim/prescaler[22]</Signal>
+                <Signal>stim/simple_tim/prescaler[21]</Signal>
+                <Signal>stim/simple_tim/prescaler[20]</Signal>
+                <Signal>stim/simple_tim/prescaler[19]</Signal>
+                <Signal>stim/simple_tim/prescaler[18]</Signal>
+                <Signal>stim/simple_tim/prescaler[17]</Signal>
+                <Signal>stim/simple_tim/prescaler[16]</Signal>
+                <Signal>stim/simple_tim/prescaler[15]</Signal>
+                <Signal>stim/simple_tim/prescaler[14]</Signal>
+                <Signal>stim/simple_tim/prescaler[13]</Signal>
+                <Signal>stim/simple_tim/prescaler[12]</Signal>
+                <Signal>stim/simple_tim/prescaler[11]</Signal>
+                <Signal>stim/simple_tim/prescaler[10]</Signal>
+                <Signal>stim/simple_tim/prescaler[9]</Signal>
+                <Signal>stim/simple_tim/prescaler[8]</Signal>
+                <Signal>stim/simple_tim/prescaler[7]</Signal>
+                <Signal>stim/simple_tim/prescaler[6]</Signal>
+                <Signal>stim/simple_tim/prescaler[5]</Signal>
+                <Signal>stim/simple_tim/prescaler[4]</Signal>
+                <Signal>stim/simple_tim/prescaler[3]</Signal>
+                <Signal>stim/simple_tim/prescaler[2]</Signal>
+                <Signal>stim/simple_tim/prescaler[1]</Signal>
+                <Signal>stim/simple_tim/prescaler[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="stim/simple_tim/counter_mode[1:0]">
+                <Signal>stim/simple_tim/counter_mode[1]</Signal>
+                <Signal>stim/simple_tim/counter_mode[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="stim/simple_tim/counter_period[31:0]">
+                <Signal>stim/simple_tim/counter_period[31]</Signal>
+                <Signal>stim/simple_tim/counter_period[30]</Signal>
+                <Signal>stim/simple_tim/counter_period[29]</Signal>
+                <Signal>stim/simple_tim/counter_period[28]</Signal>
+                <Signal>stim/simple_tim/counter_period[27]</Signal>
+                <Signal>stim/simple_tim/counter_period[26]</Signal>
+                <Signal>stim/simple_tim/counter_period[25]</Signal>
+                <Signal>stim/simple_tim/counter_period[24]</Signal>
+                <Signal>stim/simple_tim/counter_period[23]</Signal>
+                <Signal>stim/simple_tim/counter_period[22]</Signal>
+                <Signal>stim/simple_tim/counter_period[21]</Signal>
+                <Signal>stim/simple_tim/counter_period[20]</Signal>
+                <Signal>stim/simple_tim/counter_period[19]</Signal>
+                <Signal>stim/simple_tim/counter_period[18]</Signal>
+                <Signal>stim/simple_tim/counter_period[17]</Signal>
+                <Signal>stim/simple_tim/counter_period[16]</Signal>
+                <Signal>stim/simple_tim/counter_period[15]</Signal>
+                <Signal>stim/simple_tim/counter_period[14]</Signal>
+                <Signal>stim/simple_tim/counter_period[13]</Signal>
+                <Signal>stim/simple_tim/counter_period[12]</Signal>
+                <Signal>stim/simple_tim/counter_period[11]</Signal>
+                <Signal>stim/simple_tim/counter_period[10]</Signal>
+                <Signal>stim/simple_tim/counter_period[9]</Signal>
+                <Signal>stim/simple_tim/counter_period[8]</Signal>
+                <Signal>stim/simple_tim/counter_period[7]</Signal>
+                <Signal>stim/simple_tim/counter_period[6]</Signal>
+                <Signal>stim/simple_tim/counter_period[5]</Signal>
+                <Signal>stim/simple_tim/counter_period[4]</Signal>
+                <Signal>stim/simple_tim/counter_period[3]</Signal>
+                <Signal>stim/simple_tim/counter_period[2]</Signal>
+                <Signal>stim/simple_tim/counter_period[1]</Signal>
+                <Signal>stim/simple_tim/counter_period[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="stim/simple_tim/out_counter[31:0]">
+                <Signal>stim/simple_tim/out_counter[31]</Signal>
+                <Signal>stim/simple_tim/out_counter[30]</Signal>
+                <Signal>stim/simple_tim/out_counter[29]</Signal>
+                <Signal>stim/simple_tim/out_counter[28]</Signal>
+                <Signal>stim/simple_tim/out_counter[27]</Signal>
+                <Signal>stim/simple_tim/out_counter[26]</Signal>
+                <Signal>stim/simple_tim/out_counter[25]</Signal>
+                <Signal>stim/simple_tim/out_counter[24]</Signal>
+                <Signal>stim/simple_tim/out_counter[23]</Signal>
+                <Signal>stim/simple_tim/out_counter[22]</Signal>
+                <Signal>stim/simple_tim/out_counter[21]</Signal>
+                <Signal>stim/simple_tim/out_counter[20]</Signal>
+                <Signal>stim/simple_tim/out_counter[19]</Signal>
+                <Signal>stim/simple_tim/out_counter[18]</Signal>
+                <Signal>stim/simple_tim/out_counter[17]</Signal>
+                <Signal>stim/simple_tim/out_counter[16]</Signal>
+                <Signal>stim/simple_tim/out_counter[15]</Signal>
+                <Signal>stim/simple_tim/out_counter[14]</Signal>
+                <Signal>stim/simple_tim/out_counter[13]</Signal>
+                <Signal>stim/simple_tim/out_counter[12]</Signal>
+                <Signal>stim/simple_tim/out_counter[11]</Signal>
+                <Signal>stim/simple_tim/out_counter[10]</Signal>
+                <Signal>stim/simple_tim/out_counter[9]</Signal>
+                <Signal>stim/simple_tim/out_counter[8]</Signal>
+                <Signal>stim/simple_tim/out_counter[7]</Signal>
+                <Signal>stim/simple_tim/out_counter[6]</Signal>
+                <Signal>stim/simple_tim/out_counter[5]</Signal>
+                <Signal>stim/simple_tim/out_counter[4]</Signal>
+                <Signal>stim/simple_tim/out_counter[3]</Signal>
+                <Signal>stim/simple_tim/out_counter[2]</Signal>
+                <Signal>stim/simple_tim/out_counter[1]</Signal>
+                <Signal>stim/simple_tim/out_counter[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="stim/simple_tim/counter[31:0]">
+                <Signal>stim/simple_tim/counter[31]</Signal>
+                <Signal>stim/simple_tim/counter[30]</Signal>
+                <Signal>stim/simple_tim/counter[29]</Signal>
+                <Signal>stim/simple_tim/counter[28]</Signal>
+                <Signal>stim/simple_tim/counter[27]</Signal>
+                <Signal>stim/simple_tim/counter[26]</Signal>
+                <Signal>stim/simple_tim/counter[25]</Signal>
+                <Signal>stim/simple_tim/counter[24]</Signal>
+                <Signal>stim/simple_tim/counter[23]</Signal>
+                <Signal>stim/simple_tim/counter[22]</Signal>
+                <Signal>stim/simple_tim/counter[21]</Signal>
+                <Signal>stim/simple_tim/counter[20]</Signal>
+                <Signal>stim/simple_tim/counter[19]</Signal>
+                <Signal>stim/simple_tim/counter[18]</Signal>
+                <Signal>stim/simple_tim/counter[17]</Signal>
+                <Signal>stim/simple_tim/counter[16]</Signal>
+                <Signal>stim/simple_tim/counter[15]</Signal>
+                <Signal>stim/simple_tim/counter[14]</Signal>
+                <Signal>stim/simple_tim/counter[13]</Signal>
+                <Signal>stim/simple_tim/counter[12]</Signal>
+                <Signal>stim/simple_tim/counter[11]</Signal>
+                <Signal>stim/simple_tim/counter[10]</Signal>
+                <Signal>stim/simple_tim/counter[9]</Signal>
+                <Signal>stim/simple_tim/counter[8]</Signal>
+                <Signal>stim/simple_tim/counter[7]</Signal>
+                <Signal>stim/simple_tim/counter[6]</Signal>
+                <Signal>stim/simple_tim/counter[5]</Signal>
+                <Signal>stim/simple_tim/counter[4]</Signal>
+                <Signal>stim/simple_tim/counter[3]</Signal>
+                <Signal>stim/simple_tim/counter[2]</Signal>
+                <Signal>stim/simple_tim/counter[1]</Signal>
+                <Signal>stim/simple_tim/counter[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="stim/simple_tim/counter_period_tim[31:0]">
+                <Signal>stim/simple_tim/counter_period_tim[31]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[30]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[29]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[28]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[27]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[26]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[25]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[24]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[23]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[22]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[21]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[20]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[19]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[18]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[17]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[16]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[15]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[14]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[13]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[12]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[11]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[10]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[9]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[8]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[7]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[6]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[5]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[4]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[3]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[2]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[1]</Signal>
+                <Signal>stim/simple_tim/counter_period_tim[0]</Signal>
+            </Bus>
+            <Signal capture_enable="true">stim/simple_tim/load</Signal>
+            <Signal capture_enable="true">stim/simple_tim/auto_reload_preload</Signal>
+            <Bus capture_enable="false" name="riscv/PCF[31:0]">
                 <Signal>riscv/PCF[31]</Signal>
                 <Signal>riscv/PCF[30]</Signal>
                 <Signal>riscv/PCF[29]</Signal>
@@ -38,7 +214,7 @@
                 <Signal>riscv/PCF[1]</Signal>
                 <Signal>riscv/PCF[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/InstrF[31:0]">
+            <Bus capture_enable="false" name="riscv/InstrF[31:0]">
                 <Signal>riscv/InstrF[31]</Signal>
                 <Signal>riscv/InstrF[30]</Signal>
                 <Signal>riscv/InstrF[29]</Signal>
@@ -72,7 +248,7 @@
                 <Signal>riscv/InstrF[1]</Signal>
                 <Signal>riscv/InstrF[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/RD1D[31:0]">
+            <Bus capture_enable="false" name="riscv/RD1D[31:0]">
                 <Signal>riscv/RD1D[31]</Signal>
                 <Signal>riscv/RD1D[30]</Signal>
                 <Signal>riscv/RD1D[29]</Signal>
@@ -106,7 +282,7 @@
                 <Signal>riscv/RD1D[1]</Signal>
                 <Signal>riscv/RD1D[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/RD2D[31:0]">
+            <Bus capture_enable="false" name="riscv/RD2D[31:0]">
                 <Signal>riscv/RD2D[31]</Signal>
                 <Signal>riscv/RD2D[30]</Signal>
                 <Signal>riscv/RD2D[29]</Signal>
@@ -140,7 +316,7 @@
                 <Signal>riscv/RD2D[1]</Signal>
                 <Signal>riscv/RD2D[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/ImmExtD[31:0]">
+            <Bus capture_enable="false" name="riscv/ImmExtD[31:0]">
                 <Signal>riscv/ImmExtD[31]</Signal>
                 <Signal>riscv/ImmExtD[30]</Signal>
                 <Signal>riscv/ImmExtD[29]</Signal>
@@ -174,7 +350,7 @@
                 <Signal>riscv/ImmExtD[1]</Signal>
                 <Signal>riscv/ImmExtD[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/decode/rf[14][31:0]">
+            <Bus capture_enable="false" name="riscv/decode/rf[14][31:0]">
                 <Signal>riscv/decode/rf[14][31]</Signal>
                 <Signal>riscv/decode/rf[14][30]</Signal>
                 <Signal>riscv/decode/rf[14][29]</Signal>
@@ -208,7 +384,7 @@
                 <Signal>riscv/decode/rf[14][1]</Signal>
                 <Signal>riscv/decode/rf[14][0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/decode/rf[15][31:0]">
+            <Bus capture_enable="false" name="riscv/decode/rf[15][31:0]">
                 <Signal>riscv/decode/rf[15][31]</Signal>
                 <Signal>riscv/decode/rf[15][30]</Signal>
                 <Signal>riscv/decode/rf[15][29]</Signal>
@@ -242,7 +418,7 @@
                 <Signal>riscv/decode/rf[15][1]</Signal>
                 <Signal>riscv/decode/rf[15][0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/execute/srcA[31:0]">
+            <Bus capture_enable="false" name="riscv/execute/srcA[31:0]">
                 <Signal>riscv/execute/srcA[31]</Signal>
                 <Signal>riscv/execute/srcA[30]</Signal>
                 <Signal>riscv/execute/srcA[29]</Signal>
@@ -276,7 +452,7 @@
                 <Signal>riscv/execute/srcA[1]</Signal>
                 <Signal>riscv/execute/srcA[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/execute/srcB[31:0]">
+            <Bus capture_enable="false" name="riscv/execute/srcB[31:0]">
                 <Signal>riscv/execute/srcB[31]</Signal>
                 <Signal>riscv/execute/srcB[30]</Signal>
                 <Signal>riscv/execute/srcB[29]</Signal>
@@ -310,7 +486,7 @@
                 <Signal>riscv/execute/srcB[1]</Signal>
                 <Signal>riscv/execute/srcB[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/ALUResultE[31:0]">
+            <Bus capture_enable="false" name="riscv/ALUResultE[31:0]">
                 <Signal>riscv/ALUResultE[31]</Signal>
                 <Signal>riscv/ALUResultE[30]</Signal>
                 <Signal>riscv/ALUResultE[29]</Signal>
@@ -344,7 +520,7 @@
                 <Signal>riscv/ALUResultE[1]</Signal>
                 <Signal>riscv/ALUResultE[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/WriteDataE[31:0]">
+            <Bus capture_enable="false" name="riscv/WriteDataE[31:0]">
                 <Signal>riscv/WriteDataE[31]</Signal>
                 <Signal>riscv/WriteDataE[30]</Signal>
                 <Signal>riscv/WriteDataE[29]</Signal>
@@ -378,7 +554,7 @@
                 <Signal>riscv/WriteDataE[1]</Signal>
                 <Signal>riscv/WriteDataE[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/ReadDataW[31:0]">
+            <Bus capture_enable="false" name="riscv/ReadDataW[31:0]">
                 <Signal>riscv/ReadDataW[31]</Signal>
                 <Signal>riscv/ReadDataW[30]</Signal>
                 <Signal>riscv/ReadDataW[29]</Signal>
@@ -412,58 +588,58 @@
                 <Signal>riscv/ReadDataW[1]</Signal>
                 <Signal>riscv/ReadDataW[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/Rs1D[4:0]">
+            <Bus capture_enable="false" name="riscv/Rs1D[4:0]">
                 <Signal>riscv/Rs1D[4]</Signal>
                 <Signal>riscv/Rs1D[3]</Signal>
                 <Signal>riscv/Rs1D[2]</Signal>
                 <Signal>riscv/Rs1D[1]</Signal>
                 <Signal>riscv/Rs1D[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/Rs2D[4:0]">
+            <Bus capture_enable="false" name="riscv/Rs2D[4:0]">
                 <Signal>riscv/Rs2D[4]</Signal>
                 <Signal>riscv/Rs2D[3]</Signal>
                 <Signal>riscv/Rs2D[2]</Signal>
                 <Signal>riscv/Rs2D[1]</Signal>
                 <Signal>riscv/Rs2D[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/RdE[4:0]">
+            <Bus capture_enable="false" name="riscv/RdE[4:0]">
                 <Signal>riscv/RdE[4]</Signal>
                 <Signal>riscv/RdE[3]</Signal>
                 <Signal>riscv/RdE[2]</Signal>
                 <Signal>riscv/RdE[1]</Signal>
                 <Signal>riscv/RdE[0]</Signal>
             </Bus>
-            <Signal capture_enable="true">riscv/pu/ResultSrcE0</Signal>
-            <Bus capture_enable="true" name="riscv/ForwardAE[1:0]">
+            <Signal capture_enable="false">riscv/pu/ResultSrcE0</Signal>
+            <Bus capture_enable="false" name="riscv/ForwardAE[1:0]">
                 <Signal>riscv/ForwardAE[1]</Signal>
                 <Signal>riscv/ForwardAE[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/ForwardBE[1:0]">
+            <Bus capture_enable="false" name="riscv/ForwardBE[1:0]">
                 <Signal>riscv/ForwardBE[1]</Signal>
                 <Signal>riscv/ForwardBE[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/Rs1E[4:0]">
+            <Bus capture_enable="false" name="riscv/Rs1E[4:0]">
                 <Signal>riscv/Rs1E[4]</Signal>
                 <Signal>riscv/Rs1E[3]</Signal>
                 <Signal>riscv/Rs1E[2]</Signal>
                 <Signal>riscv/Rs1E[1]</Signal>
                 <Signal>riscv/Rs1E[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/Rs2E[4:0]">
+            <Bus capture_enable="false" name="riscv/Rs2E[4:0]">
                 <Signal>riscv/Rs2E[4]</Signal>
                 <Signal>riscv/Rs2E[3]</Signal>
                 <Signal>riscv/Rs2E[2]</Signal>
                 <Signal>riscv/Rs2E[1]</Signal>
                 <Signal>riscv/Rs2E[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/RdM[4:0]">
+            <Bus capture_enable="false" name="riscv/RdM[4:0]">
                 <Signal>riscv/RdM[4]</Signal>
                 <Signal>riscv/RdM[3]</Signal>
                 <Signal>riscv/RdM[2]</Signal>
                 <Signal>riscv/RdM[1]</Signal>
                 <Signal>riscv/RdM[0]</Signal>
             </Bus>
-            <Bus capture_enable="true" name="riscv/RdW[4:0]">
+            <Bus capture_enable="false" name="riscv/RdW[4:0]">
                 <Signal>riscv/RdW[4]</Signal>
                 <Signal>riscv/RdW[3]</Signal>
                 <Signal>riscv/RdW[2]</Signal>
@@ -515,7 +691,44 @@
                     </Bus>
                 </SignalList>
             </Trigger>
-            <Trigger index="2"/>
+            <Trigger index="2">
+                <SignalList>
+                    <Bus restorename="stim/simple_tim/prescaler[31:0]">
+                        <Signal>stim/simple_tim/prescaler[31]</Signal>
+                        <Signal>stim/simple_tim/prescaler[30]</Signal>
+                        <Signal>stim/simple_tim/prescaler[29]</Signal>
+                        <Signal>stim/simple_tim/prescaler[28]</Signal>
+                        <Signal>stim/simple_tim/prescaler[27]</Signal>
+                        <Signal>stim/simple_tim/prescaler[26]</Signal>
+                        <Signal>stim/simple_tim/prescaler[25]</Signal>
+                        <Signal>stim/simple_tim/prescaler[24]</Signal>
+                        <Signal>stim/simple_tim/prescaler[23]</Signal>
+                        <Signal>stim/simple_tim/prescaler[22]</Signal>
+                        <Signal>stim/simple_tim/prescaler[21]</Signal>
+                        <Signal>stim/simple_tim/prescaler[20]</Signal>
+                        <Signal>stim/simple_tim/prescaler[19]</Signal>
+                        <Signal>stim/simple_tim/prescaler[18]</Signal>
+                        <Signal>stim/simple_tim/prescaler[17]</Signal>
+                        <Signal>stim/simple_tim/prescaler[16]</Signal>
+                        <Signal>stim/simple_tim/prescaler[15]</Signal>
+                        <Signal>stim/simple_tim/prescaler[14]</Signal>
+                        <Signal>stim/simple_tim/prescaler[13]</Signal>
+                        <Signal>stim/simple_tim/prescaler[12]</Signal>
+                        <Signal>stim/simple_tim/prescaler[11]</Signal>
+                        <Signal>stim/simple_tim/prescaler[10]</Signal>
+                        <Signal>stim/simple_tim/prescaler[9]</Signal>
+                        <Signal>stim/simple_tim/prescaler[8]</Signal>
+                        <Signal>stim/simple_tim/prescaler[7]</Signal>
+                        <Signal>stim/simple_tim/prescaler[6]</Signal>
+                        <Signal>stim/simple_tim/prescaler[5]</Signal>
+                        <Signal>stim/simple_tim/prescaler[4]</Signal>
+                        <Signal>stim/simple_tim/prescaler[3]</Signal>
+                        <Signal>stim/simple_tim/prescaler[2]</Signal>
+                        <Signal>stim/simple_tim/prescaler[1]</Signal>
+                        <Signal>stim/simple_tim/prescaler[0]</Signal>
+                    </Bus>
+                </SignalList>
+            </Trigger>
             <Trigger index="3"/>
             <Trigger index="4"/>
             <Trigger index="5"/>
@@ -533,7 +746,7 @@
         <MatchUnits>
             <MatchUnit index="0" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="0" value1="0" trigger="0"/>
             <MatchUnit index="1" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="00000000000000000000000001001100" value1="00000000000000000000000000000000" trigger="1"/>
-            <MatchUnit index="2" enabled="0" match_type="2" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="2" value0="00000000" value1="00000000" trigger="2"/>
+            <MatchUnit index="2" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="1" value0="00000000000000000000000000000000" value1="00000000000000000000000000000000" trigger="2"/>
             <MatchUnit index="3" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
             <MatchUnit index="4" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
             <MatchUnit index="5" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
@@ -549,8 +762,8 @@
             <MatchUnit index="15" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
         </MatchUnits>
         <Expressions type="Static">
-            <Expression>M1</Expression>
+            <Expression>M2</Expression>
         </Expressions>
     </AoCore>
-    <GAO_ID>1010000010001010</GAO_ID>
+    <GAO_ID>0101110110010011</GAO_ID>
 </GAO_CONFIG>
