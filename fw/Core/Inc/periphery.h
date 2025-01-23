@@ -24,7 +24,7 @@
 #define TM1638_BASE		(0x12000000U)
 #define   STIM_BASE		(0x13000000U)
 
-/* Объявление структы регистров */
+/* Объявление структур регистров */
 typedef struct
 {
   __IO uint32_t MODE;  	//0x00: Регистр выбора режима вход/выход порта
@@ -38,17 +38,30 @@ typedef struct
   __IO uint32_t LEDS;   //0x04: Регистр данных на светодиодах вн. платы
   __IO uint32_t KEYS;  	//0x08: Регистр данных состояния кнопок вн. платы
 } TM1638_TypeDef;
-/*
+
 typedef struct
 {
-  __IO uint32_t SEGS;  	//0x00:
-  __IO uint32_t LEDS;   //0x04:
-  __IO uint32_t KEYS;  	//0x08:
-  __IO uint32_t LEDS;   //0x04:
-  __IO uint32_t KEYS;  	//0x08:
+  __IO uint32_t PR;    				//0x00: Регистр предделителя системной частоты таймера (PRESCALER)
+  union {
+	  __IO uint32_t CR;  			//0x04: Регистр управления счетчика (CONTROL REG)
+	  struct {
+		  uint32_t CR_CM	: 2;	// counter mode - выбора напрвление счёта
+		  uint32_t CR_ARP 	: 1;    // autoReloadPreload
+		  uint32_t CR_EN  	: 1;	// enable - включение таймера
+	  };
+  };
+  __IO uint32_t PER;   	  			//0x08: Регистр данных значения переполнения таймера (PERIOD)
+  __IO uint32_t PUL;         		//0x0C: Регистр значения сравнения (PULSE)
+  __IO uint32_t CNT;  	      		//0x10: Регистр значения текущего счетчика таймера (COUNT)
 } STIM_TypeDef;
-*/
-/* Объявление указатели на структуры данных */
+
+/* Настройки таймера при инициализации */
+#define STIM_PRESCALER 				1000000;
+#define STIM_PERIOD 				100;
+#define STIM_COUNTER_MODE 			STIM_COUNTER_MODE_DOWN;
+#define STIM_AUTO_RELOAD_PRELOAD 	1;
+
+/* Объявление указателей на структуры данных */
 #define GPIO 	((GPIO_TypeDef*) 	GPIO_BASE)
 #define TM1638 	((TM1638_TypeDef*) 	TM1638_BASE)
 #define STIM 	((STIM_TypeDef*) 	STIM_BASE)

@@ -7,25 +7,25 @@ start address 0x00000000
 
 Program Header:
     LOAD off    0x00001000 vaddr 0x00000000 paddr 0x00000000 align 2**12
-         filesz 0x0000049c memsz 0x0000049c flags r-x
+         filesz 0x000004b4 memsz 0x000004b4 flags r-x
     LOAD off    0x00002000 vaddr 0x10000000 paddr 0x10000000 align 2**12
          filesz 0x00000000 memsz 0x00000110 flags rw-
 
 Sections:
 Idx Name           Size      VMA       LMA       File off  Algn  Flags
-  0 .text          0000049c  00000000  00000000  00001000  2**4  CONTENTS, ALLOC, LOAD, READONLY, CODE
-  1 .data          00000000  10000000  10000000  0000149c  2**0  CONTENTS, ALLOC, LOAD, DATA
+  0 .text          000004b4  00000000  00000000  00001000  2**4  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .data          00000000  10000000  10000000  000014b4  2**0  CONTENTS, ALLOC, LOAD, DATA
   2 .bss           00000008  10000000  10000000  00002000  2**2  ALLOC
   3 .stack         00000108  10000008  10000008  00002000  2**0  ALLOC
-  4 .debug_line    000007c6  00000000  00000000  0000149c  2**0  CONTENTS, READONLY, DEBUGGING
-  5 .debug_info    00000452  00000000  00000000  00001c62  2**0  CONTENTS, READONLY, DEBUGGING
-  6 .debug_abbrev  00000283  00000000  00000000  000020b4  2**0  CONTENTS, READONLY, DEBUGGING
-  7 .debug_aranges 00000088  00000000  00000000  00002338  2**3  CONTENTS, READONLY, DEBUGGING
-  8 .debug_str     00003560  00000000  00000000  000023c0  2**0  CONTENTS, READONLY, DEBUGGING
-  9 .debug_ranges  00000038  00000000  00000000  00005920  2**0  CONTENTS, READONLY, DEBUGGING
- 10 .debug_macro   00000d43  00000000  00000000  00005958  2**0  CONTENTS, READONLY, DEBUGGING
- 11 .comment       00000039  00000000  00000000  0000669b  2**0  CONTENTS, READONLY
- 12 .debug_frame   000000b8  00000000  00000000  000066d4  2**2  CONTENTS, READONLY, DEBUGGING
+  4 .debug_line    000009bb  00000000  00000000  000014b4  2**0  CONTENTS, READONLY, DEBUGGING
+  5 .debug_info    000006a3  00000000  00000000  00001e6f  2**0  CONTENTS, READONLY, DEBUGGING
+  6 .debug_abbrev  000003a6  00000000  00000000  00002512  2**0  CONTENTS, READONLY, DEBUGGING
+  7 .debug_aranges 000000a8  00000000  00000000  000028b8  2**3  CONTENTS, READONLY, DEBUGGING
+  8 .debug_str     00003636  00000000  00000000  00002960  2**0  CONTENTS, READONLY, DEBUGGING
+  9 .debug_ranges  00000048  00000000  00000000  00005f96  2**0  CONTENTS, READONLY, DEBUGGING
+ 10 .debug_macro   00000def  00000000  00000000  00005fde  2**0  CONTENTS, READONLY, DEBUGGING
+ 11 .comment       00000039  00000000  00000000  00006dcd  2**0  CONTENTS, READONLY
+ 12 .debug_frame   000000e8  00000000  00000000  00006e08  2**2  CONTENTS, READONLY, DEBUGGING
 SYMBOL TABLE:
 00000000 l    d  .text	00000000 .text
 10000000 l    d  .data	00000000 .data
@@ -45,20 +45,22 @@ SYMBOL TABLE:
 00000018 l       .text	00000000 loop_init_bss
 00000000 l    df *ABS*	00000000 gpio.c
 00000000 l    df *ABS*	00000000 main.c
+00000000 l    df *ABS*	00000000 tim.c
 00000000 l    df *ABS*	00000000 tm1638.c
 100007f0 g       .data	00000000 __global_pointer$
-0000049c g       .text	00000000 _etext
+000004b4 g       .text	00000000 _etext
 10000000 g       .bss	00000000 _sbss
 0000003c g     F .text	00000048 .hidden __udivsi3
 000000e8 g     F .text	00000034 GPIO_Init
 10000000 g       .data	00000000 _sdata
 10000008 g       .bss	00000000 _ebss
+00000414 g     F .text	0000006c STIM_Init
 00000084 g     F .text	00000010 .hidden __umodsi3
-00000244 g     F .text	00000224 dig_transform
+000001f0 g     F .text	00000224 dig_transform
 10000004 g     O .bss	00000004 c
 00000100 g       *ABS*	00000000 _stack_size
-0000011c g     F .text	00000128 main
-00000468 g     F .text	00000034 TM1638_Init
+0000011c g     F .text	000000d4 main
+00000480 g     F .text	00000034 TM1638_Init
 00000034 g     F .text	00000084 .hidden __divsi3
 10000110 g       .stack	00000000 _estack
 10000000 g       .data	00000000 _edata
@@ -211,7 +213,7 @@ D:\GitHub\askorv32\fw\Debug/../Core/Src/gpio.c:16
 
 0000011c <main>:
 main():
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:22
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:17
 //unsigned int globalvar = 5;
 unsigned int c;
 unsigned int keys = 0;
@@ -222,20 +224,23 @@ int main(void) {
  120:	02112623          	sw	ra,44(sp)
  124:	02812423          	sw	s0,40(sp)
  128:	03010413          	addi	s0,sp,48
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:24
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:19
 	//#1 Инициализация периферийных устройства
 	GPIO_Init();
  12c:	fbdff0ef          	jal	ra,e8 <GPIO_Init>
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:25
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:20
 	TM1638_Init();
- 130:	338000ef          	jal	ra,468 <TM1638_Init>
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:26
+ 130:	350000ef          	jal	ra,480 <TM1638_Init>
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:21
+	STIM_Init();
+ 134:	2e0000ef          	jal	ra,414 <STIM_Init>
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:22
 	c = 1;
- 134:	81418793          	addi	a5,gp,-2028 # 10000004 <c>
- 138:	00100713          	li	a4,1
- 13c:	00e7a023          	sw	a4,0(a5)
- 140:	fff00793          	li	a5,-1
- 144:	fef42223          	sw	a5,-28(s0)
+ 138:	81418793          	addi	a5,gp,-2028 # 10000004 <c>
+ 13c:	00100713          	li	a4,1
+ 140:	00e7a023          	sw	a4,0(a5)
+ 144:	fff00793          	li	a5,-1
+ 148:	fef42223          	sw	a5,-28(s0)
 GPIO_PinsMode():
 D:\GitHub\askorv32\fw\Core\Inc/gpio.h:54
 __INLINE GPIO_PinState GPIO_ReadPin(GPIO_PinName GPIO_Pin) {
@@ -244,321 +249,354 @@ __INLINE GPIO_PinState GPIO_ReadPin(GPIO_PinName GPIO_Pin) {
 
 __INLINE void GPIO_PinsMode(uint32_t PinsDir) {
 	GPIO->MODE = PinsDir;
- 148:	110007b7          	lui	a5,0x11000
- 14c:	fe442703          	lw	a4,-28(s0)
- 150:	00e7a023          	sw	a4,0(a5) # 11000000 <__global_pointer$+0xfff810>
+ 14c:	110007b7          	lui	a5,0x11000
+ 150:	fe442703          	lw	a4,-28(s0)
+ 154:	00e7a023          	sw	a4,0(a5) # 11000000 <__global_pointer$+0xfff810>
+ 158:	00100793          	li	a5,1
+ 15c:	fef42423          	sw	a5,-24(s0)
+STIM_STATE():
+D:\GitHub\askorv32\fw\Core\Inc/tim.h:31
+/*  Прототипы функций  */
+void STIM_Init(void);
+
+
+__INLINE void STIM_STATE(STIM_State TimState) {
+	STIM->CR_EN = TimState;
+ 160:	130007b7          	lui	a5,0x13000
+ 164:	fe842703          	lw	a4,-24(s0)
+ 168:	00177713          	andi	a4,a4,1
+ 16c:	0ff77713          	andi	a4,a4,255
+ 170:	00177713          	andi	a4,a4,1
+ 174:	00371613          	slli	a2,a4,0x3
+ 178:	0047c703          	lbu	a4,4(a5) # 13000004 <__global_pointer$+0x2fff814>
+ 17c:	ff777713          	andi	a4,a4,-9
+ 180:	00070693          	mv	a3,a4
+ 184:	00060713          	mv	a4,a2
+ 188:	00e6e733          	or	a4,a3,a4
+ 18c:	00e78223          	sb	a4,4(a5)
 main():
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:30
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:27
 	GPIO_PinsMode(0xFFFFFFFF); //Все порты на выход
 
-	//Инициализация переменных простого таймера
+	STIM_STATE(TIM_ENABLE);
+
 	unsigned int count = 0;
- 154:	fe042623          	sw	zero,-20(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:31
-	unsigned int prescaler = 1000000;
- 158:	000f47b7          	lui	a5,0xf4
- 15c:	24078793          	addi	a5,a5,576 # f4240 <_etext+0xf3da4>
- 160:	fef42423          	sw	a5,-24(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:32
-	WRITE_STIM(STIM_Prescaler, prescaler);
- 164:	130007b7          	lui	a5,0x13000
- 168:	fe842703          	lw	a4,-24(s0)
- 16c:	00e7a023          	sw	a4,0(a5) # 13000000 <__global_pointer$+0x2fff810>
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:33
-	WRITE_STIM(STIM_CounterMode, 5); //0101 - DOWN
- 170:	130007b7          	lui	a5,0x13000
- 174:	00478793          	addi	a5,a5,4 # 13000004 <__global_pointer$+0x2fff814>
- 178:	00500713          	li	a4,5
- 17c:	00e7a023          	sw	a4,0(a5)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:34
-	WRITE_STIM(STIM_CounterPeriod, 100);
- 180:	130007b7          	lui	a5,0x13000
- 184:	00878793          	addi	a5,a5,8 # 13000008 <__global_pointer$+0x2fff818>
- 188:	06400713          	li	a4,100
- 18c:	00e7a023          	sw	a4,0(a5)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:38
+ 190:	fe042623          	sw	zero,-20(s0)
+STIM_GET_COUNT():
+D:\GitHub\askorv32\fw\Core\Inc/tim.h:35 (discriminator 1)
+}
+
+__INLINE uint32_t STIM_GET_COUNT(void) {
+	return STIM->CNT;
+ 194:	130007b7          	lui	a5,0x13000
+ 198:	0107a783          	lw	a5,16(a5) # 13000010 <__global_pointer$+0x2fff820>
+main():
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:32 (discriminator 1)
 
 	while(1) {
-		//#Считывание значения таймера
-		count = READ_STIM(STIM_OutCount);
- 190:	130007b7          	lui	a5,0x13000
- 194:	01078793          	addi	a5,a5,16 # 13000010 <__global_pointer$+0x2fff820>
- 198:	0007a783          	lw	a5,0(a5)
- 19c:	fef42623          	sw	a5,-20(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:40
 
-		if(count == 50) {
- 1a0:	fec42703          	lw	a4,-20(s0)
- 1a4:	03200793          	li	a5,50
- 1a8:	00f71a63          	bne	a4,a5,1bc <main+0xa0>
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:41
-			WRITE_STIM(STIM_CounterPeriod, 75);
- 1ac:	130007b7          	lui	a5,0x13000
- 1b0:	00878793          	addi	a5,a5,8 # 13000008 <__global_pointer$+0x2fff818>
- 1b4:	04b00713          	li	a4,75
- 1b8:	00e7a023          	sw	a4,0(a5)
+		//#Считывание значения таймера
+		count = STIM_GET_COUNT();
+ 19c:	fef42623          	sw	a5,-20(s0)
 TM1638_ReadKeys():
-D:\GitHub\askorv32\fw\Core\Inc/tm1638.h:56
+D:\GitHub\askorv32\fw\Core\Inc/tm1638.h:56 (discriminator 1)
 __INLINE void TM1638_WriteLeds(uint32_t data) {
 	TM1638->LEDS = data;
 }
 
 __INLINE uint32_t TM1638_ReadKeys(void) {
 	return TM1638->KEYS;
- 1bc:	120007b7          	lui	a5,0x12000
- 1c0:	0087a703          	lw	a4,8(a5) # 12000008 <__global_pointer$+0x1fff818>
+ 1a0:	120007b7          	lui	a5,0x12000
+ 1a4:	0087a703          	lw	a4,8(a5) # 12000008 <__global_pointer$+0x1fff818>
 main():
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:49
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:40 (discriminator 1)
 		//#Светодиоды tangnano
 		//GPIO_WritePins(~c);
 		//GPIO_WritePins(count);
 
 		//#Светодиоды tm1638
 		keys = TM1638_ReadKeys();
- 1c4:	10000797          	auipc	a5,0x10000
- 1c8:	e3c78793          	addi	a5,a5,-452 # 10000000 <_edata>
- 1cc:	00e7a023          	sw	a4,0(a5)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:50
+ 1a8:	10000797          	auipc	a5,0x10000
+ 1ac:	e5878793          	addi	a5,a5,-424 # 10000000 <_edata>
+ 1b0:	00e7a023          	sw	a4,0(a5)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:41 (discriminator 1)
 		TM1638_WriteLeds(keys);
- 1d0:	10000797          	auipc	a5,0x10000
- 1d4:	e3078793          	addi	a5,a5,-464 # 10000000 <_edata>
- 1d8:	0007a783          	lw	a5,0(a5)
- 1dc:	fcf42e23          	sw	a5,-36(s0)
+ 1b4:	10000797          	auipc	a5,0x10000
+ 1b8:	e4c78793          	addi	a5,a5,-436 # 10000000 <_edata>
+ 1bc:	0007a783          	lw	a5,0(a5)
+ 1c0:	fcf42e23          	sw	a5,-36(s0)
 TM1638_WriteLeds():
-D:\GitHub\askorv32\fw\Core\Inc/tm1638.h:52
+D:\GitHub\askorv32\fw\Core\Inc/tm1638.h:52 (discriminator 1)
 	TM1638->LEDS = data;
- 1e0:	120007b7          	lui	a5,0x12000
- 1e4:	fdc42703          	lw	a4,-36(s0)
- 1e8:	00e7a223          	sw	a4,4(a5) # 12000004 <__global_pointer$+0x1fff814>
+ 1c4:	120007b7          	lui	a5,0x12000
+ 1c8:	fdc42703          	lw	a4,-36(s0)
+ 1cc:	00e7a223          	sw	a4,4(a5) # 12000004 <__global_pointer$+0x1fff814>
 main():
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:54
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:45 (discriminator 1)
 
 		//#Сегментный индикатор tm1638
 		//TM1638_WriteSegs(c);
 		TM1638_WriteSegs(dig_transform(count));
- 1ec:	fec42503          	lw	a0,-20(s0)
- 1f0:	054000ef          	jal	ra,244 <dig_transform>
- 1f4:	00050793          	mv	a5,a0
- 1f8:	fef42023          	sw	a5,-32(s0)
+ 1d0:	fec42503          	lw	a0,-20(s0)
+ 1d4:	01c000ef          	jal	ra,1f0 <dig_transform>
+ 1d8:	00050793          	mv	a5,a0
+ 1dc:	fef42023          	sw	a5,-32(s0)
 TM1638_WriteSegs():
-D:\GitHub\askorv32\fw\Core\Inc/tm1638.h:48
+D:\GitHub\askorv32\fw\Core\Inc/tm1638.h:48 (discriminator 1)
 	TM1638->SEGS = data;
- 1fc:	120007b7          	lui	a5,0x12000
- 200:	fe042703          	lw	a4,-32(s0)
- 204:	00e7a023          	sw	a4,0(a5) # 12000000 <__global_pointer$+0x1fff810>
+ 1e0:	120007b7          	lui	a5,0x12000
+ 1e4:	fe042703          	lw	a4,-32(s0)
+ 1e8:	00e7a023          	sw	a4,0(a5) # 12000000 <__global_pointer$+0x1fff810>
 main():
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:55
-		if(keys == 1) {
- 208:	10000797          	auipc	a5,0x10000
- 20c:	df878793          	addi	a5,a5,-520 # 10000000 <_edata>
- 210:	0007a703          	lw	a4,0(a5)
- 214:	00100793          	li	a5,1
- 218:	00f71c63          	bne	a4,a5,230 <main+0x114>
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:56
-			WRITE_STIM(STIM_CounterMode, 13); //0101 - DOWN
- 21c:	130007b7          	lui	a5,0x13000
- 220:	00478793          	addi	a5,a5,4 # 13000004 <__global_pointer$+0x2fff814>
- 224:	00d00713          	li	a4,13
- 228:	00e7a023          	sw	a4,0(a5)
- 22c:	f65ff06f          	j	190 <main+0x74>
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:59
-		}
-		else {
-			WRITE_STIM(STIM_CounterMode, 5); //0101 - DOWN
- 230:	130007b7          	lui	a5,0x13000
- 234:	00478793          	addi	a5,a5,4 # 13000004 <__global_pointer$+0x2fff814>
- 238:	00500713          	li	a4,5
- 23c:	00e7a023          	sw	a4,0(a5)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:38
-		count = READ_STIM(STIM_OutCount);
- 240:	f51ff06f          	j	190 <main+0x74>
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:32 (discriminator 1)
+		count = STIM_GET_COUNT();
+ 1ec:	fa9ff06f          	j	194 <main+0x78>
 
-00000244 <dig_transform>:
+000001f0 <dig_transform>:
 dig_transform():
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:79
-*/
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:52
+
 		//for(int i = 0; i<100000; i++);
 	}
 }
 
 unsigned int dig_transform(unsigned int digit) {
- 244:	fd010113          	addi	sp,sp,-48
- 248:	02112623          	sw	ra,44(sp)
- 24c:	02812423          	sw	s0,40(sp)
- 250:	03010413          	addi	s0,sp,48
- 254:	fca42e23          	sw	a0,-36(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:80
+ 1f0:	fd010113          	addi	sp,sp,-48
+ 1f4:	02112623          	sw	ra,44(sp)
+ 1f8:	02812423          	sw	s0,40(sp)
+ 1fc:	03010413          	addi	s0,sp,48
+ 200:	fca42e23          	sw	a0,-36(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:53
 	unsigned int d_out = 0;
- 258:	fe042623          	sw	zero,-20(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:81
+ 204:	fe042623          	sw	zero,-20(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:54
 	unsigned int d_in  = digit;
- 25c:	fdc42783          	lw	a5,-36(s0)
- 260:	fef42423          	sw	a5,-24(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:82
+ 208:	fdc42783          	lw	a5,-36(s0)
+ 20c:	fef42423          	sw	a5,-24(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:55
 	d_in = d_in % 100000000;
- 264:	fe842703          	lw	a4,-24(s0)
- 268:	05f5e7b7          	lui	a5,0x5f5e
- 26c:	10078593          	addi	a1,a5,256 # 5f5e100 <_etext+0x5f5dc64>
- 270:	00070513          	mv	a0,a4
- 274:	e11ff0ef          	jal	ra,84 <__umodsi3>
- 278:	00050793          	mv	a5,a0
- 27c:	fef42423          	sw	a5,-24(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:83
+ 210:	fe842703          	lw	a4,-24(s0)
+ 214:	05f5e7b7          	lui	a5,0x5f5e
+ 218:	10078593          	addi	a1,a5,256 # 5f5e100 <_etext+0x5f5dc4c>
+ 21c:	00070513          	mv	a0,a4
+ 220:	e65ff0ef          	jal	ra,84 <__umodsi3>
+ 224:	00050793          	mv	a5,a0
+ 228:	fef42423          	sw	a5,-24(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:56
 	d_out = d_out | ((d_in / 10000000) << 28);
- 280:	fe842703          	lw	a4,-24(s0)
- 284:	009897b7          	lui	a5,0x989
- 288:	68078593          	addi	a1,a5,1664 # 989680 <_etext+0x9891e4>
- 28c:	00070513          	mv	a0,a4
- 290:	dadff0ef          	jal	ra,3c <__udivsi3>
- 294:	00050793          	mv	a5,a0
- 298:	01c79793          	slli	a5,a5,0x1c
- 29c:	fec42703          	lw	a4,-20(s0)
- 2a0:	00f767b3          	or	a5,a4,a5
- 2a4:	fef42623          	sw	a5,-20(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:84
+ 22c:	fe842703          	lw	a4,-24(s0)
+ 230:	009897b7          	lui	a5,0x989
+ 234:	68078593          	addi	a1,a5,1664 # 989680 <_etext+0x9891cc>
+ 238:	00070513          	mv	a0,a4
+ 23c:	e01ff0ef          	jal	ra,3c <__udivsi3>
+ 240:	00050793          	mv	a5,a0
+ 244:	01c79793          	slli	a5,a5,0x1c
+ 248:	fec42703          	lw	a4,-20(s0)
+ 24c:	00f767b3          	or	a5,a4,a5
+ 250:	fef42623          	sw	a5,-20(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:57
 	d_in = d_in % 10000000;
- 2a8:	fe842703          	lw	a4,-24(s0)
- 2ac:	009897b7          	lui	a5,0x989
- 2b0:	68078593          	addi	a1,a5,1664 # 989680 <_etext+0x9891e4>
- 2b4:	00070513          	mv	a0,a4
- 2b8:	dcdff0ef          	jal	ra,84 <__umodsi3>
- 2bc:	00050793          	mv	a5,a0
- 2c0:	fef42423          	sw	a5,-24(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:85
+ 254:	fe842703          	lw	a4,-24(s0)
+ 258:	009897b7          	lui	a5,0x989
+ 25c:	68078593          	addi	a1,a5,1664 # 989680 <_etext+0x9891cc>
+ 260:	00070513          	mv	a0,a4
+ 264:	e21ff0ef          	jal	ra,84 <__umodsi3>
+ 268:	00050793          	mv	a5,a0
+ 26c:	fef42423          	sw	a5,-24(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:58
 	d_out = d_out | ((d_in / 1000000)  << 24);
- 2c4:	fe842703          	lw	a4,-24(s0)
- 2c8:	000f47b7          	lui	a5,0xf4
- 2cc:	24078593          	addi	a1,a5,576 # f4240 <_etext+0xf3da4>
- 2d0:	00070513          	mv	a0,a4
- 2d4:	d69ff0ef          	jal	ra,3c <__udivsi3>
- 2d8:	00050793          	mv	a5,a0
- 2dc:	01879793          	slli	a5,a5,0x18
- 2e0:	fec42703          	lw	a4,-20(s0)
- 2e4:	00f767b3          	or	a5,a4,a5
- 2e8:	fef42623          	sw	a5,-20(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:86
+ 270:	fe842703          	lw	a4,-24(s0)
+ 274:	000f47b7          	lui	a5,0xf4
+ 278:	24078593          	addi	a1,a5,576 # f4240 <_etext+0xf3d8c>
+ 27c:	00070513          	mv	a0,a4
+ 280:	dbdff0ef          	jal	ra,3c <__udivsi3>
+ 284:	00050793          	mv	a5,a0
+ 288:	01879793          	slli	a5,a5,0x18
+ 28c:	fec42703          	lw	a4,-20(s0)
+ 290:	00f767b3          	or	a5,a4,a5
+ 294:	fef42623          	sw	a5,-20(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:59
 	d_in = d_in % 1000000;
- 2ec:	fe842703          	lw	a4,-24(s0)
- 2f0:	000f47b7          	lui	a5,0xf4
- 2f4:	24078593          	addi	a1,a5,576 # f4240 <_etext+0xf3da4>
- 2f8:	00070513          	mv	a0,a4
- 2fc:	d89ff0ef          	jal	ra,84 <__umodsi3>
- 300:	00050793          	mv	a5,a0
- 304:	fef42423          	sw	a5,-24(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:87
+ 298:	fe842703          	lw	a4,-24(s0)
+ 29c:	000f47b7          	lui	a5,0xf4
+ 2a0:	24078593          	addi	a1,a5,576 # f4240 <_etext+0xf3d8c>
+ 2a4:	00070513          	mv	a0,a4
+ 2a8:	dddff0ef          	jal	ra,84 <__umodsi3>
+ 2ac:	00050793          	mv	a5,a0
+ 2b0:	fef42423          	sw	a5,-24(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:60
 	d_out = d_out | ((d_in / 100000)   << 20);
- 308:	fe842703          	lw	a4,-24(s0)
- 30c:	000187b7          	lui	a5,0x18
- 310:	6a078593          	addi	a1,a5,1696 # 186a0 <_etext+0x18204>
- 314:	00070513          	mv	a0,a4
- 318:	d25ff0ef          	jal	ra,3c <__udivsi3>
- 31c:	00050793          	mv	a5,a0
- 320:	01479793          	slli	a5,a5,0x14
- 324:	fec42703          	lw	a4,-20(s0)
- 328:	00f767b3          	or	a5,a4,a5
- 32c:	fef42623          	sw	a5,-20(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:88
+ 2b4:	fe842703          	lw	a4,-24(s0)
+ 2b8:	000187b7          	lui	a5,0x18
+ 2bc:	6a078593          	addi	a1,a5,1696 # 186a0 <_etext+0x181ec>
+ 2c0:	00070513          	mv	a0,a4
+ 2c4:	d79ff0ef          	jal	ra,3c <__udivsi3>
+ 2c8:	00050793          	mv	a5,a0
+ 2cc:	01479793          	slli	a5,a5,0x14
+ 2d0:	fec42703          	lw	a4,-20(s0)
+ 2d4:	00f767b3          	or	a5,a4,a5
+ 2d8:	fef42623          	sw	a5,-20(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:61
 	d_in = d_in % 100000;
- 330:	fe842703          	lw	a4,-24(s0)
- 334:	000187b7          	lui	a5,0x18
- 338:	6a078593          	addi	a1,a5,1696 # 186a0 <_etext+0x18204>
- 33c:	00070513          	mv	a0,a4
- 340:	d45ff0ef          	jal	ra,84 <__umodsi3>
- 344:	00050793          	mv	a5,a0
- 348:	fef42423          	sw	a5,-24(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:89
+ 2dc:	fe842703          	lw	a4,-24(s0)
+ 2e0:	000187b7          	lui	a5,0x18
+ 2e4:	6a078593          	addi	a1,a5,1696 # 186a0 <_etext+0x181ec>
+ 2e8:	00070513          	mv	a0,a4
+ 2ec:	d99ff0ef          	jal	ra,84 <__umodsi3>
+ 2f0:	00050793          	mv	a5,a0
+ 2f4:	fef42423          	sw	a5,-24(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:62
 	d_out = d_out | ((d_in / 10000)    << 16);
- 34c:	fe842703          	lw	a4,-24(s0)
- 350:	000027b7          	lui	a5,0x2
- 354:	71078593          	addi	a1,a5,1808 # 2710 <_etext+0x2274>
- 358:	00070513          	mv	a0,a4
- 35c:	ce1ff0ef          	jal	ra,3c <__udivsi3>
- 360:	00050793          	mv	a5,a0
- 364:	01079793          	slli	a5,a5,0x10
- 368:	fec42703          	lw	a4,-20(s0)
- 36c:	00f767b3          	or	a5,a4,a5
- 370:	fef42623          	sw	a5,-20(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:90
+ 2f8:	fe842703          	lw	a4,-24(s0)
+ 2fc:	000027b7          	lui	a5,0x2
+ 300:	71078593          	addi	a1,a5,1808 # 2710 <_etext+0x225c>
+ 304:	00070513          	mv	a0,a4
+ 308:	d35ff0ef          	jal	ra,3c <__udivsi3>
+ 30c:	00050793          	mv	a5,a0
+ 310:	01079793          	slli	a5,a5,0x10
+ 314:	fec42703          	lw	a4,-20(s0)
+ 318:	00f767b3          	or	a5,a4,a5
+ 31c:	fef42623          	sw	a5,-20(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:63
 	d_in = d_in % 10000;
- 374:	fe842703          	lw	a4,-24(s0)
- 378:	000027b7          	lui	a5,0x2
- 37c:	71078593          	addi	a1,a5,1808 # 2710 <_etext+0x2274>
- 380:	00070513          	mv	a0,a4
- 384:	d01ff0ef          	jal	ra,84 <__umodsi3>
- 388:	00050793          	mv	a5,a0
- 38c:	fef42423          	sw	a5,-24(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:91
+ 320:	fe842703          	lw	a4,-24(s0)
+ 324:	000027b7          	lui	a5,0x2
+ 328:	71078593          	addi	a1,a5,1808 # 2710 <_etext+0x225c>
+ 32c:	00070513          	mv	a0,a4
+ 330:	d55ff0ef          	jal	ra,84 <__umodsi3>
+ 334:	00050793          	mv	a5,a0
+ 338:	fef42423          	sw	a5,-24(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:64
 	d_out = d_out | ((d_in / 1000)     << 12);
- 390:	fe842783          	lw	a5,-24(s0)
- 394:	3e800593          	li	a1,1000
- 398:	00078513          	mv	a0,a5
- 39c:	ca1ff0ef          	jal	ra,3c <__udivsi3>
- 3a0:	00050793          	mv	a5,a0
- 3a4:	00c79793          	slli	a5,a5,0xc
- 3a8:	fec42703          	lw	a4,-20(s0)
- 3ac:	00f767b3          	or	a5,a4,a5
- 3b0:	fef42623          	sw	a5,-20(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:92
+ 33c:	fe842783          	lw	a5,-24(s0)
+ 340:	3e800593          	li	a1,1000
+ 344:	00078513          	mv	a0,a5
+ 348:	cf5ff0ef          	jal	ra,3c <__udivsi3>
+ 34c:	00050793          	mv	a5,a0
+ 350:	00c79793          	slli	a5,a5,0xc
+ 354:	fec42703          	lw	a4,-20(s0)
+ 358:	00f767b3          	or	a5,a4,a5
+ 35c:	fef42623          	sw	a5,-20(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:65
 	d_in = d_in % 1000;
- 3b4:	fe842783          	lw	a5,-24(s0)
- 3b8:	3e800593          	li	a1,1000
- 3bc:	00078513          	mv	a0,a5
- 3c0:	cc5ff0ef          	jal	ra,84 <__umodsi3>
- 3c4:	00050793          	mv	a5,a0
- 3c8:	fef42423          	sw	a5,-24(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:93
+ 360:	fe842783          	lw	a5,-24(s0)
+ 364:	3e800593          	li	a1,1000
+ 368:	00078513          	mv	a0,a5
+ 36c:	d19ff0ef          	jal	ra,84 <__umodsi3>
+ 370:	00050793          	mv	a5,a0
+ 374:	fef42423          	sw	a5,-24(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:66
 	d_out = d_out | ((d_in / 100)      <<  8);
- 3cc:	fe842783          	lw	a5,-24(s0)
- 3d0:	06400593          	li	a1,100
- 3d4:	00078513          	mv	a0,a5
- 3d8:	c65ff0ef          	jal	ra,3c <__udivsi3>
- 3dc:	00050793          	mv	a5,a0
- 3e0:	00879793          	slli	a5,a5,0x8
- 3e4:	fec42703          	lw	a4,-20(s0)
- 3e8:	00f767b3          	or	a5,a4,a5
- 3ec:	fef42623          	sw	a5,-20(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:94
+ 378:	fe842783          	lw	a5,-24(s0)
+ 37c:	06400593          	li	a1,100
+ 380:	00078513          	mv	a0,a5
+ 384:	cb9ff0ef          	jal	ra,3c <__udivsi3>
+ 388:	00050793          	mv	a5,a0
+ 38c:	00879793          	slli	a5,a5,0x8
+ 390:	fec42703          	lw	a4,-20(s0)
+ 394:	00f767b3          	or	a5,a4,a5
+ 398:	fef42623          	sw	a5,-20(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:67
 	d_in = d_in % 100;
- 3f0:	fe842783          	lw	a5,-24(s0)
- 3f4:	06400593          	li	a1,100
- 3f8:	00078513          	mv	a0,a5
- 3fc:	c89ff0ef          	jal	ra,84 <__umodsi3>
- 400:	00050793          	mv	a5,a0
- 404:	fef42423          	sw	a5,-24(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:95
+ 39c:	fe842783          	lw	a5,-24(s0)
+ 3a0:	06400593          	li	a1,100
+ 3a4:	00078513          	mv	a0,a5
+ 3a8:	cddff0ef          	jal	ra,84 <__umodsi3>
+ 3ac:	00050793          	mv	a5,a0
+ 3b0:	fef42423          	sw	a5,-24(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:68
 	d_out = d_out | ((d_in / 10)       <<  4);
- 408:	fe842783          	lw	a5,-24(s0)
- 40c:	00a00593          	li	a1,10
- 410:	00078513          	mv	a0,a5
- 414:	c29ff0ef          	jal	ra,3c <__udivsi3>
- 418:	00050793          	mv	a5,a0
- 41c:	00479793          	slli	a5,a5,0x4
- 420:	fec42703          	lw	a4,-20(s0)
- 424:	00f767b3          	or	a5,a4,a5
- 428:	fef42623          	sw	a5,-20(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:96
+ 3b4:	fe842783          	lw	a5,-24(s0)
+ 3b8:	00a00593          	li	a1,10
+ 3bc:	00078513          	mv	a0,a5
+ 3c0:	c7dff0ef          	jal	ra,3c <__udivsi3>
+ 3c4:	00050793          	mv	a5,a0
+ 3c8:	00479793          	slli	a5,a5,0x4
+ 3cc:	fec42703          	lw	a4,-20(s0)
+ 3d0:	00f767b3          	or	a5,a4,a5
+ 3d4:	fef42623          	sw	a5,-20(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:69
 	d_out = d_out |  (d_in % 10);
- 42c:	fe842783          	lw	a5,-24(s0)
- 430:	00a00593          	li	a1,10
- 434:	00078513          	mv	a0,a5
- 438:	c4dff0ef          	jal	ra,84 <__umodsi3>
- 43c:	00050793          	mv	a5,a0
- 440:	00078713          	mv	a4,a5
- 444:	fec42783          	lw	a5,-20(s0)
- 448:	00e7e7b3          	or	a5,a5,a4
- 44c:	fef42623          	sw	a5,-20(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:97
+ 3d8:	fe842783          	lw	a5,-24(s0)
+ 3dc:	00a00593          	li	a1,10
+ 3e0:	00078513          	mv	a0,a5
+ 3e4:	ca1ff0ef          	jal	ra,84 <__umodsi3>
+ 3e8:	00050793          	mv	a5,a0
+ 3ec:	00078713          	mv	a4,a5
+ 3f0:	fec42783          	lw	a5,-20(s0)
+ 3f4:	00e7e7b3          	or	a5,a5,a4
+ 3f8:	fef42623          	sw	a5,-20(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:70
 	return d_out;
- 450:	fec42783          	lw	a5,-20(s0)
-D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:98
+ 3fc:	fec42783          	lw	a5,-20(s0)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/main.c:71
 }
- 454:	00078513          	mv	a0,a5
- 458:	02c12083          	lw	ra,44(sp)
- 45c:	02812403          	lw	s0,40(sp)
- 460:	03010113          	addi	sp,sp,48
- 464:	00008067          	ret
+ 400:	00078513          	mv	a0,a5
+ 404:	02c12083          	lw	ra,44(sp)
+ 408:	02812403          	lw	s0,40(sp)
+ 40c:	03010113          	addi	sp,sp,48
+ 410:	00008067          	ret
 
-00000468 <TM1638_Init>:
+00000414 <STIM_Init>:
+STIM_Init():
+D:\GitHub\askorv32\fw\Debug/../Core/Src/tim.c:12
+ *****************************************************************************************
+ */
+
+#include "tim.h"
+
+void STIM_Init(void) {
+ 414:	ff010113          	addi	sp,sp,-16
+ 418:	00812623          	sw	s0,12(sp)
+ 41c:	01010413          	addi	s0,sp,16
+D:\GitHub\askorv32\fw\Debug/../Core/Src/tim.c:14
+
+	STIM->CR_EN = 0;
+ 420:	130007b7          	lui	a5,0x13000
+ 424:	0047c703          	lbu	a4,4(a5) # 13000004 <__global_pointer$+0x2fff814>
+ 428:	ff777713          	andi	a4,a4,-9
+ 42c:	00e78223          	sb	a4,4(a5)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/tim.c:17
+
+	/* Set the Prescaler value */
+	STIM->PR = STIM_PRESCALER;
+ 430:	130007b7          	lui	a5,0x13000
+ 434:	000f4737          	lui	a4,0xf4
+ 438:	24070713          	addi	a4,a4,576 # f4240 <_etext+0xf3d8c>
+ 43c:	00e7a023          	sw	a4,0(a5) # 13000000 <__global_pointer$+0x2fff810>
+D:\GitHub\askorv32\fw\Debug/../Core/Src/tim.c:20
+
+	/* Set the Period value */
+	STIM->PER = STIM_PERIOD;
+ 440:	130007b7          	lui	a5,0x13000
+ 444:	06400713          	li	a4,100
+ 448:	00e7a423          	sw	a4,8(a5) # 13000008 <__global_pointer$+0x2fff818>
+D:\GitHub\askorv32\fw\Debug/../Core/Src/tim.c:23
+
+	/* Set the Autoreload value */
+	STIM->CR_ARP = STIM_AUTO_RELOAD_PRELOAD;
+ 44c:	130007b7          	lui	a5,0x13000
+ 450:	0047c703          	lbu	a4,4(a5) # 13000004 <__global_pointer$+0x2fff814>
+ 454:	00476713          	ori	a4,a4,4
+ 458:	00e78223          	sb	a4,4(a5)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/tim.c:26
+
+	/* Select the Counter Mode */
+	STIM->CR_CM = STIM_COUNTER_MODE;
+ 45c:	130007b7          	lui	a5,0x13000
+ 460:	0047c703          	lbu	a4,4(a5) # 13000004 <__global_pointer$+0x2fff814>
+ 464:	ffc77713          	andi	a4,a4,-4
+ 468:	00176713          	ori	a4,a4,1
+ 46c:	00e78223          	sb	a4,4(a5)
+D:\GitHub\askorv32\fw\Debug/../Core/Src/tim.c:28
+
+}
+ 470:	00000013          	nop
+ 474:	00c12403          	lw	s0,12(sp)
+ 478:	01010113          	addi	sp,sp,16
+ 47c:	00008067          	ret
+
+00000480 <TM1638_Init>:
 TM1638_Init():
 D:\GitHub\askorv32\fw\Debug/../Core/Src/tm1638.c:12
  *****************************************************************************************
@@ -567,24 +605,24 @@ D:\GitHub\askorv32\fw\Debug/../Core/Src/tm1638.c:12
 #include "tm1638.h"
 
 void TM1638_Init(void) {
- 468:	ff010113          	addi	sp,sp,-16
- 46c:	00812623          	sw	s0,12(sp)
- 470:	01010413          	addi	s0,sp,16
+ 480:	ff010113          	addi	sp,sp,-16
+ 484:	00812623          	sw	s0,12(sp)
+ 488:	01010413          	addi	s0,sp,16
 D:\GitHub\askorv32\fw\Debug/../Core/Src/tm1638.c:13
 	TM1638->SEGS = 0;
- 474:	120007b7          	lui	a5,0x12000
- 478:	0007a023          	sw	zero,0(a5) # 12000000 <__global_pointer$+0x1fff810>
+ 48c:	120007b7          	lui	a5,0x12000
+ 490:	0007a023          	sw	zero,0(a5) # 12000000 <__global_pointer$+0x1fff810>
 D:\GitHub\askorv32\fw\Debug/../Core/Src/tm1638.c:14
 	TM1638->LEDS = 0;
- 47c:	120007b7          	lui	a5,0x12000
- 480:	0007a223          	sw	zero,4(a5) # 12000004 <__global_pointer$+0x1fff814>
+ 494:	120007b7          	lui	a5,0x12000
+ 498:	0007a223          	sw	zero,4(a5) # 12000004 <__global_pointer$+0x1fff814>
 D:\GitHub\askorv32\fw\Debug/../Core/Src/tm1638.c:15
 	TM1638->KEYS = 0; //Можно не записывать нули
- 484:	120007b7          	lui	a5,0x12000
- 488:	0007a423          	sw	zero,8(a5) # 12000008 <__global_pointer$+0x1fff818>
+ 49c:	120007b7          	lui	a5,0x12000
+ 4a0:	0007a423          	sw	zero,8(a5) # 12000008 <__global_pointer$+0x1fff818>
 D:\GitHub\askorv32\fw\Debug/../Core/Src/tm1638.c:16
 }
- 48c:	00000013          	nop
- 490:	00c12403          	lw	s0,12(sp)
- 494:	01010113          	addi	sp,sp,16
- 498:	00008067          	ret
+ 4a4:	00000013          	nop
+ 4a8:	00c12403          	lw	s0,12(sp)
+ 4ac:	01010113          	addi	sp,sp,16
+ 4b0:	00008067          	ret
