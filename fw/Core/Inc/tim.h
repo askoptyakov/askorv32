@@ -47,4 +47,8 @@ __INLINE void STIM_SET_COUNTER_MODE(uint32_t Mode) {
 	STIM->CR_CM = Mode;
 }
 
+__INLINE void STIM_SET_PULSE(uint32_t Pulse) {
+	STIM->PUL = Pulse;
+}
+
 #endif /* __TIM_H */
