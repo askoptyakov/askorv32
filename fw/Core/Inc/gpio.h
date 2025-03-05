@@ -31,7 +31,15 @@ typedef enum
   GPIO_LED2,
   GPIO_LED3,
   GPIO_LED4,
-  GPIO_LED5
+  GPIO_LED5,
+  GPIO_GMB_DI1,
+  GPIO_GMB_DI2,
+  GPIO_GMB_DI3,
+  GPIO_GMB_DO1,
+  GPIO_GMB_DO2,
+  GPIO_GMB_DO3,
+  GPIO_GMB_DRE_G1,
+  GPIO_GMB_DRE_G2
 } GPIO_PinName;
 
 void GPIO_Init(void);

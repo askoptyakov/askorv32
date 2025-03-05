@@ -25,6 +25,9 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
             (input  logic       clk,     //Вход тактирования
              input  logic       rst_n,   //Вход сброса (кнопка S2)
              inout        [5:0] led,     //Выход на 6 светодиодов
+             inout        [5:0] GMB_GPIO,//Выход на дискреты GMB 
+             inout        [1:0] GMB_DRIVER_E,//Выход на драйвер порта E
+             output        [1:0] GMB_DRIVER_D,//Выход на драйвер порта D 
              inout        [2:0] GPIO
 );
     //#0 Настройка тактирования 
@@ -115,11 +118,11 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
            .rd(mem_ReadData));
     
     //-2- Встроенные светодиоды(6шт.)
-    logic [25:0] empty_gpio;
+    logic [17:0] empty_gpio;
     gpio_top #(DMEM_TYPE) gpio
               (.clk(clk_dmem), .rst(rst_sync),
                .Write(leds_Write), .Addr(leds_Addr), .WData(leds_WriteData), .RData(leds_ReadData),
-               .io_ports({empty_gpio[25:0], led[5:0]}));
+               .io_ports({empty_gpio[17:0], GMB_DRIVER_E[1:0], GMB_GPIO[5:0], led[5:0]}));
 
     //-3- Внешний модуль tm1638
     tm1638_top #(DMEM_TYPE) tm1638
@@ -132,5 +135,5 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     stim_top #(DMEM_TYPE) stim
                 (.clk(clk_dmem), .rst(rst_sync),
                  .Write(tim_Write), .Addr(tim_Addr), .WData(tim_WriteData), .RData(tim_ReadData),
-                 .tim_out(empty_tim_port[0]));
+                 .tim_out(GMB_DRIVER_D[0]));
 endmodule
