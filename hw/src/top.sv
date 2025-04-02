@@ -27,8 +27,14 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
              inout        [5:0] led,     //Выход на 6 светодиодов
              inout        [5:0] GMB_GPIO,//Выход на дискреты GMB 
              inout        [1:0] GMB_DRIVER_E,//Выход на драйвер порта E
-             output        [1:0] GMB_DRIVER_D,//Выход на драйвер порта D 
-             inout        [2:0] GPIO
+             output       [1:0] GMB_DRIVER_D,//Выход на драйвер порта D 
+             inout        [2:0] GPIO,
+             output logic       adc_v_cs,
+             output logic       adc_v_cs_1,
+             output logic       adc_v_clk,
+             input  logic       adc_v_miso,
+             input  logic       enable   //Вход  enable (кнопка S1)
+             
 );
     //#0 Настройка тактирования 
     //DESCRIPTION: Для однотактного ядра при использовании BSAM делаем псевдооднотактный процессор
@@ -91,14 +97,14 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     //#4 Подключаем память данных и периферийные модули
     
     //-0- Основной мультиплексор
-    logic [ 3:0] mem_Write, leds_Write, tm_Write, tim_Write;
-    logic [31:0] mem_Addr, leds_Addr, tm_Addr, tim_Addr;
-    logic [31:0] mem_WriteData, leds_WriteData, tm_WriteData, tim_WriteData;
-    logic [31:0] mem_ReadData, leds_ReadData, tm_ReadData, tim_ReadData;
+    logic [ 3:0] mem_Write, leds_Write, tm_Write, tim_Write, adc_v_Write;
+    logic [31:0] mem_Addr, leds_Addr, tm_Addr, tim_Addr, adc_v_Addr;
+    logic [31:0] mem_WriteData, leds_WriteData, tm_WriteData, tim_WriteData, adc_v_WriteData;
+    logic [31:0] mem_ReadData, leds_ReadData, tm_ReadData, tim_ReadData, adc_v_ReadData;
 
-    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(4),
-              .MATCH_ADDR ({32'h10000000, 32'h11000000, 32'h12000000, 32'h13000000}),
-              .MATCH_MASK ({32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000}))
+    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(5),
+              .MATCH_ADDR ({32'h10000000, 32'h11000000, 32'h12000000, 32'h13000000, 32'h14000000}),
+              .MATCH_MASK ({32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000}))
             memmux
              (.clk(clk_dmem), .rst(rst_sync),
               // Интерфейс мастера
@@ -106,10 +112,10 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
               .mAddr (dmem_Addr), .mWData(dmem_WriteData), 
               .mRData(dmem_ReadData),
               // Интерфейс подчинённых
-              .sWrite({mem_Write,    leds_Write,    tm_Write,       tim_Write}),
-              .sAddr ({mem_Addr,     leds_Addr,     tm_Addr,        tim_Addr}),
-              .sWData({mem_WriteData,leds_WriteData,tm_WriteData,   tim_WriteData}),
-              .sRData({mem_ReadData, leds_ReadData, tm_ReadData,    tim_ReadData}));
+              .sWrite({mem_Write,    leds_Write,    tm_Write,       tim_Write,      adc_v_Write}),
+              .sAddr ({mem_Addr,     leds_Addr,     tm_Addr,        tim_Addr,       adc_v_Addr}),
+              .sWData({mem_WriteData,leds_WriteData,tm_WriteData,   tim_WriteData,  adc_v_WriteData}),
+              .sRData({mem_ReadData, leds_ReadData, tm_ReadData,    tim_ReadData,   adc_v_ReadData}));
 
     //-1- Память данных
     mem #(DMEM_TYPE, SYNTH_DMEM_SIZE, BSRAM_DMEM_SIZE, DMEM_INIT_FILE) dmem
@@ -136,4 +142,55 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
                 (.clk(clk_dmem), .rst(rst_sync),
                  .Write(tim_Write), .Addr(tim_Addr), .WData(tim_WriteData), .RData(tim_ReadData),
                  .tim_out(GMB_DRIVER_D[0]));
+
+
+    logic pll_clk;
+    Gowin_rPLL Pll(
+        .clkout(pll_clk), //output clkout
+        .clkin(clk));     //input clkin    
+
+    //-4- Модуль АЦП напряжение
+    adc_v_top #(DMEM_TYPE) adc_v_v
+                (.clk(clk_dmem), .rst(rst_sync), .clk_pll(pll_clk),
+                 .Write(adc_v_Write), .Addr(adc_v_Addr), .WData(adc_v_WriteData), .RData(adc_v_ReadData),
+                 .adc_v_clk(adc_v_clk), .adc_v_miso(adc_v_miso), .adc_v_cs(adc_v_cs));
+
+    assign adc_v_cs_1 = adc_v_cs;
+/*
+    //#1 Устранение дребезжания с кнопки S1 (enable)
+    logic [15:0] enable_sync = 0;
+    logic enable_sync_n = 0;
+    logic en_sync;
+    
+    always_ff @(posedge clk_core)
+        if (enable)
+            enable_sync <= {enable_sync[14:0], 1'b1};
+        else
+            enable_sync <= {1'b0, enable_sync[15:1]};
+    
+    always_ff @(posedge clk_core) 
+        if (enable_sync == 16'b1111_1111_1111_1111) enable_sync_n <= 1'b1;
+        else    if (enable_sync == 16'b0000_0000_0000_0000) enable_sync_n <= 1'b0;
+                else enable_sync_n <= enable_sync_n;
+
+    assign en_sync = ~enable_sync_n;
+
+logic pll_clk_1;
+
+    Gowin_rPLL Pll(
+        .clkout(pll_clk_1), //output clkout
+        .clkin(clk)); //input clkin
+
+    //logic enable_1 = 1;
+    logic [14:0] data;
+
+    assign adc_v_cs_1 = adc_v_cs;
+
+    adc121s051_interface adc_v (
+        .enable(en_sync), 
+        .clk(pll_clk_1), .rst(rst_sync), 
+        .miso(miso), .sclk(pll_clk), 
+        .cs_n(adc_v_cs),
+        .adc_data(data));
+*/
 endmodule

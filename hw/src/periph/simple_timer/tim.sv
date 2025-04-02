@@ -66,11 +66,11 @@ module stim_top
     end else begin                    //#0 - Синтезированная память
         always_comb
             case (Addr[4:2])
-                0 : RData <= tim_presclaer[31:0];
-                1 : RData <= tim_counter_mode[31:0];
-                2 : RData <= tim_counter_period[31:0];
-                3 : RData <= tim_pulse[31:0];
-                4 : RData <= tim_counter[31:0];
+                0 : RData = tim_presclaer[31:0];
+                1 : RData = tim_counter_mode[31:0];
+                2 : RData = tim_counter_period[31:0];
+                3 : RData = tim_pulse[31:0];
+                4 : RData = tim_counter[31:0];
           default : RData = 32'd0;
             endcase
     end

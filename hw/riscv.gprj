@@ -7,7 +7,9 @@
     <FileList>
         <File path="src/clock.sv" type="file.verilog" enable="1"/>
         <File path="src/core.sv" type="file.verilog" enable="1"/>
+        <File path="src/gowin_rpll/gowin_rpll.v" type="file.verilog" enable="1"/>
         <File path="src/mem.sv" type="file.verilog" enable="1"/>
+        <File path="src/periph/adc-v/adc-v.sv" type="file.verilog" enable="1"/>
         <File path="src/periph/gpio.sv" type="file.verilog" enable="1"/>
         <File path="src/periph/mux.sv" type="file.verilog" enable="1"/>
         <File path="src/periph/simple_timer/tim.sv" type="file.verilog" enable="1"/>

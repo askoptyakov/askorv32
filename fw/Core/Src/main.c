@@ -6,6 +6,9 @@
 #define READ_STIM(dir) (*(volatile unsigned *)dir)
 #define WRITE_STIM(dir, value) { (*(volatile unsigned *)dir) = (value); }
 
+#define ADC_V_Enable  	0x14000000
+#define ADC_V_Data 	    0x14000004
+
 /*Прототипы функций*/
 unsigned int dig_transform(unsigned int digit);
 
@@ -28,8 +31,11 @@ int main(void) {
 
 	while(1) {
 
+		if(keys) WRITE_STIM(ADC_V_Enable, 1); //вкл ацп
+		if(!keys)WRITE_STIM(ADC_V_Enable, 0); //вкл ацп;
+
 		//#Считывание значения таймера
-		count = STIM_GET_COUNT();
+		count = READ_STIM(ADC_V_Data);
 
 		//c = c + 1;
 		//#Светодиоды tangnano
