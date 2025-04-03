@@ -29,13 +29,28 @@ int main(void) {
 
 	unsigned int count = 0;
 
+	int i = 0;
+	uint32_t buf = 0;
+	uint32_t res = 0.0f;
+	WRITE_STIM(ADC_V_Enable, 1); //вкл ацп
+
+	float a = 0.222f;
+	float b = 0.383f;
+
 	while(1) {
 
-		if(keys) WRITE_STIM(ADC_V_Enable, 1); //вкл ацп
-		if(!keys)WRITE_STIM(ADC_V_Enable, 0); //вкл ацп;
-
 		//#Считывание значения таймера
-		count = READ_STIM(ADC_V_Data);
+		//count = READ_STIM(ADC_V_Data);
+
+		//#Считывание значения ацп
+		buf += READ_STIM(ADC_V_Data);
+		i++;
+		if(i == 200) { //усреднение
+			//ед.ацп -> Вольт
+			res = ((buf/i) * 222) / 1000; // почему-то не работает умножение с float
+			buf = 0;
+			i = 0;
+		}
 
 		//c = c + 1;
 		//#Светодиоды tangnano
@@ -48,7 +63,7 @@ int main(void) {
 
 		//#Сегментный индикатор tm1638
 		//TM1638_WriteSegs(c);
-		TM1638_WriteSegs(dig_transform(count));
+		TM1638_WriteSegs(dig_transform(res));
 
 
 		//for(int i = 0; i<100000; i++);
