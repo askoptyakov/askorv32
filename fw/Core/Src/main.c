@@ -11,36 +11,42 @@
 
 /*Прототипы функций*/
 unsigned int dig_transform(unsigned int digit);
-
+unsigned int settingOfDuty(unsigned int *duty);
 //unsigned int globalvar = 5;
-unsigned int c;
+unsigned int duty;
+unsigned int dutyOld;
+unsigned int option;
 unsigned int keys = 0;
 unsigned int tn_keys = 0;
+uint8_t flagOfStep = 0;
+uint8_t flagOfOption = 0;
 
-int main(void) {
+int main(void)
+{
 	//#1 Инициализация периферийных устройства
 	GPIO_Init();
 	TM1638_Init();
 	STIM_Init();
-	c = 1;
-	GPIO_PinsMode(0xFFFFFFFF); //Все порты на выход
-
+	duty = 50;
+	dutyOld = 0;
+	option = 0;
+	unsigned int frequency = 10000;
+	unsigned int frequencyOld = 0;
+	//GPIO_PinsMode(0xFFFFFFFF); //Все порты на выход
+	STIM_SET_PERIOD(100);
 	STIM_STATE(TIM_ENABLE);
-
-	unsigned int count = 0;
+	GPIO_WritePin(GPIO_GMB_DRE_G1, GPIO_PIN_SET);
+	GPIO_WritePin(GPIO_GMB_DRE_G2, GPIO_PIN_SET);
 
 	int i = 0;
 	uint32_t buf = 0;
 	uint32_t res = 0.0f;
 	WRITE_STIM(ADC_V_Enable, 1); //вкл ацп
 
-	float a = 0.222f;
-	float b = 0.383f;
+	unsigned int count = 0;
 
-	while(1) {
-
-		//#Считывание значения таймера
-		//count = READ_STIM(ADC_V_Data);
+	while(1)
+	{
 
 		//#Считывание значения ацп
 		buf += READ_STIM(ADC_V_Data);
@@ -52,22 +58,53 @@ int main(void) {
 			i = 0;
 		}
 
-		//c = c + 1;
-		//#Светодиоды tangnano
-		//GPIO_WritePins(~c);
-		//GPIO_WritePins(count);
-
-		//#Светодиоды tm1638
-		keys = TM1638_ReadKeys();
-		TM1638_WriteLeds(keys);
-
-		//#Сегментный индикатор tm1638
-		//TM1638_WriteSegs(c);
+		//TM1638_WriteSegs(dig_transform(100-/*settingOfDuty(&duty)*/10));
 		TM1638_WriteSegs(dig_transform(res));
-
-
-		//for(int i = 0; i<100000; i++);
+		STIM_STATE(TIM_ENABLE);
+		STIM_SET_PULSE(/*duty*/10);
 	}
+}
+
+unsigned int settingOfDuty(unsigned int *duty)
+{
+	TM1638_WriteLeds(255);
+
+	if(TM1638_ReadKey(TM1638_KEY0))
+	{
+		if (!flagOfStep && *duty < 100)
+		{
+			(*duty)++;
+			flagOfStep = 1;
+		}
+	}
+	else if (TM1638_ReadKey(TM1638_KEY1))
+	{
+		if (!flagOfStep && *duty > 0)
+		{
+			(*duty)--;
+			flagOfStep = 1;
+		}
+	}
+	else if (TM1638_ReadKey(TM1638_KEY2))
+	{
+		if (!flagOfStep && *duty <= 90)
+		{
+			(*duty)+=10;
+			flagOfStep = 1;
+		}
+	}
+	else if (TM1638_ReadKey(TM1638_KEY3))
+	{
+		if (!flagOfStep && *duty >= 10)
+		{
+			(*duty)-=10;
+			flagOfStep = 1;
+		}
+	}
+	else
+		flagOfStep = 0;
+
+	return *duty;
 }
 
 unsigned int dig_transform(unsigned int digit) {

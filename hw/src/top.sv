@@ -143,6 +143,7 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
                  .Write(tim_Write), .Addr(tim_Addr), .WData(tim_WriteData), .RData(tim_ReadData),
                  .tim_out(GMB_DRIVER_D[0]));
 
+    assign GMB_DRIVER_D[1] = 0;//~GMB_DRIVER_D[0]; //Проверить инверсию пина [1] в плате GMB и в плате HBM
 
     logic pll_clk;
     Gowin_rPLL Pll(

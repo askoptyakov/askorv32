@@ -56,10 +56,10 @@ typedef struct
 } STIM_TypeDef;
 
 /* Настройки таймера при инициализации */
-#define STIM_PRESCALER 				1000000;
+#define STIM_PRESCALER 				2;
 #define STIM_PERIOD 				100;
 #define STIM_COUNTER_MODE 			STIM_COUNTER_MODE_DOWN;
-#define STIM_AUTO_RELOAD_PRELOAD 	1;
+#define STIM_AUTO_RELOAD_PRELOAD 	0;
 
 /* Объявление указателей на структуры данных */
 #define GPIO 	((GPIO_TypeDef*) 	GPIO_BASE)
