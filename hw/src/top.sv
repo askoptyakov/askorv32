@@ -29,10 +29,10 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
              inout        [1:0] GMB_DRIVER_E,//Выход на драйвер порта E
              output       [1:0] GMB_DRIVER_D,//Выход на драйвер порта D 
              inout        [2:0] GPIO,
-             output logic       adc_v_cs,
+             output logic       adc_v_cs, adc_c_cs,
              output logic       adc_v_cs_1,
-             output logic       adc_v_clk,
-             input  logic       adc_v_miso,
+             output logic       adc_v_clk, adc_c_clk,
+             input  logic       adc_v_miso, adc_c_miso,
              input  logic       enable   //Вход  enable (кнопка S1)
              
 );
@@ -97,14 +97,14 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     //#4 Подключаем память данных и периферийные модули
     
     //-0- Основной мультиплексор
-    logic [ 3:0] mem_Write, leds_Write, tm_Write, tim_Write, adc_v_Write;
-    logic [31:0] mem_Addr, leds_Addr, tm_Addr, tim_Addr, adc_v_Addr;
-    logic [31:0] mem_WriteData, leds_WriteData, tm_WriteData, tim_WriteData, adc_v_WriteData;
-    logic [31:0] mem_ReadData, leds_ReadData, tm_ReadData, tim_ReadData, adc_v_ReadData;
+    logic [ 3:0] mem_Write, leds_Write, tm_Write, tim_Write, adc_v_Write, adc_c_Write;
+    logic [31:0] mem_Addr, leds_Addr, tm_Addr, tim_Addr, adc_v_Addr, adc_c_Addr;
+    logic [31:0] mem_WriteData, leds_WriteData, tm_WriteData, tim_WriteData, adc_v_WriteData, adc_c_WriteData;
+    logic [31:0] mem_ReadData, leds_ReadData, tm_ReadData, tim_ReadData, adc_v_ReadData, adc_c_ReadData;
 
-    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(5),
-              .MATCH_ADDR ({32'h10000000, 32'h11000000, 32'h12000000, 32'h13000000, 32'h14000000}),
-              .MATCH_MASK ({32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000}))
+    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(6),
+              .MATCH_ADDR ({32'h10000000, 32'h11000000, 32'h12000000, 32'h13000000, 32'h14000000, 32'h15000000}),
+              .MATCH_MASK ({32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000}))
             memmux
              (.clk(clk_dmem), .rst(rst_sync),
               // Интерфейс мастера
@@ -112,10 +112,10 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
               .mAddr (dmem_Addr), .mWData(dmem_WriteData), 
               .mRData(dmem_ReadData),
               // Интерфейс подчинённых
-              .sWrite({mem_Write,    leds_Write,    tm_Write,       tim_Write,      adc_v_Write}),
-              .sAddr ({mem_Addr,     leds_Addr,     tm_Addr,        tim_Addr,       adc_v_Addr}),
-              .sWData({mem_WriteData,leds_WriteData,tm_WriteData,   tim_WriteData,  adc_v_WriteData}),
-              .sRData({mem_ReadData, leds_ReadData, tm_ReadData,    tim_ReadData,   adc_v_ReadData}));
+              .sWrite({mem_Write,    leds_Write,    tm_Write,       tim_Write,      adc_v_Write,      adc_c_Write}),
+              .sAddr ({mem_Addr,     leds_Addr,     tm_Addr,        tim_Addr,       adc_v_Addr,       adc_c_Addr}),
+              .sWData({mem_WriteData,leds_WriteData,tm_WriteData,   tim_WriteData,  adc_v_WriteData,  adc_c_WriteData}),
+              .sRData({mem_ReadData, leds_ReadData, tm_ReadData,    tim_ReadData,   adc_v_ReadData,   adc_c_ReadData}));
 
     //-1- Память данных
     mem #(DMEM_TYPE, SYNTH_DMEM_SIZE, BSRAM_DMEM_SIZE, DMEM_INIT_FILE) dmem
@@ -156,7 +156,13 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
                  .Write(adc_v_Write), .Addr(adc_v_Addr), .WData(adc_v_WriteData), .RData(adc_v_ReadData),
                  .adc_v_clk(adc_v_clk), .adc_v_miso(adc_v_miso), .adc_v_cs(adc_v_cs));
 
-    assign adc_v_cs_1 = adc_v_cs;
+    //-5- Модуль АЦП ток
+    adc_v_top #(DMEM_TYPE) adc_curernt
+                (.clk(clk_dmem), .rst(rst_sync), .clk_pll(pll_clk),
+                 .Write(adc_c_Write), .Addr(adc_c_Addr), .WData(adc_c_WriteData), .RData(adc_c_ReadData),
+                 .adc_v_clk(adc_c_clk), .adc_v_miso(adc_c_miso), .adc_v_cs(adc_c_cs));
+
+    assign adc_v_cs_1 = adc_c_cs;
 /*
     //#1 Устранение дребезжания с кнопки S1 (enable)
     logic [15:0] enable_sync = 0;

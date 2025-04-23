@@ -9,6 +9,9 @@
 #define ADC_V_Enable  	0x14000000
 #define ADC_V_Data 	    0x14000004
 
+#define ADC_C_Enable  	0x15000000
+#define ADC_C_Data 	    0x15000004
+
 /*Прототипы функций*/
 unsigned int dig_transform(unsigned int digit);
 unsigned int settingOfDuty(unsigned int *duty);
@@ -39,9 +42,13 @@ int main(void)
 	GPIO_WritePin(GPIO_GMB_DRE_G2, GPIO_PIN_SET);
 
 	int i = 0;
-	uint32_t buf = 0;
-	uint32_t res = 0.0f;
-	WRITE_STIM(ADC_V_Enable, 1); //вкл ацп
+	uint32_t buf_I = 0;
+	uint32_t buf_U = 0;
+	uint32_t res_I = 0;
+	uint32_t res = 0;
+	uint32_t res_U = 0;
+	WRITE_STIM(ADC_C_Enable, 1); //вкл ацп ток
+	WRITE_STIM(ADC_V_Enable, 1); //вкл ацп напряжение
 
 	unsigned int count = 0;
 
@@ -49,19 +56,29 @@ int main(void)
 	{
 
 		//#Считывание значения ацп
-		buf += READ_STIM(ADC_V_Data);
+
+
+
+		//#Считывание значения ацп
+		//buf_I += READ_STIM(ADC_C_Data);
+		buf_U += READ_STIM(ADC_V_Data);
 		i++;
-		if(i == 200) { //усреднение
+		if(i == 500) { //усреднение
 			//ед.ацп -> Вольт
-			res = ((buf/i) * 222) / 1000; // почему-то не работает умножение с float
-			buf = 0;
+			res_U = buf_U/i;
+			//res_I = buf_I/i;
+			buf_U = 0;
+			//buf_I = 0;
 			i = 0;
 		}
 
+		if(TM1638_ReadKey(TM1638_KEY0))  res = res_U;
+		else res = res_I;
+
 		//TM1638_WriteSegs(dig_transform(100-/*settingOfDuty(&duty)*/10));
 		TM1638_WriteSegs(dig_transform(res));
-		STIM_STATE(TIM_ENABLE);
-		STIM_SET_PULSE(/*duty*/10);
+		//STIM_STATE(TIM_ENABLE);
+		//STIM_SET_PULSE(/*duty*/10);
 	}
 }
 
