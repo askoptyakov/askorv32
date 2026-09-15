@@ -1,0 +1,92 @@
+[
+ {
+  "InstFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+  "InstLine" : 1,
+  "InstName" : "top",
+  "ModuleFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+  "ModuleLine" : 1,
+  "ModuleName" : "top",
+  "SubInsts" : [
+   {
+    "InstFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "InstLine" : 36,
+    "InstName" : "filter_2bit_ba",
+    "ModuleFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "ModuleLine" : 76,
+    "ModuleName" : "filter_2bit"
+   },
+   {
+    "InstFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "InstLine" : 37,
+    "InstName" : "filter_2bit_ab",
+    "ModuleFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "ModuleLine" : 76,
+    "ModuleName" : "filter_2bit"
+   },
+   {
+    "InstFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "InstLine" : 38,
+    "InstName" : "filter_2bit_cb",
+    "ModuleFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "ModuleLine" : 76,
+    "ModuleName" : "filter_2bit"
+   },
+   {
+    "InstFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "InstLine" : 39,
+    "InstName" : "filter_2bit_bc",
+    "ModuleFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "ModuleLine" : 76,
+    "ModuleName" : "filter_2bit"
+   },
+   {
+    "InstFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "InstLine" : 40,
+    "InstName" : "filter_2bit_ac",
+    "ModuleFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "ModuleLine" : 76,
+    "ModuleName" : "filter_2bit"
+   },
+   {
+    "InstFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "InstLine" : 41,
+    "InstName" : "filter_2bit_ca",
+    "ModuleFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "ModuleLine" : 76,
+    "ModuleName" : "filter_2bit"
+   },
+   {
+    "InstFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "InstLine" : 44,
+    "InstName" : "my_divider_1",
+    "ModuleFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "ModuleLine" : 117,
+    "ModuleName" : "my_divider"
+   },
+   {
+    "InstFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "InstLine" : 46,
+    "InstName" : "OnePulse_3_1",
+    "ModuleFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "ModuleLine" : 146,
+    "ModuleName" : "OnePulse_3"
+   },
+   {
+    "InstFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "InstLine" : 52,
+    "InstName" : "OnePulse_3_2",
+    "ModuleFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "ModuleLine" : 146,
+    "ModuleName" : "OnePulse_3"
+   },
+   {
+    "InstFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "InstLine" : 58,
+    "InstName" : "OnePulse_3_3",
+    "ModuleFile" : "D:/GitHub/askorv32/hw/Documents/test_nsb/src/top.v",
+    "ModuleLine" : 146,
+    "ModuleName" : "OnePulse_3"
+   }
+  ]
+ }
+]

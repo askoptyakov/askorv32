@@ -1,0 +1,14 @@
+-d D:\GitHub\askorv32\hw\Documents\test_nsb\impl\gwsynthesis\test_nsb.vg
+-p GW1NR-9C-QFN88P-6
+-pn GW1NR-LV9QN88PC6/I5
+-cst D:\GitHub\askorv32\hw\Documents\test_nsb\src\test_nsb.cst
+-cfg D:\GitHub\askorv32\hw\Documents\test_nsb\impl\pnr\device.cfg
+-sdc D:\GitHub\askorv32\hw\Documents\test_nsb\src\test_nsb.sdc
+-bit
+-tr
+-ph
+-timing
+-cst_error
+-correct_hold 1
+-route_maxfan 23
+-global_freq 50.000
