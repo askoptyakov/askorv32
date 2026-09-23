@@ -1,15 +1,18 @@
 module top (
     input  clk,      // Тактовый сигнал 27 МГц
 
+    input  button,
     input  sig_ntb_AB,
     input  sig_ntb_BA,
     input  sig_ntb_BC,
     input  sig_ntb_CB,
     input  sig_ntb_CA,
     input  sig_ntb_AC,
+    output user_pin,
     output G1_DifD1, G2_DifD1, G1_DifD2, G2_DifD2, G1_DifD3, G2_DifD3
 
 );
+
 
     wire sync_ba_filter;
     wire sync_ab_filter;
@@ -18,11 +21,29 @@ module top (
     wire sync_ac_filter;
     wire sync_ca_filter;
     wire clk_500kHz;
-    wire ENABLE = 1;
+    wire ENABLE;
 
-                                                    
-    reg [11:0] alpha = 12'd400;                     //12'd400 - Сдвиг угла выпрямителя (альфа) для компенсации
-    reg [11:0] pulse = 12'd400 + 150;               //	фазового сдвига из-за RC цепочки для фильтрации
+	assign user_pin = !(sig_ntb_AB && sig_ntb_BA && sig_ntb_BC && sig_ntb_CB && sig_ntb_CA && sig_ntb_AC);
+    assign ENABLE = !(sig_ntb_AB && sig_ntb_BA && sig_ntb_BC && sig_ntb_CB && sig_ntb_CA && sig_ntb_AC);
+
+    //assign ENABLE = (button) ? 0 : 1;
+    // Регистры приема данных от MK
+	reg [11:0] REG_DATA = 1000;             
+
+	localparam DELAY_RC_COMPENSATION = 12'd400; 	//Сдвиг угла выпрямителя (альфа) для компенсации
+																   //	фазового сдвига из-за RC цепочки для фильтрации
+																   //	лин. напр.
+	reg [11:0] alpha = DELAY_RC_COMPENSATION;
+	reg [11:0] pulse = DELAY_RC_COMPENSATION + 150;
+	
+	always @(posedge clk) 
+		begin 
+			alpha <= REG_DATA[11:0] + DELAY_RC_COMPENSATION;
+			pulse <= REG_DATA[11:0] + DELAY_RC_COMPENSATION + 150;
+		end
+                               
+    //reg [11:0] alpha = 12'd400;                     //12'd400 - Сдвиг угла выпрямителя (альфа) для компенсации
+   //reg [11:0] pulse = 12'd400 + 150;               //	фазового сдвига из-за RC цепочки для фильтрации
                                                     //	лин. напр.
 
     wire gate_thyr1_direct;
@@ -32,13 +53,14 @@ module top (
     wire gate_thyr5_direct;
     wire gate_thyr6_direct;
 	
-
     filter_2bit filter_2bit_ba(.in(sig_ntb_AB), .clock(clk), .out(sync_ab_filter));
     filter_2bit filter_2bit_ab(.in(sig_ntb_BA), .clock(clk), .out(sync_ba_filter));
     filter_2bit filter_2bit_cb(.in(sig_ntb_BC), .clock(clk), .out(sync_bc_filter));
     filter_2bit filter_2bit_bc(.in(sig_ntb_CB), .clock(clk), .out(sync_cb_filter));
-    filter_2bit filter_2bit_ac(.in(sig_ntb_CA), .clock(clk), .out(sync_ac_filter));
-    filter_2bit filter_2bit_ca(.in(sig_ntb_AC), .clock(clk), .out(sync_ca_filter));
+    filter_2bit filter_2bit_ac(.in(sig_ntb_CA), .clock(clk), .out(sync_ca_filter));
+    filter_2bit filter_2bit_ca(.in(sig_ntb_AC), .clock(clk), .out(sync_ac_filter));
+
+
 	
 
 	my_divider my_divider_1(.clock(clk), .out(clk_500kHz));
@@ -165,5 +187,4 @@ module OnePulse_3(
    assign cn_p = (cnt <= pulse); 
 	
 	assign {thyr_out1, thyr_out2} = (cn_t & cn_p) ? {~sync1,~sync2} : {1'b0,1'b0}; 
-
 endmodule

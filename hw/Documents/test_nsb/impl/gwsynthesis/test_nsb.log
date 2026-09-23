@@ -2,17 +2,17 @@ GowinSynthesis start
 Running parser ...
 Analyzing Verilog file 'D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v'
 Compiling module 'top'("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":1)
-WARN  (EX3780) : Using initial value of 'alpha' since it is never assigned("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":24)
-WARN  (EX3780) : Using initial value of 'pulse' since it is never assigned("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":25)
-Compiling module 'filter_2bit'("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":76)
-WARN  (EX3791) : Expression size 32 truncated to fit in target size 2("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":93)
-WARN  (EX2420) : Latch inferred for net 'out'; We do not recommend the use of latches in FPGA designs, as they may lead to timing problems("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":110)
-Compiling module 'my_divider'("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":117)
-WARN  (EX3791) : Expression size 6 truncated to fit in target size 5("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":140)
-Compiling module 'OnePulse_3'("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":146)
-WARN  (EX3791) : Expression size 13 truncated to fit in target size 12("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":162)
+WARN  (EX3780) : Using initial value of 'REG_DATA' since it is never assigned("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":31)
+Compiling module 'filter_2bit'("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":98)
+WARN  (EX3791) : Expression size 32 truncated to fit in target size 2("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":115)
+WARN  (EX2420) : Latch inferred for net 'out'; We do not recommend the use of latches in FPGA designs, as they may lead to timing problems("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":132)
+Compiling module 'my_divider'("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":139)
+WARN  (EX3791) : Expression size 6 truncated to fit in target size 5("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":162)
+Compiling module 'OnePulse_3'("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":168)
+WARN  (EX3791) : Expression size 13 truncated to fit in target size 12("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":184)
 NOTE  (EX0101) : Current top module is "top"
 [5%] Running netlist conversion ...
+WARN  (CV0016) : Input button is unused("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":4)
 Running device independent optimization ...
 [10%] Optimizing Phase 0 completed
 [15%] Optimizing Phase 1 completed
@@ -25,12 +25,12 @@ Running inference ...
 Running technical mapping ...
 [60%] Tech-Mapping Phase 0 completed
 [65%] Tech-Mapping Phase 1 completed
-WARN  (DI0003) : Latch inferred for net 'out';We do not recommend the use of latches in FPGA designs, as they may lead to timing problems("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":110)
-WARN  (DI0003) : Latch inferred for net 'out';We do not recommend the use of latches in FPGA designs, as they may lead to timing problems("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":110)
-WARN  (DI0003) : Latch inferred for net 'out';We do not recommend the use of latches in FPGA designs, as they may lead to timing problems("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":110)
-WARN  (DI0003) : Latch inferred for net 'out';We do not recommend the use of latches in FPGA designs, as they may lead to timing problems("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":110)
-WARN  (DI0003) : Latch inferred for net 'out';We do not recommend the use of latches in FPGA designs, as they may lead to timing problems("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":110)
-WARN  (DI0003) : Latch inferred for net 'out';We do not recommend the use of latches in FPGA designs, as they may lead to timing problems("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":110)
+WARN  (DI0003) : Latch inferred for net 'out';We do not recommend the use of latches in FPGA designs, as they may lead to timing problems("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":132)
+WARN  (DI0003) : Latch inferred for net 'out';We do not recommend the use of latches in FPGA designs, as they may lead to timing problems("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":132)
+WARN  (DI0003) : Latch inferred for net 'out';We do not recommend the use of latches in FPGA designs, as they may lead to timing problems("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":132)
+WARN  (DI0003) : Latch inferred for net 'out';We do not recommend the use of latches in FPGA designs, as they may lead to timing problems("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":132)
+WARN  (DI0003) : Latch inferred for net 'out';We do not recommend the use of latches in FPGA designs, as they may lead to timing problems("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":132)
+WARN  (DI0003) : Latch inferred for net 'out';We do not recommend the use of latches in FPGA designs, as they may lead to timing problems("D:\GitHub\askorv32\hw\Documents\test_nsb\src\top.v":132)
 [75%] Tech-Mapping Phase 2 completed
 [80%] Tech-Mapping Phase 3 completed
 [90%] Tech-Mapping Phase 4 completed

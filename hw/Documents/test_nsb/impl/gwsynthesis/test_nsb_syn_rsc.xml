@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Module name="top" Lut="42" T_Register="54(0)" T_Alu="37(0)" T_Lut="70(42)">
+<Module name="top" Register="2" Lut="35" T_Register="56(2)" T_Alu="46(0)" T_Lut="66(35)">
     <SubModule name="filter_2bit_ba" Register="2" Lut="3" T_Register="2(2)" T_Lut="3(3)"/>
     <SubModule name="filter_2bit_ab" Register="2" Lut="3" T_Register="2(2)" T_Lut="3(3)"/>
     <SubModule name="filter_2bit_cb" Register="2" Lut="3" T_Register="2(2)" T_Lut="3(3)"/>
@@ -7,7 +7,7 @@
     <SubModule name="filter_2bit_ac" Register="2" Lut="3" T_Register="2(2)" T_Lut="3(3)"/>
     <SubModule name="filter_2bit_ca" Register="2" Lut="3" T_Register="2(2)" T_Lut="3(3)"/>
     <SubModule name="my_divider_1" Register="6" Alu="4" Lut="4" T_Register="6(6)" T_Alu="4(4)" T_Lut="4(4)"/>
-    <SubModule name="OnePulse_3_1" Register="12" Alu="11" Lut="2" T_Register="12(12)" T_Alu="11(11)" T_Lut="2(2)"/>
-    <SubModule name="OnePulse_3_2" Register="12" Alu="11" Lut="2" T_Register="12(12)" T_Alu="11(11)" T_Lut="2(2)"/>
-    <SubModule name="OnePulse_3_3" Register="12" Alu="11" Lut="2" T_Register="12(12)" T_Alu="11(11)" T_Lut="2(2)"/>
+    <SubModule name="OnePulse_3_1" Register="12" Alu="14" Lut="3" T_Register="12(12)" T_Alu="14(14)" T_Lut="3(3)"/>
+    <SubModule name="OnePulse_3_2" Register="12" Alu="14" Lut="3" T_Register="12(12)" T_Alu="14(14)" T_Lut="3(3)"/>
+    <SubModule name="OnePulse_3_3" Register="12" Alu="14" Lut="3" T_Register="12(12)" T_Alu="14(14)" T_Lut="3(3)"/>
 </Module>
