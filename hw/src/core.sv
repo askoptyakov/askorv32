@@ -174,7 +174,7 @@ module control_unit (
             7'b1100111: controls = 15'b1_000_000_0_10_0_00_1_1; //Команда jalr
             7'b0010111: controls = 15'b1_100_011_0_00_0_00_0_0; //Команда auipc
             7'b0110111: controls = 15'b1_100_101_0_00_0_00_0_0; //Команда lui
-            default:    controls = 15'bx_xxx_xxx_x_xx_x_xx_x_x; //Другие команды
+            default:    controls = 15'b0_000_000_0_00_0_00_0_0; //Другие команды - NOP (в т.ч. пузырь 0x00000000 после сброса конвейера)
         endcase
     ////#cu.2 Дешифратор АЛУ
     logic opb5;
@@ -532,7 +532,7 @@ module execute
     //непосредственного числа ImmExt.
     logic [31:0] JALOp;
     assign JALOp = (JALSrc) ? SrcAforward : PC;
-    assign PCTarget = JALOp + ImmExt;
+    assign PCTarget = (JALOp + ImmExt) & ~32'd1; //Младший бит адреса перехода обнуляется (спецификация JALR)
 
     //#4 Транслирование сигналов и прочие связи
     assign WriteData = SrcBforward;
