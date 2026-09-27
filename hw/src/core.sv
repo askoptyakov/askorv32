@@ -662,9 +662,9 @@ endmodule
 module regdata
           #(parameter int QUANTITY = 2, //Количество регистров без регистра выхода памяти
             parameter bit CORE_TYPE = 0)
-          (input  logic        clk, rst, en,
-           input  logic [31:0] d [QUANTITY-1:0],
-           output logic [31:0] q [QUANTITY-1:0]);
+          (input  logic                      clk, rst, en,
+           input  logic [QUANTITY-1:0][31:0] d, //Упакованный массив: {A, B} даёт d[1]=A, d[0]=B (поддерживается Icarus Verilog)
+           output logic [QUANTITY-1:0][31:0] q);
 
     genvar i;
 
@@ -684,9 +684,9 @@ endmodule
 module regrf
           #(parameter int QUANTITY = 2, //Количество адресных регистров регистрового файла
             parameter bit CORE_TYPE = 0)
-          (input  logic        clk, rst, en,
-           input  logic [4:0] d [QUANTITY-1:0],
-           output logic [4:0] q [QUANTITY-1:0]);
+          (input  logic                     clk, rst, en,
+           input  logic [QUANTITY-1:0][4:0] d, //Упакованный массив: {A, B} даёт d[1]=A, d[0]=B (поддерживается Icarus Verilog)
+           output logic [QUANTITY-1:0][4:0] q);
 
     genvar i;
 

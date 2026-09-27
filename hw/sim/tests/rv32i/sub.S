@@ -1,0 +1,59 @@
+// sub.S - тесты инструкции SUB: регистр-регистр
+// Сгенерировано gen_rv32i.py - не редактировать вручную.
+#include "riscv_test.h"
+
+RVTEST_CODE_BEGIN
+
+    //Значения
+    TEST_RR_OP(1, sub, 0x00000000, 0x00000000, 0x00000000)
+    TEST_RR_OP(2, sub, 0x00000000, 0x00000001, 0x00000001)
+    TEST_RR_OP(3, sub, 0xfffffffc, 0x00000003, 0x00000007)
+    TEST_RR_OP(4, sub, 0x00008000, 0x00000000, 0xffff8000)
+    TEST_RR_OP(5, sub, 0x80000000, 0x80000000, 0x00000000)
+    TEST_RR_OP(6, sub, 0x80008000, 0x80000000, 0xffff8000)
+    TEST_RR_OP(7, sub, 0xffff8001, 0x00000000, 0x00007fff)
+    TEST_RR_OP(8, sub, 0x7fffffff, 0x7fffffff, 0x00000000)
+    TEST_RR_OP(9, sub, 0x7fff8000, 0x7fffffff, 0x00007fff)
+    TEST_RR_OP(10, sub, 0x7fff8001, 0x80000000, 0x00007fff)
+    TEST_RR_OP(11, sub, 0x80007fff, 0x7fffffff, 0xffff8000)
+    TEST_RR_OP(12, sub, 0x00000001, 0x00000000, 0xffffffff)
+    TEST_RR_OP(13, sub, 0xfffffffe, 0xffffffff, 0x00000001)
+    TEST_RR_OP(14, sub, 0x00000000, 0xffffffff, 0xffffffff)
+    TEST_RR_OP(15, sub, 0x80000002, 0x00000001, 0x7fffffff)
+    TEST_RR_OP(16, sub, 0xffffffff, 0x7fffffff, 0x80000000)
+    TEST_RR_OP(17, sub, 0x00000001, 0x80000000, 0x7fffffff)
+    TEST_RR_OP(18, sub, 0xffffffff, 0xffffffff, 0x00000000)
+    TEST_RR_OP(19, sub, 0xaaaaaaab, 0x55555555, 0xaaaaaaaa)
+    TEST_RR_OP(20, sub, 0x13579be0, 0x12345678, 0xfedcba98)
+    TEST_RR_OP(21, sub, 0x0e100e10, 0x0f0f0f0f, 0x00ff00ff)
+
+    //Совпадение регистров
+    TEST_RR_SRC1_EQ_DEST(22, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_SRC2_EQ_DEST(23, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_SRC12_EQ_DEST(24, sub, 0x00000000, 0x0000000d)
+
+    //Байпас (конвейер)
+    TEST_RR_DEST_BYPASS(25, 0, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_DEST_BYPASS(26, 1, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_DEST_BYPASS(27, 2, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_SRC12_BYPASS(28, 0, 0, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_SRC12_BYPASS(29, 0, 1, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_SRC12_BYPASS(30, 0, 2, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_SRC12_BYPASS(31, 1, 0, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_SRC12_BYPASS(32, 1, 1, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_SRC12_BYPASS(33, 2, 0, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_SRC21_BYPASS(34, 0, 0, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_SRC21_BYPASS(35, 0, 1, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_SRC21_BYPASS(36, 0, 2, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_SRC21_BYPASS(37, 1, 0, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_SRC21_BYPASS(38, 1, 1, sub, 0x87654316, 0x87654321, 0x0000000b)
+    TEST_RR_SRC21_BYPASS(39, 2, 0, sub, 0x87654316, 0x87654321, 0x0000000b)
+
+    //Регистр x0
+    TEST_RR_ZEROSRC1(40, sub, 0xfffffff5, 0x0000000b)
+    TEST_RR_ZEROSRC2(41, sub, 0x87654321, 0x87654321)
+    TEST_RR_ZEROSRC12(42, sub, 0x00000000)
+    TEST_RR_ZERODEST(43, sub, 0x87654321, 0x0000000b)
+
+    j pass
+RVTEST_CODE_END

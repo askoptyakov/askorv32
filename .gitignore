@@ -18,6 +18,8 @@ hw/src/gwlib/*
 hw/src/gwlib/*_tmp.v
 hw/*.user
 hw/src/test
+hw/sim/build/
+__pycache__/
 
 # sdk (установщики в репозитории не храним)
 sdk/*.exe
