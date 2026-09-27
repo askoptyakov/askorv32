@@ -47,6 +47,8 @@
 // Начало и конец программы
 //-----------------------------------------------------------------------------------------
 #define RVTEST_CODE_BEGIN \
+    .section .reset, "ax", @progbits; \
+    j _start; \
     .section .text.init, "ax", @progbits; \
     .globl _start; \
 _start: \

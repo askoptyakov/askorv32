@@ -96,12 +96,13 @@ def parse_names(blob):
     return names
 
 
-def build_program(name, prefix):
+def build_program(name, prefix, imem_kb=8, text_base=0):
     out = BUILD_DIR / name
     out.mkdir(parents=True, exist_ok=True)
     elf = out / f"{name}.elf"
     r = run([prefix + "gcc", "-march=rv32i", "-mabi=ilp32", "-nostdlib", "-nostartfiles",
-             "-Wl,--no-relax", f"-I{TESTS_DIR}", "-T", TESTS_DIR / "link.ld",
+             "-Wl,--no-relax", f"-Wl,--defsym=TEXT_BASE={text_base},--defsym=IMEM_LEN={imem_kb * 1024}",
+             f"-I{TESTS_DIR}", "-T", TESTS_DIR / "link.ld",
              "-o", elf, PROG_DIR / f"{name}.S"])
     if r.returncode:
         return None, r.stderr.strip()
@@ -113,9 +114,9 @@ def build_program(name, prefix):
     if r.returncode:
         return None, r.stderr.strip()
     imem, dmem = (out / "imem.bin").read_bytes(), (out / "dmem.bin").read_bytes()
-    for label, blob in (("IMEM", imem), ("DMEM", dmem)):
-        if len(blob) > MEM_BYTES:
-            return None, f"{label}: {len(blob)} байт больше {MEM_BYTES}"
+    for label, blob, size in (("IMEM", imem, imem_kb * 1024), ("DMEM", dmem, MEM_BYTES)):
+        if len(blob) > size:
+            return None, f"{label}: {len(blob)} байт больше {size}"
     (out / "imem.hex").write_text(to_hex_words(imem))
     (out / "dmem.hex").write_text(to_hex_words(dmem))
     names = parse_names((out / "names.bin").read_bytes())
@@ -126,10 +127,12 @@ def build_program(name, prefix):
 # ----------------------------------------------------------------------------------------
 # Моделирование
 # ----------------------------------------------------------------------------------------
-def compile_tb(core, prim_sim):
-    vvp = BUILD_DIR / f"tb_core_{core}.vvp"
+def compile_tb(core, prim_sim, imem_kb=8, dmem_kb=8):
+    vvp = BUILD_DIR / f"tb_core_{core}_i{imem_kb}_d{dmem_kb}.vvp"
     r = run([need("iverilog"), "-g2012", "-o", vvp, "-s", "tb_core",
-             f"-Ptb_core.CORE_TYPE={CORES[core]}", TB, *RTL, prim_sim])
+             f"-Ptb_core.CORE_TYPE={CORES[core]}", f"-Ptb_core.IMEM_KB={imem_kb}",
+             f"-Ptb_core.DMEM_KB={dmem_kb}", *[f"-DTB_{m}_{kb}K" for m, kb in (("IMEM", imem_kb), ("DMEM", dmem_kb)) if kb > 8],
+             TB, *RTL, prim_sim])
     errors = [l for l in r.stderr.splitlines() if "constant selects in always_" not in l
               and "Not enough words" not in l]
     if r.returncode:
@@ -159,6 +162,10 @@ def main():
     ap.add_argument("--core", choices=["single", "pipeline", "both"], default="both")
     ap.add_argument("--vcd", action="store_true", help="сохранить .vcd в hw/sim/build")
     ap.add_argument("--gen", action="store_true", help="перегенерировать tests/rv32i/*.S")
+    ap.add_argument("--imem-kb", type=int, choices=[8, 16, 32], default=8,
+                    help="размер памяти инструкций BSRAM (как BSRAM_IMEM_SIZE в top.sv)")
+    ap.add_argument("--text-base", type=lambda x: int(x, 0), default=0,
+                    help="адрес начала кода тестов, например 0x1f00 - код пересекает границу кластеров BSRAM")
     ap.add_argument("-j", "--jobs", type=int, default=os.cpu_count() or 4)
     a = ap.parse_args()
 
@@ -180,19 +187,19 @@ def main():
     # 1. Сборка программ
     progs = {}
     with ThreadPoolExecutor(a.jobs) as ex:
-        for name, (info, err) in zip(names, ex.map(lambda n: build_program(n, prefix), names)):
+        for name, (info, err) in zip(names, ex.map(lambda n: build_program(n, prefix, a.imem_kb, a.text_base), names)):
             if err:
                 sys.exit(f"Ошибка сборки {name}.S:\n{err}")
             progs[name] = info
 
     # 2. Компиляция тестбенча и прогон
-    vvps = {c: compile_tb(c, prim_sim) for c in cores}
+    vvps = {c: compile_tb(c, prim_sim, a.imem_kb) for c in cores}
     jobs = [(n, c) for n in names for c in cores]
     with ThreadPoolExecutor(a.jobs) as ex:
         results = dict(zip(jobs, ex.map(lambda j: simulate(vvps[j[1]], j[0], j[1], a.vcd), jobs)))
 
     # 3. Отчёт
-    print(f"\nТесты RV32I, память BSRAM. Ядра: {', '.join(cores)}\n")
+    print(f"\nТесты RV32I, память BSRAM (IMEM {a.imem_kb} кБайт, код с 0x{a.text_base:x}). Ядра: {', '.join(cores)}\n")
     head = f"{'Инструкция':<11}{'Тестов':>7}  " + "".join(f"{c:<22}" for c in cores)
     print(head)
     print("-" * len(head))
