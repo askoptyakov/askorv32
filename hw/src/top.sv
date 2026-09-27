@@ -33,7 +33,7 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     //#0 Настройка тактирования 
     //DESCRIPTION: Для однотактного ядра при использовании BSAM делаем псевдооднотактный процессор
     //с тремя тактами на одну инструкцию. Тактируем imem и dmem 2ым и 3ьим тактом.
-    logic clk_div2; 
+    logic clk_div2 = 1'b0; 
     always_ff @(posedge clk) clk_div2 <= ~clk_div2;
 
     logic clk_core, clk_imem, clk_dmem;
@@ -73,6 +73,10 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     logic [31:0] dmem_ReadData;
     logic [ 3:0] dmem_Write;
     logic [31:0] dmem_Addr, dmem_WriteData;
+        //Прерывания
+    logic        irq_msi, irq_mti, irq_stim;
+    logic [15:0] irq_local;
+    assign irq_local = {15'd0, irq_stim};  //LI0 (mcause 16) - простой таймер STIM
         //Ядро
     
     core #(CORE_TYPE, IMEM_TYPE, DMEM_TYPE)
@@ -80,7 +84,8 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
           (.clk(clk_core), .rst(rst_sync),                                                       //Системные
            .imem_data(imem_data), .imem_re(imem_re), .imem_rst(imem_rst), .imem_addr(imem_addr), //Интерфейс памяти команд
            .dmem_ReadData(dmem_ReadData), .dmem_Write(dmem_Write),                               //Интерфейс памяти данных
-           .dmem_Addr(dmem_Addr), .dmem_WriteData(dmem_WriteData));
+           .dmem_Addr(dmem_Addr), .dmem_WriteData(dmem_WriteData),
+           .irq_msi(irq_msi), .irq_mti(irq_mti), .irq_mei(1'b0), .irq_local(irq_local));        //Прерывания
    
     //#3 Подключаем память инструкций
     mem #(IMEM_TYPE, SYNTH_IMEM_SIZE, BSRAM_IMEM_SIZE, IMEM_INIT_FILE) imem
@@ -91,14 +96,14 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     //#4 Подключаем память данных и периферийные модули
     
     //-0- Основной мультиплексор
-    logic [ 3:0] mem_Write, leds_Write, tm_Write, tim_Write;
-    logic [31:0] mem_Addr, leds_Addr, tm_Addr, tim_Addr;
-    logic [31:0] mem_WriteData, leds_WriteData, tm_WriteData, tim_WriteData;
-    logic [31:0] mem_ReadData, leds_ReadData, tm_ReadData, tim_ReadData;
+    logic [ 3:0] mem_Write, leds_Write, tm_Write, tim_Write, clint_Write;
+    logic [31:0] mem_Addr, leds_Addr, tm_Addr, tim_Addr, clint_Addr;
+    logic [31:0] mem_WriteData, leds_WriteData, tm_WriteData, tim_WriteData, clint_WriteData;
+    logic [31:0] mem_ReadData, leds_ReadData, tm_ReadData, tim_ReadData, clint_ReadData;
 
-    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(4),
-              .MATCH_ADDR ({32'h10000000, 32'h11000000, 32'h12000000, 32'h13000000}),
-              .MATCH_MASK ({32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000}))
+    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(5),
+              .MATCH_ADDR ({32'h10000000, 32'h11000000, 32'h12000000, 32'h13000000, 32'h02000000}),
+              .MATCH_MASK ({32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000}))
             memmux
              (.clk(clk_dmem), .rst(rst_sync),
               // Интерфейс мастера
@@ -106,10 +111,10 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
               .mAddr (dmem_Addr), .mWData(dmem_WriteData), 
               .mRData(dmem_ReadData),
               // Интерфейс подчинённых
-              .sWrite({mem_Write,    leds_Write,    tm_Write,       tim_Write}),
-              .sAddr ({mem_Addr,     leds_Addr,     tm_Addr,        tim_Addr}),
-              .sWData({mem_WriteData,leds_WriteData,tm_WriteData,   tim_WriteData}),
-              .sRData({mem_ReadData, leds_ReadData, tm_ReadData,    tim_ReadData}));
+              .sWrite({mem_Write,    leds_Write,    tm_Write,       tim_Write,     clint_Write}),
+              .sAddr ({mem_Addr,     leds_Addr,     tm_Addr,        tim_Addr,      clint_Addr}),
+              .sWData({mem_WriteData,leds_WriteData,tm_WriteData,   tim_WriteData, clint_WriteData}),
+              .sRData({mem_ReadData, leds_ReadData, tm_ReadData,    tim_ReadData,  clint_ReadData}));
 
     //-1- Память данных
     mem #(DMEM_TYPE, SYNTH_DMEM_SIZE, BSRAM_DMEM_SIZE, DMEM_INIT_FILE) dmem
@@ -118,7 +123,7 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
            .rd(mem_ReadData));
     
     //-2- Встроенные светодиоды(6шт.)
-    logic [17:0] empty_gpio;
+    wire  [17:0] empty_gpio;
     gpio_top #(DMEM_TYPE) gpio
               (.clk(clk_dmem), .rst(rst_sync),
                .Write(leds_Write), .Addr(leds_Addr), .WData(leds_WriteData), .RData(leds_ReadData),
@@ -135,5 +140,11 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     stim_top #(DMEM_TYPE) stim
                 (.clk(clk_dmem), .rst(rst_sync),
                  .Write(tim_Write), .Addr(tim_Addr), .WData(tim_WriteData), .RData(tim_ReadData),
-                 .tim_out(GMB_DRIVER_D[0]));
+                 .tim_out(GMB_DRIVER_D[0]), .irq(irq_stim));
+
+    //-5- Машинный таймер и программное прерывание (CLINT, адреса как у SiFive)
+    clint_top #(DMEM_TYPE) clint
+                (.clk(clk_dmem), .rst(rst_sync),
+                 .Write(clint_Write), .Addr(clint_Addr), .WData(clint_WriteData), .RData(clint_ReadData),
+                 .irq_msi(irq_msi), .irq_mti(irq_mti));
 endmodule

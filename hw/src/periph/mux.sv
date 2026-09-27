@@ -25,14 +25,11 @@ module memmux
 
     localparam SSEL_WIDTH  = $clog2(SLAVES);
     logic [SSEL_WIDTH-1:0] ssel;
+    //Приоритет у младшего номера: обход от старшего к младшему без break (Icarus Verilog)
     always_comb begin
         ssel = '0;
-        for (int i = 0; i < SLAVES; i++) begin
-            if (match[i]) begin
-                ssel = i;
-                break;
-            end
-        end
+        for (int i = SLAVES-1; i >= 0; i--)
+            if (match[i]) ssel = i;
     end
  
     assign sAddr  = {SLAVES{mAddr }};

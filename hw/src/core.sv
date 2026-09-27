@@ -10,9 +10,14 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
               //Интерфейс памяти данных
               input  logic [31:0] dmem_ReadData,
               output logic [ 3:0] dmem_Write,
-              output logic [31:0] dmem_Addr, dmem_WriteData
+              output logic [31:0] dmem_Addr, dmem_WriteData,
+              //Запросы прерываний (уровень, активная 1; источник держит запрос, пока программа не сбросит флаг)
+              input  logic        irq_msi,   //Программное прерывание машинного режима (CLINT msip)
+              input  logic        irq_mti,   //Прерывание машинного таймера (CLINT mtime >= mtimecmp)
+              input  logic        irq_mei,   //Внешнее прерывание (резерв под контроллер PLIC)
+              input  logic [15:0] irq_local  //Локальные прерывания LI0..LI15 (коды mcause 16..31)
 );
-    
+
     //Сигналы тракта данных
     logic [4: 0] RdD, Rs1D, Rs2D;
     logic [4: 0] RdE, Rs1E, Rs2E;
@@ -23,9 +28,9 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
 
     logic [31:0] PCPlus4F, PCF, InstrF;
     logic [31:0] PCPlus4D, PCD, InstrD, ImmExtD, RD1D, RD2D;
-    logic [31:0] PCPlus4E, PCE,         ImmExtE, RD1E, RD2E, WriteDataE, ALUResultE, PCTargetE;
+    logic [31:0] PCPlus4E, PCE,         ImmExtE, RD1E, RD2E, WriteDataE, ALUResultE, PCTargetE, SrcAE;
     logic [31:0] PCPlus4M,                                   WriteDataM, ALUResultM, ReadDataM;
-    logic [31:0] PCPlus4W,                                               ALUResultW, ReadDataW, ResultW; 
+    logic [31:0] PCPlus4W,                                               ALUResultW, ReadDataW, ResultW;
 
     logic        funct7b5;
     logic [2: 0] funct3;
@@ -36,6 +41,13 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     logic RegWriteE, MemWriteE, JumpE, BranchE, JALSrcE, PCSrcE, TakenE; logic [1:0] ResultSrcE; logic [2:0] Funct3E, ALUSrcE;          logic [3:0] ALUControlE;
     logic RegWriteM, MemWriteM;                                          logic [1:0] ResultSrcM; logic [2:0] Funct3M;
     logic RegWriteW;                                                     logic [1:0] ResultSrcW; logic [2:0] Funct3W;
+
+    //Сигналы системных инструкций и ловушек (прерывания и исключения)
+    logic        ValidD, CsrD, MretD, EcallD, EbreakD, IllegalD; //Valid = 0: в стадии «пузырь» (сброшенная инструкция)
+    logic        ValidE, CsrE, MretE, EcallE, EbreakE, IllegalE;
+    logic        TrapE, RedirectE;                               //Ловушка в стадии E; смена PC ловушкой или mret
+    logic [31:0] RedirectPCE, PCNextSrcE, CsrRDataE, ResultE;
+    logic        PCSrcF;                                         //Любая смена PC: переход, ловушка, mret
 
     //Сигналы блока предотвращения конфликтов
     logic [1:0] ForwardAE, ForwardBE;                   //Организация байпасирования
@@ -48,21 +60,22 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     assign funct7b5 = InstrD[30];
     assign funct3   = InstrD[14:12]; //FIXME: Объединить с Funct3D!
     assign op       = InstrD[6:0];
-    control_unit cu (  .op(op), .funct3(funct3), .funct7b5(funct7b5),
+    control_unit cu (  .op(op), .funct3(funct3), .funct7b5(funct7b5), .imm12(InstrD[31:20]),
                        .RegWrite(RegWriteD), .MemWrite(MemWriteD), .Jump(JumpD), .Branch(BranchD), .JALSrc(JALSrcD),
-                       .ResultSrc(ResultSrcD), .ImmSrc(ImmSrcD), .ALUSrc(ALUSrcD), .ALUControl(ALUControlD));
+                       .ResultSrc(ResultSrcD), .ImmSrc(ImmSrcD), .ALUSrc(ALUSrcD), .ALUControl(ALUControlD),
+                       .Csr(CsrD), .Mret(MretD), .Ecall(EcallD), .Ebreak(EbreakD), .Illegal(IllegalD));
     conflict_prevention_unit #(CORE_TYPE) pu
-                              (.RegWriteM(RegWriteM), .RegWriteW(RegWriteW),                                 
+                              (.RegWriteM(RegWriteM), .RegWriteW(RegWriteW),
                                .Rs1E(Rs1E), .Rs2E(Rs2E), .RdM(RdM), .RdW(RdW),
                                .ForwardA(ForwardAE), .ForwardB(ForwardBE),
                                //Организация пузырька
                                .ResultSrcE0(ResultSrcE[0]), .Rs1D(Rs1D), .Rs2D(Rs2D), .RdE(RdE),
                                .StallF(StallF), .StallD(StallD), .FlushE(FlushE),
                                 //Предсказание перехода branch
-                               .PCSrcE(PCSrcE), .FlushD(FlushD));
+                               .PCSrcE(PCSrcF), .FlushD(FlushD));
     //FETCH/////////////////////////////////////////////////////////////////////////////////////////
-    fetch fetch(    .clk(clk), .rst(rst), .PCSrc(PCSrcE), .StallF(StallF),
-                    .PCTarget(PCTargetE),    
+    fetch fetch(    .clk(clk), .rst(rst), .PCSrc(PCSrcF), .StallF(StallF),
+                    .PCTarget(PCNextSrcE),
                     .PC(PCF), .PCPlus4(PCPlus4F), .Instr(InstrF),
                     //Интерфейс памяти инструкций
                     .imem_data(imem_data),
@@ -73,6 +86,7 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     regmem  #(CORE_TYPE, IMEM_TYPE) rm_fetch (clk, FlushD|rst, StallD, InstrF, InstrD);
     regdata #(2, CORE_TYPE)         rd_fetch (clk, FlushD|rst, StallD, {PCF, PCPlus4F},
                                                                        {PCD, PCPlus4D});
+    regcontrol #(1, CORE_TYPE)      rc_fetch (clk, FlushD|rst, StallD, 1'b1, ValidD); //В однотактном ядре ValidD = 1
     //DECODE////////////////////////////////////////////////////////////////////////////////////////
     decode #(CORE_TYPE) decode(  .clk(clk), .rst(rst), .RegWrite(RegWriteW), .ImmSrc(ImmSrcD),
                                  .Addr1(Rs1D), .Addr2(Rs2D), .Addr3(RdW), .Imm(ImmD),
@@ -88,26 +102,65 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
                                                                   {PCE, PCPlus4E, ImmExtE, RD1E, RD2E});
     regrf   #(3, CORE_TYPE) rf_decode     (clk, FlushE|rst, 1'b0, {Rs1D, Rs2D, RdD},
                                                                   {Rs1E, Rs2E, RdE});
-    regcontrol #(17, CORE_TYPE) rc_decode (clk, FlushE|rst, 1'b0, 
-                    {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[3:0], ALUSrcD[2:0], Funct3D[2:0], JALSrcD}, 
+    regcontrol #(17, CORE_TYPE) rc_decode (clk, FlushE|rst, 1'b0,
+                    {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[3:0], ALUSrcD[2:0], Funct3D[2:0], JALSrcD},
                     {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[3:0], ALUSrcE[2:0], Funct3E[2:0], JALSrcE});
+    //Признаки системных инструкций идут в стадию E вместе с признаком действительной инструкции:
+    //сброшенная инструкция 0x00000000 декодируется как недопустимая, но ловушку вызывать не должна
+    regcontrol #(6, CORE_TYPE) rs_decode  (clk, FlushE|rst, 1'b0,
+                    {ValidD, CsrD & ValidD, MretD & ValidD, EcallD & ValidD, EbreakD & ValidD, IllegalD & ValidD},
+                    {ValidE, CsrE,          MretE,          EcallE,          EbreakE,          IllegalE});
     //EXECUTE///////////////////////////////////////////////////////////////////////////////////////
     execute #(CORE_TYPE) execute
              (.JALSrc(JALSrcE), .ForwardA(ForwardAE), .ForwardB(ForwardBE), .ALUSrc(ALUSrcE), .ALUControl(ALUControlE),
               .RD1(RD1E), .RD2(RD2E), .PC(PCE), .ImmExt(ImmExtE), .ResultW(ResultW), .ALUResultM(ALUResultM),
               .Flags(FlagsE), .ALUResult(ALUResultE), .WriteData(WriteDataE),
               //Особенные
-              .PCTarget(PCTargetE));
+              .PCTarget(PCTargetE), .SrcA(SrcAE));
     branch_unit bu (.Branch(BranchE), .funct3(Funct3E), .Flags(FlagsE), .taken(TakenE));
     ////Логика JUMP/BRANCH
     assign PCSrcE = TakenE | JumpE;
+    ////Запросы прерываний
+    //Однотактное ядро с BSRAM пишет в периферию в середине своего такта (clk_dmem), и запрос,
+    //выставленный этой записью, не должен влиять на решение о ловушке в том же такте - иначе
+    //ловушка примется на уже выполненной записи. Поэтому запросы защёлкиваются по фронту ядра.
+    //В конвейерном ядре всё меняется по одному фронту, и регистр только добавил бы такт задержки:
+    //после снятия запроса обработчиком и mret прерывание приходило бы повторно.
+    logic        irq_msi_c, irq_mti_c, irq_mei_c;
+    logic [15:0] irq_local_c;
+    generate if (CORE_TYPE) begin   //#1 - Однотактное ядро
+        always_ff @(posedge clk)
+            if (rst) {irq_msi_c, irq_mti_c, irq_mei_c, irq_local_c} <= '0;
+            else     {irq_msi_c, irq_mti_c, irq_mei_c, irq_local_c} <= {irq_msi, irq_mti, irq_mei, irq_local};
+    end else begin                  //#0 - Конвеерное ядро
+        assign {irq_msi_c, irq_mti_c, irq_mei_c, irq_local_c} = {irq_msi, irq_mti, irq_mei, irq_local};
+    end
+    endgenerate
+    ////Регистры CSR, прерывания и исключения
+    trap_unit trap_unit
+             (.clk(clk), .rst(rst),
+              //Инструкция в стадии E
+              .Valid(ValidE), .Csr(CsrE), .Mret(MretE), .Ecall(EcallE), .Ebreak(EbreakE), .Illegal(IllegalE),
+              .Funct3(Funct3E), .CsrAddr(ImmExtE[11:0]), .Zimm(Rs1E), .Rs1Data(SrcAE),
+              .PC(PCE), .PCSrc(PCSrcE), .PCTarget(PCTargetE),
+              .Load(ResultSrcE == 2'b01), .Store(MemWriteE), .MemAddr(ALUResultE),
+              //Запросы прерываний
+              .irq_msi(irq_msi_c), .irq_mti(irq_mti_c), .irq_mei(irq_mei_c), .irq_local(irq_local_c),
+              //Результат
+              .CsrRData(CsrRDataE), .Trap(TrapE), .Redirect(RedirectE), .RedirectPC(RedirectPCE));
+    //Смена PC: ловушка и mret важнее перехода
+    assign PCSrcF     = PCSrcE | RedirectE;
+    assign PCNextSrcE = RedirectE ? RedirectPCE : PCTargetE;
+    //Результат CSR-инструкции (старое значение CSR) идёт по тракту ALUResult, поэтому работает байпас
+    assign ResultE    = CsrE ? CsrRDataE : ALUResultE;
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    regdata    #(3, CORE_TYPE) rd_execute (clk, rst, 1'b0, {PCPlus4E, WriteDataE, ALUResultE},
+    //Инструкция, на которой произошла ловушка, гасится: не пишет в регистры и в память
+    regdata    #(3, CORE_TYPE) rd_execute (clk, rst, 1'b0, {PCPlus4E, WriteDataE, ResultE},
                                                            {PCPlus4M, WriteDataM, ALUResultM});
     regrf      #(1, CORE_TYPE) rf_execute (clk, rst, 1'b0, {RdE},
                                                            {RdM});
-    regcontrol #(7, CORE_TYPE) rc_execute (clk, rst, 1'b0, {RegWriteE, ResultSrcE[1:0], MemWriteE, Funct3E[2:0]}, 
-                                                           {RegWriteM, ResultSrcM[1:0], MemWriteM, Funct3M[2:0]});
+    regcontrol #(7, CORE_TYPE) rc_execute (clk, rst, 1'b0, {RegWriteE & ~TrapE, ResultSrcE[1:0], MemWriteE & ~TrapE, Funct3E[2:0]},
+                                                           {RegWriteM,          ResultSrcM[1:0], MemWriteM,          Funct3M[2:0]});
     //MEMORY////////////////////////////////////////////////////////////////////////////////////////
     memory memory ( .MemWrite(MemWriteM), .Funct3(Funct3M),
                     .ALUResult(ALUResultM), .WriteData(WriteDataM),
@@ -145,15 +198,19 @@ endmodule
 //ALUOp, 5ого бита поля funct7 и битов [2:0] поля funct3;
 //3) Логика JUMP/BRANCH - выбирает источник смещения для приращения
 //счётчика команд: PC=PC+4 при PCSrc=0, PC=PC+Imm при PCSrc=0.
+//4) Дешифратор системных инструкций - CSR-инструкции (Zicsr), ecall,
+//ebreak, mret, wfi и признак недопустимой инструкции.
 module control_unit (
     input logic [6:0]   op,
     input logic [2:0]   funct3,
     input logic         funct7b5,
+    input logic [11:0]  imm12,      //Instr[31:20]: адрес CSR или код системной инструкции
     
     output logic        RegWrite, MemWrite, Jump, Branch, JALSrc,
     output logic [1:0]  ResultSrc,
     output logic [2:0]  ImmSrc, ALUSrc,
-    output logic [3:0]  ALUControl
+    output logic [3:0]  ALUControl,
+    output logic        Csr, Mret, Ecall, Ebreak, Illegal
 );
 
     logic [1:0] ALUOp;
@@ -174,7 +231,8 @@ module control_unit (
             7'b1100111: controls = 15'b1_000_000_0_10_0_00_1_1; //Команда jalr
             7'b0010111: controls = 15'b1_100_011_0_00_0_00_0_0; //Команда auipc
             7'b0110111: controls = 15'b1_100_101_0_00_0_00_0_0; //Команда lui
-            default:    controls = 15'b0_000_000_0_00_0_00_0_0; //Другие команды - NOP (в т.ч. пузырь 0x00000000 после сброса конвейера)
+            7'b1110011: controls = {funct3 != 3'b000, 14'b000_000_0_00_0_00_0_0}; //Команды SYSTEM: CSR пишут в rd старое значение CSR
+            default:    controls = 15'b0_000_000_0_00_0_00_0_0; //fence и другие команды - NOP (в т.ч. пузырь 0x00000000 после сброса конвейера)
         endcase
     ////#cu.2 Дешифратор АЛУ
     logic opb5;
@@ -198,6 +256,25 @@ module control_unit (
                      endcase
         endcase
     ////#cu.3 Прочие связи 
+
+    ////#cu.4 Дешифратор системных инструкций
+    //SYSTEM (1110011): funct3 != 000 - CSR-инструкции (funct3 = 100 не определён);
+    //funct3 = 000 - код в imm12: ecall 000, ebreak 001, mret 302, wfi 105 (выполняется как nop)
+    logic system;
+    assign system = (op == 7'b1110011);
+    assign Csr    = system & (funct3 != 3'b000) & (funct3 != 3'b100);
+    assign Ecall  = system & (funct3 == 3'b000) & (imm12 == 12'h000);
+    assign Ebreak = system & (funct3 == 3'b000) & (imm12 == 12'h001);
+    assign Mret   = system & (funct3 == 3'b000) & (imm12 == 12'h302);
+    always_comb
+        casez(op)
+            7'b0000011, 7'b0100011, 7'b0110011, 7'b1100011, 7'b0010011,
+            7'b1101111, 7'b1100111, 7'b0010111, 7'b0110111,
+            7'b0001111: Illegal = 1'b0;                                       //RV32I и fence
+            7'b1110011: Illegal = ~(Csr | Ecall | Ebreak | Mret |
+                                    ((funct3 == 3'b000) & (imm12 == 12'h105))); //wfi
+            default:    Illegal = 1'b1;
+        endcase
 
 endmodule
 
@@ -223,6 +300,175 @@ module branch_unit (
             3'b111: cond = c;       //bgeu
             default: cond = 1'b0;
         endcase
+endmodule
+
+//#trap - Блок CSR, прерываний и исключений машинного режима//
+//DESCRIPTION: Работает в стадии E. Реализует Zicsr (csrrw/csrrs/csrrc и варианты
+//с непосредственным значением), ловушки и mret по привилегированной спецификации
+//RISC-V в объёме ядра SiFive с контроллером CLINT (без CLIC и PLIC).
+//1) Ловушка принимается на действительной инструкции в стадии E: инструкция гасится,
+//mepc = её PC, в mcause - причина, mstatus.MPIE = MIE, MIE = 0, PC = вектор ловушки.
+//Старшие инструкции в стадиях M и W завершаются - ловушка точная.
+//2) mtvec.MODE = 0 - все ловушки на BASE; MODE = 1 (векторный режим) - прерывание
+//с кодом N на BASE | (N << 2), исключения на BASE. Адрес собирается без сумматора,
+//поэтому в векторном режиме BASE выравнивается на 128 байт (32 входа по 4 байта).
+//3) Приоритет прерываний фиксированный (как в CLINT): MEI > MSI > MTI > LI0 > ... > LI15.
+//4) Для подключения отладчика: ebreak - исключение 3 (Breakpoint); CSR триггеров
+//(tselect, tdata1-3) и отладки (dcsr, dpc, dscratch) не реализованы и читаются как 0 -
+//по tdata1.type = 0 отладчик определяет, что аппаратных точек останова нет.
+//Все прочие нереализованные CSR тоже читаются как 0, запись в них игнорируется.
+module trap_unit (
+    input  logic        clk, rst,
+    //Инструкция в стадии E
+    input  logic        Valid,             //0 - в стадии пузырь
+    input  logic        Csr, Mret, Ecall, Ebreak, Illegal,
+    input  logic [ 2:0] Funct3,
+    input  logic [11:0] CsrAddr,
+    input  logic [ 4:0] Zimm,              //Поле rs1: непосредственное значение csrr*i / признак rs1 = x0
+    input  logic [31:0] Rs1Data,           //rs1 с учётом байпаса
+    input  logic [31:0] PC,
+    input  logic        PCSrc,             //Выполняется переход
+    input  logic [31:0] PCTarget,          //Адрес перехода
+    input  logic        Load, Store,
+    input  logic [31:0] MemAddr,
+    //Запросы прерываний
+    input  logic        irq_msi, irq_mti, irq_mei,
+    input  logic [15:0] irq_local,
+    //Результат
+    output logic [31:0] CsrRData,          //Старое значение CSR - результат CSR-инструкции
+    output logic        Trap,              //Ловушка: инструкция в стадии E гасится
+    output logic        Redirect,          //Смена PC ловушкой или mret
+    output logic [31:0] RedirectPC
+);
+    //#1 Адреса CSR
+    localparam logic [11:0] MSTATUS  = 12'h300, MISA   = 12'h301, MIE    = 12'h304, MTVEC   = 12'h305,
+                            MSCRATCH = 12'h340, MEPC   = 12'h341, MCAUSE = 12'h342, MTVAL   = 12'h343,
+                            MIP      = 12'h344, MCYCLE = 12'hB00, MCYCLEH = 12'hB80,
+                            CYCLE    = 12'hC00, CYCLEH = 12'hC80;
+
+    //#2 Регистры
+    logic        mstatus_mie, mstatus_mpie;
+    logic        mie_msie, mie_mtie, mie_meie;
+    logic [15:0] mie_local;
+    logic [31:2] mtvec_base;
+    logic        mtvec_mode;
+    logic [31:0] mscratch, mtval;
+    logic [31:2] mepc;
+    logic        mcause_int;
+    logic [ 4:0] mcause_code;
+    logic [63:0] mcycle;
+
+    logic [31:0] mip, mie;
+    assign mip = {irq_local, 4'b0, irq_mei,  3'b0, irq_mti,  3'b0, irq_msi,  3'b0};
+    assign mie = {mie_local, 4'b0, mie_meie, 3'b0, mie_mtie, 3'b0, mie_msie, 3'b0};
+
+    //#3 Выбор прерывания
+    logic [31:0] pending;
+    logic [ 4:0] irq_code;
+    logic        irq_take;
+    assign pending = mip & mie;
+    always_comb begin
+        irq_code = 5'd0;
+        for (int i = 31; i >= 16; i--)      //Меньший номер локального прерывания важнее
+            if (pending[i]) irq_code = i[4:0];
+        if (pending[7])  irq_code = 5'd7;   //MTI
+        if (pending[3])  irq_code = 5'd3;   //MSI
+        if (pending[11]) irq_code = 5'd11;  //MEI
+    end
+    assign irq_take = mstatus_mie & (|pending) & Valid;
+
+    //#4 Исключения
+    logic       misalign_fetch, misalign_load, misalign_store, misalign_mem, exc;
+    logic [4:0] exc_code;
+    logic [31:0] exc_tval;
+    assign misalign_mem   = (Funct3[1:0] == 2'b01 & MemAddr[0]) | (Funct3[1:0] == 2'b10 & |MemAddr[1:0]);
+    assign misalign_fetch = Valid & PCSrc & PCTarget[1];   //Бит 0 адреса перехода уже обнулён
+    assign misalign_load  = Valid & Load  & misalign_mem;
+    assign misalign_store = Valid & Store & misalign_mem;
+    assign exc = Illegal | Ecall | Ebreak | misalign_fetch | misalign_load | misalign_store;
+    always_comb begin
+        exc_tval = 32'd0;
+        if      (Illegal)        exc_code = 5'd2;                          //Illegal instruction
+        else if (Ecall)          exc_code = 5'd11;                         //Environment call from M-mode
+        else if (Ebreak)         exc_code = 5'd3;                          //Breakpoint
+        else if (misalign_fetch) begin exc_code = 5'd0; exc_tval = PCTarget; end //Instruction address misaligned
+        else if (misalign_load)  begin exc_code = 5'd4; exc_tval = MemAddr;  end //Load address misaligned
+        else                     begin exc_code = 5'd6; exc_tval = MemAddr;  end //Store address misaligned
+    end
+
+    //#5 Ловушка и смена PC. Прерывание принимается до выполнения инструкции и важнее исключения
+    logic mret_do;
+    assign Trap       = irq_take | exc;
+    assign mret_do    = Mret & ~irq_take;   //= Mret & ~Trap: других исключений у mret нет (короче путь)
+    assign Redirect   = Trap | mret_do;
+    assign RedirectPC = Trap ? ((mtvec_mode & irq_take) ? {mtvec_base[31:7], irq_code, 2'b00} : {mtvec_base, 2'b00})
+                             : {mepc, 2'b00};
+
+    //#6 Чтение CSR
+    always_comb
+        case (CsrAddr)
+            MSTATUS:         CsrRData = {19'd0, 2'b11, 3'd0, mstatus_mpie, 3'd0, mstatus_mie, 3'd0}; //MPP = 11 (M)
+            MISA:            CsrRData = 32'h4000_0100;                                                 //RV32I
+            MIE:             CsrRData = mie;
+            MTVEC:           CsrRData = {mtvec_base, 1'b0, mtvec_mode};
+            MSCRATCH:        CsrRData = mscratch;
+            MEPC:            CsrRData = {mepc, 2'b00};
+            MCAUSE:          CsrRData = {mcause_int, 26'd0, mcause_code};
+            MTVAL:           CsrRData = mtval;
+            MIP:             CsrRData = mip;
+            MCYCLE,  CYCLE:  CsrRData = mcycle[31:0];
+            MCYCLEH, CYCLEH: CsrRData = mcycle[63:32];
+            default:         CsrRData = 32'd0;
+        endcase
+
+    //#7 Запись CSR. csrrs/csrrc с rs1 = x0 (Zimm = 0) только читают CSR
+    logic        csr_we;
+    logic [31:0] csr_src, csr_wdata;
+    assign csr_src = Funct3[2] ? {27'd0, Zimm} : Rs1Data;
+    //CSR-инструкция не обращается к памяти и не выполняет переход, поэтому гасит её только
+    //прерывание: ~irq_take вместо ~Trap убирает из пути АЛУ и проверки выравнивания
+    assign csr_we  = Csr & ~irq_take & ((Funct3[1:0] == 2'b01) | (Zimm != 5'd0));
+    always_comb
+        case (Funct3[1:0])
+            2'b10:   csr_wdata = CsrRData |  csr_src;   //csrrs
+            2'b11:   csr_wdata = CsrRData & ~csr_src;   //csrrc
+            default: csr_wdata = csr_src;               //csrrw
+        endcase
+
+    always_ff @(posedge clk)
+        if (rst) begin
+            mstatus_mie <= 1'b0; mstatus_mpie <= 1'b0;
+            {mie_local, mie_meie, mie_mtie, mie_msie} <= '0;
+            mtvec_base  <= '0;   mtvec_mode   <= 1'b0;
+            mscratch    <= '0;   mepc         <= '0;   mtval <= '0;
+            mcause_int  <= 1'b0; mcause_code  <= '0;
+            mcycle      <= '0;
+        end else begin
+            mcycle <= mcycle + 64'd1;
+            if (Trap) begin
+                mepc         <= PC[31:2];
+                mcause_int   <= irq_take;
+                mcause_code  <= irq_take ? irq_code : exc_code;
+                mtval        <= irq_take ? 32'd0 : exc_tval;
+                mstatus_mpie <= mstatus_mie;
+                mstatus_mie  <= 1'b0;
+            end else if (mret_do) begin
+                mstatus_mie  <= mstatus_mpie;
+                mstatus_mpie <= 1'b1;
+            end else if (csr_we)
+                case (CsrAddr)
+                    MSTATUS:  begin mstatus_mie <= csr_wdata[3]; mstatus_mpie <= csr_wdata[7]; end
+                    MIE:      {mie_local, mie_meie, mie_mtie, mie_msie} <= {csr_wdata[31:16], csr_wdata[11], csr_wdata[7], csr_wdata[3]};
+                    MTVEC:    begin mtvec_base <= csr_wdata[31:2]; mtvec_mode <= csr_wdata[0]; end
+                    MSCRATCH: mscratch <= csr_wdata;
+                    MEPC:     mepc     <= csr_wdata[31:2];
+                    MCAUSE:   begin mcause_int <= csr_wdata[31]; mcause_code <= csr_wdata[4:0]; end
+                    MTVAL:    mtval    <= csr_wdata;
+                    MCYCLE:   mcycle[31:0]  <= csr_wdata;
+                    MCYCLEH:  mcycle[63:32] <= csr_wdata;
+                    default: ;
+                endcase
+        end
 endmodule
 
 module conflict_prevention_unit 
@@ -263,7 +509,10 @@ module conflict_prevention_unit
     end
     endgenerate
 
-    assign StallF = lwStall;
+    //Смена PC (ловушка на lw в стадии E) отменяет приостановку PC, чтобы он принял новый адрес.
+    //Регистры стадии D и выход BSRAM при этом сбрасываются FlushD (сброс важнее приостановки),
+    //поэтому StallD остаётся коротким путём: от него зависит вход CE блоков памяти инструкций
+    assign StallF = lwStall & ~PCSrcE;
     assign StallD = lwStall;
 
     //#3 Предсказатель перехода branch
@@ -443,7 +692,8 @@ module execute
     output logic [ 3:0] Flags, //используются для операций branch
     output logic [31:0] ALUResult, WriteData,
     //Особенные
-    output logic [31:0] PCTarget
+    output logic [31:0] PCTarget,
+    output logic [31:0] SrcA       //Значение rs1 с учётом байпаса (операнд CSR-инструкций)
 );
 
     //#alu - Арифметикологическое устройство (АЛУ)//
@@ -536,6 +786,7 @@ module execute
 
     //#4 Транслирование сигналов и прочие связи
     assign WriteData = SrcBforward;
+    assign SrcA      = SrcAforward;
 
 endmodule
 
