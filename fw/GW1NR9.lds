@@ -22,12 +22,12 @@ SECTIONS {			/* Описание секций памяти */
     .text :
     {
         . = ALIGN(4);
+        KEEP(*(.text.init))    /* start.S: точка входа по адресу 0 */
+        KEEP(*(.text.vectors)) /* start.S: таблица векторов прерываний (выравнивание 128 байт) */
         *(.text)           /* .text sections (code) */
         *(.text*)          /* .text* sections (code) */
-        *(.rodata)         /* .rodata sections (constants, strings, etc.) */
-        *(.rodata*)        /* .rodata* sections (constants, strings, etc.) */
-        *(.srodata)        /* .rodata sections (constants, strings, etc.) */
-        *(.srodata*)       /* .rodata* sections (constants, strings, etc.) */
+        /* Константы (.rodata) - в DMEM, секция .data: ядро гарвардское, загрузки (lw/lb)
+           читают только память данных, из IMEM константу прочитать нельзя */
         
         . = ALIGN(4);
     	_etext = .;
@@ -37,6 +37,10 @@ SECTIONS {			/* Описание секций памяти */
     {
         . = ALIGN(4);
         _sdata = .; 
+        *(.rodata)         /* .rodata sections (constants, strings, etc.) */
+        *(.rodata*)        /* .rodata* sections (constants, strings, etc.) */
+        *(.srodata)        /* .rodata sections (constants, strings, etc.) */
+        *(.srodata*)       /* .rodata* sections (constants, strings, etc.) */
         *(.data)           /* .data sections */
         *(.data*)          /* .data* sections */
         *(.sdata)           /* .sdata sections */

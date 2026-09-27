@@ -27,4 +27,14 @@ void STIM_Init(void) {
 
 }
 
+/* Периодический режим: счёт вверх, событие обновления каждые (Prescaler + 1) * (Period + 1)
+   тактов SYSCLK_HZ. Таймер не запускается - см. STIM_STATE(TIM_ENABLE) */
+void STIM_InitPeriodic(uint32_t Prescaler, uint32_t Period) {
 
+	STIM->CR  = 0;
+	STIM->PR  = Prescaler;
+	STIM->PER = Period;
+	STIM->CR_CM = STIM_COUNTER_MODE_UP;
+	STIM_CLEAR_FLAG_UPDATE();
+
+}

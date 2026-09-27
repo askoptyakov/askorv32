@@ -1,52 +1,116 @@
+/*
+ ******************************************************************************
+ * @file        main.c
+ * @author		Alexander Koptyakov
+ * @device		AskoRV32
+ * @brief       Примеры работы с прерываниями. Пример выбирается макросом EXAMPLE:
+ *                0 - прежний пример: счётчик таймера STIM на индикаторе TM1638 (без прерываний);
+ *                1 - светодиод LED0 мигает раз в секунду по прерыванию таймера STIM;
+ *                2 - светодиод LED0 мигает раз в секунду по прерыванию машинного таймера CLINT.
+ *              Светодиод переключается каждые 0.5 с: 0.5 с горит, 0.5 с не горит.
+ *****************************************************************************************
+ */
+
 #include "main.h"
+#include "core_riscv.h"
 #include "gpio.h"
 #include "tm1638.h"
 #include "tim.h"
+#include "clint.h"
 
-#define READ_STIM(dir) (*(volatile unsigned *)dir)
-#define WRITE_STIM(dir, value) { (*(volatile unsigned *)dir) = (value); }
+#ifndef EXAMPLE
+#define EXAMPLE 1
+#endif
+
+/* Полупериод мигания, мс */
+#define BLINK_HALF_PERIOD_MS 	500U
 
 /*Прототипы функций*/
 unsigned int dig_transform(unsigned int digit);
 
-//unsigned int globalvar = 5;
-unsigned int c;
-unsigned int keys = 0;
-unsigned int tn_keys = 0;
+volatile unsigned int blink_count = 0;	//Число переключений светодиода
+
+static void LED_Toggle(void) {
+	GPIO->OUT ^= (1U << GPIO_LED0);
+	blink_count++;
+}
+
+#if EXAMPLE == 1
+/*
+ * Пример 1: прерывание таймера STIM (локальное прерывание LI0, mcause = 0x80000010).
+ * Предделитель делит SYSCLK_HZ до 1 кГц, счётчик считает вверх до 499: событие обновления
+ * каждые 500 мс. В обработчике флаг UIF обязательно сбрасывается, иначе прерывание
+ * возникнет снова сразу после выхода.
+ */
+__IRQ void STIM_IRQHandler(void) {
+	STIM_CLEAR_FLAG_UPDATE();
+	LED_Toggle();
+}
+
+static void Example_Init(void) {
+	STIM_InitPeriodic(SYSCLK_HZ / 1000U - 1U, BLINK_HALF_PERIOD_MS - 1U);	//1 кГц, 500 тактов
+	STIM_IT_STATE(TIM_ENABLE);		//Разрешение прерывания в таймере (CR.UIE)
+	IRQ_Enable(STIM_IRQn);			//Разрешение прерывания в ядре (mie)
+	__enable_irq();					//Глобальное разрешение (mstatus.MIE)
+	STIM_STATE(TIM_ENABLE);
+}
+#endif
+
+#if EXAMPLE == 2
+/*
+ * Пример 2: прерывание машинного таймера CLINT (MTI, mcause = 0x80000007).
+ * Прерывание активно, пока mtime >= mtimecmp. Обработчик сдвигает порог на полпериода
+ * от предыдущего значения (а не от текущего mtime) - так период не накапливает ошибку
+ * из-за задержки входа в обработчик.
+ */
+#define MTIME_HALF_PERIOD 	((uint64_t)MTIME_HZ / 1000U * BLINK_HALF_PERIOD_MS)
+
+__IRQ void MTI_IRQHandler(void) {
+	CLINT_SetCompare(CLINT_GetCompare() + MTIME_HALF_PERIOD);
+	LED_Toggle();
+}
+
+static void Example_Init(void) {
+	CLINT_SetTimeout(MTIME_HALF_PERIOD);
+	IRQ_Enable(MTI_IRQn);
+	__enable_irq();
+}
+#endif
 
 int main(void) {
-	//#1 Инициализация периферийных устройства
+#if EXAMPLE == 0
+	//#1 Инициализация периферийных устройств
 	GPIO_Init();
 	TM1638_Init();
 	STIM_Init();
-	c = 1;
 	GPIO_PinsMode(0xFFFFFFFF); //Все порты на выход
 
 	STIM_STATE(TIM_ENABLE);
 
 	unsigned int count = 0;
+	unsigned int keys = 0;
 
 	while(1) {
-
 		//#Считывание значения таймера
 		count = STIM_GET_COUNT();
 
-		//c = c + 1;
-		//#Светодиоды tangnano
-		//GPIO_WritePins(~c);
-		//GPIO_WritePins(count);
-
-		//#Светодиоды tm1638
+		//#Светодиоды и кнопки tm1638
 		keys = TM1638_ReadKeys();
 		TM1638_WriteLeds(keys);
 
-		//#Сегментный индикатор tm1638
-		//TM1638_WriteSegs(c);
+		//#Семисегментный индикатор tm1638
 		TM1638_WriteSegs(dig_transform(count));
-
-
-		//for(int i = 0; i<100000; i++);
 	}
+#else
+	GPIO_Init();
+	GPIO_PinMode(GPIO_LED0, GPIO_MODE_OUTPUT);
+	Example_Init();
+
+	while(1) {
+		//Вся работа - в обработчике прерывания; здесь может выполняться основная программа
+		__wfi();
+	}
+#endif
 }
 
 unsigned int dig_transform(unsigned int digit) {
@@ -69,4 +133,3 @@ unsigned int dig_transform(unsigned int digit) {
 	d_out = d_out |  (d_in % 10);
 	return d_out;
 }
-
