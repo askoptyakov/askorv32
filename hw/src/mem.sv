@@ -40,9 +40,11 @@ module mem #(parameter bit MEMORY_TYPE =    0, //Тип памяти: 1 - BSRAM;
                   1: assign rd = bsram_out[0];
             default: begin
                         logic [CLUSTERS>>2'd2 : 0] a_r;
-                        always_ff @(posedge clk, posedge reset)
+                        //Сброс синхронный, как RESET_MODE("SYNC") у блоков SP: для памяти инструкций reset
+                        //включает комбинационный FlushD, и его короткие выбросы не должны сбрасывать a_r
+                        always_ff @(posedge clk)
                             if (reset) a_r <= 0;
-                            else a_r <= a[11+(CLUSTERS>>2'd2) : 11];
+                            else a_r <= a[13+(CLUSTERS>>2'd2) : 13]; //Номер кластера (8 кБайт) - a[14:13], как в BLKSEL
                         assign rd = bsram_out[a_r];
                      end
         endcase
