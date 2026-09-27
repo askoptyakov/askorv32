@@ -21,9 +21,16 @@ Original Author: Shay Gal-on
 
 #include <stddef.h>
 
-/* Периферия моделирования (перехватывается тестбенчем tb_core.sv) */
+/* Консоль моделирования: запись по этому адресу перехватывает тестбенч tb_core.sv */
 #define SIM_CONSOLE (*(volatile unsigned int *)0x1F00000C) /* запись: символ в консоль */
-#define SIM_CYCLES  (*(volatile unsigned int *)0x1F000010) /* чтение: такты ядра после сброса */
+
+/* Такты ядра - CSR mcycle (младшие 32 бит достаточно: одна итерация - около миллиона тактов) */
+static inline unsigned int read_mcycle(void)
+{
+    unsigned int v;
+    __asm__ volatile ("csrr %0, mcycle" : "=r"(v));
+    return v;
+}
 
 /* Частота ядра на плате (Гц): только для перевода тактов в секунды в отчёте CoreMark.
    Конвейерное ядро: 27 МГц / 2 = 13.5 МГц; однотактное с BSRAM: 13.5 / 3 = 4.5 МГц */

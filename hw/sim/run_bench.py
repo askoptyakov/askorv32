@@ -5,7 +5,7 @@ CoreMark (EEMBC) на ядре askoRV32: моделирование в Icarus Ve
     py hw/sim/run_bench.py --iterations 3 --opt -O3
     py hw/sim/run_bench.py --core pipeline
 
-Такты считает тестбенч (счётчик по адресу 0x1F000010). Однотактное ядро выполняет
+Такты считает CSR mcycle ядра. Однотактное ядро выполняет
 одну инструкцию за такт ядра, поэтому число его тактов равно числу выполненных
 инструкций, а CPI конвейерного ядра = такты конвейера / такты однотактного ядра.
 
@@ -49,7 +49,7 @@ def check_eembc_md5():
 def build(prefix, opt, iterations):
     out = rt.BUILD_DIR / "coremark"
     out.mkdir(parents=True, exist_ok=True)
-    flags = f"{opt} -march=rv32i -mabi=ilp32"
+    flags = f"{opt} -march=rv32i_zicsr -mabi=ilp32"
     elf = out / "coremark.elf"
     r = rt.run([prefix + "gcc", *flags.split(), f"-I{CM_DIR / 'askorv32'}", f"-I{CM_DIR / 'eembc'}",
                 f"-DITERATIONS={iterations}", "-DPERFORMANCE_RUN=1", f'-DFLAGS_STR="{flags}"',

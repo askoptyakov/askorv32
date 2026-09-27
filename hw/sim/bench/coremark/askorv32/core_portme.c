@@ -37,8 +37,8 @@ volatile ee_s32 seed3_volatile = 0x8;
 volatile ee_s32 seed4_volatile = ITERATIONS;
 volatile ee_s32 seed5_volatile = 0;
 
-/* Время = такты ядра. Счётчик тактов предоставляет тестбенч (у ядра пока нет CSR mcycle) */
-#define GETMYTIME(_t)        (*_t = SIM_CYCLES)
+/* Время = такты ядра (CSR mcycle) */
+#define GETMYTIME(_t)        (*_t = read_mcycle())
 #define MYTIMEDIFF(fin, ini) ((fin) - (ini))
 #define EE_TICKS_PER_SEC     CORE_CLOCK_HZ
 

@@ -1,95 +1,66 @@
 `timescale 1ns/1ps
 //==============================================================================================
-// tb_core - тестбенч ядра askoRV32 с памятью BSRAM (модель SP из библиотеки GOWIN prim_sim.v)
+// tb_core - тестбенч процессора askoRV32: модуль top.sv целиком с памятью BSRAM
 //==============================================================================================
-//DESCRIPTION: Ядро core, память инструкций и память данных подключаются так же, как в top.sv,
-//включая схему тактирования (clk_div2, для однотактного ядра - divideby3). Программа
-//загружается в модели BSRAM перед снятием сброса, затем тестбенч ждёт записи по адресу
-//TOHOST (протокол описан в tests/riscv_test.h).
+//DESCRIPTION: Моделируется вся система из top.sv: ядро, память инструкций и данных (модели
+//SP из библиотеки GOWIN prim_sim.v), мультиплексор шины memmux, GPIO, TM1638, таймер STIM,
+//CLINT, тактирование (clk_div2, для однотактного ядра - divideby3) и сброс с кнопки.
+//Программа загружается в модели BSRAM до снятия сброса, затем тестбенч ждёт записи по
+//адресу TOHOST (протокол описан в tests/riscv_test.h).
 //
-//Параметры запуска vvp (подставляет run_tests.py):
+//Параметры запуска vvp (подставляют run_tests.py и run_bench.py):
 //  +imem=<файл>   - образ памяти инструкций, 32-битные слова в hex (обязательно)
 //  +dmem=<файл>   - образ памяти данных (необязательно)
 //  +names=<файл>  - имена тестов: "<номер> <имя>" в каждой строке (необязательно)
 //  +prog=<имя>    - имя программы для отчёта
 //  +vcd=<файл>    - записать временные диаграммы для GTKWave
 //  +timeout=<N>   - предельное число тактов ядра (по умолчанию TIMEOUT)
+//  +trace=<файл>  - трасса записей в регистры и память
+//  +pctrace=<файл>- PC на каждом такте ядра (профилирование однотактного ядра)
+//  +leds=<файл>   - журнал переключений выходов GPIO (такт ядра и значение)
 //
-//Устройства моделирования (адреса вне карты памяти top.sv, есть только в тестбенче):
-//  0x1F000000..08 - TOHOST: код завершения и аргументы (запись)
+//Устройства моделирования (адреса вне карты памяти top.sv, запись никуда не попадает, её
+//перехватывает тестбенч):
+//  0x1F000000..08 - TOHOST: код завершения и аргументы
 //  0x1F00000C     - консоль: младший байт записи выводится как символ
-//  0x1F000010     - счётчик тактов ядра после сброса (чтение, задержка как у BSRAM)
 //
 //Результат - одна строка "RESULT PASS|FAIL|INCOMPLETE|TIMEOUT ..." для run_tests.py.
 //==============================================================================================
 module tb_core;
     parameter bit CORE_TYPE = 0;      //1 - однотактное ядро; 0 - конвейерное (как в top.sv)
     parameter int TIMEOUT   = 200000; //Предельное число тактов ядра на одну программу
-    parameter int IMEM_KB   = 8;      //Размер памяти инструкций: 8/16/32 кБайт (как BSRAM_IMEM_SIZE)
-    parameter int DMEM_KB   = 8;      //Размер памяти данных: 8/16/32 кБайт (как BSRAM_DMEM_SIZE)
+    parameter int IMEM_KB   = 8;      //Размер памяти инструкций: 8/16/32 кБайт (BSRAM_IMEM_SIZE)
+    parameter int DMEM_KB   = 8;      //Размер памяти данных: 8/16/32 кБайт (BSRAM_DMEM_SIZE)
 
-    localparam bit          MEM_TYPE    = 1;           //BSRAM
     localparam int          CLUSTER_W   = 2048;        //Слов в кластере (4 блока SP по 2 кБайт)
     localparam int          IMEM_WORDS  = IMEM_KB * 1024 / 4;
     localparam int          DMEM_WORDS  = DMEM_KB * 1024 / 4;
     localparam logic [31:0] TOHOST      = 32'h1F00_0000;
-    localparam logic [31:0] SIM_CONSOLE = 32'h1F00_000C;
-    localparam logic [31:0] SIM_CYCLES  = 32'h1F00_0010;
 
-    //#1 Тактирование как в top.sv: clk 27 МГц -> clk_div2 -> (однотактное ядро) divideby3
-    logic clk = 1'b0;
+    //#1 Система top.sv: тактовый генератор 27 МГц и кнопка сброса
+    logic clk   = 1'b0;
+    logic rst_n = 1'b0;
     always #18.519 clk = ~clk;
 
-    logic clk_div2 = 1'b0;
-    always @(posedge clk) clk_div2 <= ~clk_div2;
+    wire [5:0] led, GMB_GPIO;
+    wire [1:0] GMB_DRIVER_E, GMB_DRIVER_D;
+    wire [2:0] GPIO;
 
-    logic clk_core, clk_imem, clk_dmem;
-    generate if (CORE_TYPE) begin : g_clk_div3
-        divideby3 divideby3(.clk(clk_div2), .clk_div3(clk_core), .clk_imem(clk_imem), .clk_dmem(clk_dmem));
-    end else begin : g_clk_div1
-        assign clk_core = clk_div2;
-        assign clk_imem = clk_div2;
-        assign clk_dmem = clk_div2;
-    end
-    endgenerate
+    top #(.CORE_TYPE(CORE_TYPE),
+          .IMEM_TYPE(1'b1), .BSRAM_IMEM_SIZE(IMEM_KB),
+          .DMEM_TYPE(1'b1), .BSRAM_DMEM_SIZE(DMEM_KB))
+        dut (.clk(clk), .rst_n(rst_n), .led(led), .GMB_GPIO(GMB_GPIO),
+             .GMB_DRIVER_E(GMB_DRIVER_E), .GMB_DRIVER_D(GMB_DRIVER_D), .GPIO(GPIO));
 
-    logic rst = 1'b1;
+    //Внутренние сигналы top.sv, на которые опирается тестбенч
+    wire        clk_core = dut.clk_core;
+    wire        clk_dmem = dut.clk_dmem;
+    wire        rst      = dut.rst_sync;
+    wire [ 3:0] dmem_Write     = dut.dmem_Write;
+    wire [31:0] dmem_Addr      = dut.dmem_Addr;
+    wire [31:0] dmem_WriteData = dut.dmem_WriteData;
 
-    //#2 Ядро и память
-    logic [31:0] imem_data, imem_addr;
-    logic        imem_re, imem_rst;
-    logic [31:0] dmem_ReadData, dmem_Addr, dmem_WriteData, mem_ReadData;
-    logic [ 3:0] dmem_Write;
-
-    core #(CORE_TYPE, MEM_TYPE, MEM_TYPE) dut
-          (.clk(clk_core), .rst(rst),
-           .imem_data(imem_data), .imem_re(imem_re), .imem_rst(imem_rst), .imem_addr(imem_addr),
-           .dmem_ReadData(dmem_ReadData), .dmem_Write(dmem_Write),
-           .dmem_Addr(dmem_Addr), .dmem_WriteData(dmem_WriteData));
-
-    mem #(MEM_TYPE, 256, IMEM_KB, "") imem
-          (.clk(clk_imem), .reset(rst | imem_rst), .re(imem_re), .wstrb(4'b0000),
-           .a(imem_addr), .wd(32'd0), .rd(imem_data));
-
-    //Выбор памяти данных по адресу - как MATCH_ADDR/MATCH_MASK в memmux (0x10xxxxxx)
-    logic dmem_sel;
-    assign dmem_sel = (dmem_Addr[31:24] == 8'h10);
-
-    mem #(MEM_TYPE, 256, DMEM_KB, "") dmem
-          (.clk(clk_dmem), .reset(rst), .re(1'b1), .wstrb(dmem_sel ? dmem_Write : 4'b0000),
-           .a(dmem_Addr), .wd(dmem_WriteData), .rd(mem_ReadData));
-
-    //Чтение счётчика тактов: данные появляются после фронта clk_dmem, как у BSRAM и memmux
-    logic        cycles_sel = 1'b0;
-    logic [31:0] cycles_q   = 32'd0;
-    longint      cycles     = 0;
-    always @(posedge clk_dmem) begin
-        cycles_sel <= (dmem_Addr == SIM_CYCLES);
-        cycles_q   <= cycles[31:0];
-    end
-    assign dmem_ReadData = cycles_sel ? cycles_q : mem_ReadData;
-
-    //#3 Загрузка программы в модели BSRAM
+    //#2 Загрузка программы в модели BSRAM
     //Слово w кластера c: байт j лежит в блоке cluster[c].sector[j] по битам ram_MEM[w*8 +: 8].
     //Промежуточный регистр чтения модели (mem_t) пересчитывается только при смене адреса или
     //бита mc - поэтому после загрузки mc инвертируется.
@@ -105,8 +76,7 @@ module tb_core;
         M.genblk1.cluster[C].sector[J].bsram.mc = ~M.genblk1.cluster[C].sector[J].bsram.mc;
     `define LOAD_CLUSTER(M, IMG, C) `LOAD_LANE(M, IMG, C, 0) `LOAD_LANE(M, IMG, C, 1) `LOAD_LANE(M, IMG, C, 2) `LOAD_LANE(M, IMG, C, 3)
 
-
-    //#4 Имена тестов
+    //#3 Имена тестов
     logic [8*96-1:0] tname [0:4095];
     int              max_test = 0;
     logic [8*64-1:0] prog = "?";
@@ -130,9 +100,10 @@ module tb_core;
         $fclose(fd);
     endtask
 
-    //#5 Запуск
+    //#4 Запуск
     logic [8*256-1:0] file;
     int               timeout = TIMEOUT;
+    longint           cycles  = 0;
 
     initial begin
         core_name = CORE_TYPE ? "single-cycle" : "pipeline";
@@ -156,46 +127,54 @@ module tb_core;
         end
 
         #1;
-        `LOAD_CLUSTER(imem, imem_img, 0)
+        `LOAD_CLUSTER(dut.imem, imem_img, 0)
 `ifdef TB_IMEM_16K
-        `LOAD_CLUSTER(imem, imem_img, 1)
+        `LOAD_CLUSTER(dut.imem, imem_img, 1)
 `endif
 `ifdef TB_IMEM_32K
-        `LOAD_CLUSTER(imem, imem_img, 1) `LOAD_CLUSTER(imem, imem_img, 2) `LOAD_CLUSTER(imem, imem_img, 3)
+        `LOAD_CLUSTER(dut.imem, imem_img, 1) `LOAD_CLUSTER(dut.imem, imem_img, 2) `LOAD_CLUSTER(dut.imem, imem_img, 3)
 `endif
-        `LOAD_CLUSTER(dmem, dmem_img, 0)
+        `LOAD_CLUSTER(dut.dmem, dmem_img, 0)
 `ifdef TB_DMEM_16K
-        `LOAD_CLUSTER(dmem, dmem_img, 1)
+        `LOAD_CLUSTER(dut.dmem, dmem_img, 1)
 `endif
 `ifdef TB_DMEM_32K
-        `LOAD_CLUSTER(dmem, dmem_img, 1) `LOAD_CLUSTER(dmem, dmem_img, 2) `LOAD_CLUSTER(dmem, dmem_img, 3)
+        `LOAD_CLUSTER(dut.dmem, dmem_img, 1) `LOAD_CLUSTER(dut.dmem, dmem_img, 2) `LOAD_CLUSTER(dut.dmem, dmem_img, 3)
 `endif
         #1;
 
-        repeat (8) @(posedge clk_core);
-        rst <= 1'b0;
+        //Кнопка сброса отпущена; сброс снимает устранитель дребезга top.sv через 16 тактов ядра
+        repeat (4) @(posedge clk);
+        rst_n = 1'b1;
     end
 
     always @(posedge clk_core) if (!rst) cycles <= cycles + 1;
 
-    //#5.1 Трасса записей в регистры и память (+trace=<файл>): одинакова для обоих ядер,
-    //поэтому первое расхождение трасс однотактного и конвейерного ядра указывает на ошибку
-    int trace_fd = 0;
-    initial if ($value$plusargs("trace=%s", file)) trace_fd = $fopen(file, "w");
-
-    always @(posedge clk_core)
-        if (trace_fd && !rst && dut.RegWriteW && dut.RdW != 5'd0)
-            $fdisplay(trace_fd, "%08h x%0d=%08h", dut.PCPlus4W - 32'd4, dut.RdW, dut.ResultW);
-
-    //+pctrace=<файл>: PC на каждом такте ядра (для профилирования однотактного ядра, где такт = инструкция)
-    int pctrace_fd = 0;
+    //#5 Трассы. Трасса записей в регистры и память (+trace) одинакова для обоих ядер, поэтому
+    //первое расхождение трасс однотактного и конвейерного ядра указывает на ошибку
+    int trace_fd = 0, pctrace_fd = 0, leds_fd = 0;
+    initial if ($value$plusargs("trace=%s", file))   trace_fd   = $fopen(file, "w");
     initial if ($value$plusargs("pctrace=%s", file)) pctrace_fd = $fopen(file, "w");
+    initial if ($value$plusargs("leds=%s", file))    leds_fd    = $fopen(file, "w");
+
     always @(posedge clk_core)
-        if (pctrace_fd && !rst) $fdisplay(pctrace_fd, "%h", dut.PCF);
+        if (trace_fd && !rst && dut.riscv.RegWriteW && dut.riscv.RdW != 5'd0)
+            $fdisplay(trace_fd, "%08h x%0d=%08h", dut.riscv.PCPlus4W - 32'd4, dut.riscv.RdW, dut.riscv.ResultW);
 
     always @(posedge clk_dmem)
         if (trace_fd && !rst && (|dmem_Write))
             $fdisplay(trace_fd, "mem[%08h]%b=%08h", dmem_Addr, dmem_Write, dmem_WriteData);
+
+    always @(posedge clk_core)
+        if (pctrace_fd && !rst) $fdisplay(pctrace_fd, "%h", dut.riscv.PCF);
+
+    //Журнал GPIO: такт ядра и новое значение регистра выходов
+    logic [31:0] gpio_out_q = 32'd0;
+    always @(posedge clk_core)
+        if (leds_fd && !rst && dut.gpio.out_r !== gpio_out_q) begin
+            $fdisplay(leds_fd, "%0d %08h", cycles, dut.gpio.out_r);
+            gpio_out_q <= dut.gpio.out_r;
+        end
 
     //#6 Перехват записи по адресу TOHOST
     logic [31:0] arg_actual = 32'd0, arg_expected = 32'd0;
@@ -223,6 +202,7 @@ module tb_core;
             $display("RESULT FAIL %0s %0s test=%0d name=%0s got=0x%08h expected=0x%08h cycles=%0d",
                      prog, core_name, n, tname[n], arg_actual, arg_expected, cycles);
         end
+        if (leds_fd) $fclose(leds_fd);
         $finish;
     endtask
 
@@ -231,12 +211,14 @@ module tb_core;
         if (!rst) begin
             if (cycles >= timeout) begin
                 $display("RESULT TIMEOUT %0s %0s test=%0d name=%0s pc=0x%08h cycles=%0d",
-                         prog, core_name, dut.decode.rf[28], tname[dut.decode.rf[28] & 12'hFFF], dut.PCF, cycles);
+                         prog, core_name, dut.riscv.decode.rf[28], tname[dut.riscv.decode.rf[28] & 12'hFFF],
+                         dut.riscv.PCF, cycles);
+                if (leds_fd) $fclose(leds_fd);
                 $finish;
             end
-            if ($isunknown(dut.PCF)) begin
+            if ($isunknown(dut.riscv.PCF)) begin
                 $display("RESULT FAIL %0s %0s test=%0d name=%0s got=PC=X expected=PC cycles=%0d",
-                         prog, core_name, dut.decode.rf[28], tname[dut.decode.rf[28] & 12'hFFF], cycles);
+                         prog, core_name, dut.riscv.decode.rf[28], tname[dut.riscv.decode.rf[28] & 12'hFFF], cycles);
                 $finish;
             end
         end

@@ -27,9 +27,12 @@ SIM_DIR = Path(__file__).resolve().parent
 HW_DIR = SIM_DIR.parent
 TESTS_DIR = SIM_DIR / "tests"
 PROG_DIR = TESTS_DIR / "rv32i"
+PRIV_DIR = TESTS_DIR / "priv"          # CSR, исключения, прерывания (пишутся вручную)
+PRIV_ORDER = ["csr", "trap", "irq"]
 BUILD_DIR = SIM_DIR / "build"
 
-RTL = [HW_DIR / "src" / f for f in ("core.sv", "mem.sv", "clock.sv")]
+RTL = [HW_DIR / "src" / f for f in ("top.sv", "core.sv", "mem.sv", "clock.sv", "periph/mux.sv", "periph/gpio.sv",
+                                     "periph/tm1638.sv", "periph/simple_timer/tim.sv", "periph/clint.sv")]
 TB = SIM_DIR / "tb_core.sv"
 MEM_BYTES = 8 * 1024
 CORES = {"single": 1, "pipeline": 0}  # значение параметра CORE_TYPE
@@ -100,10 +103,11 @@ def build_program(name, prefix, imem_kb=8, text_base=0):
     out = BUILD_DIR / name
     out.mkdir(parents=True, exist_ok=True)
     elf = out / f"{name}.elf"
-    r = run([prefix + "gcc", "-march=rv32i", "-mabi=ilp32", "-nostdlib", "-nostartfiles",
+    src = PRIV_DIR / f"{name}.S" if name in PRIV_ORDER else PROG_DIR / f"{name}.S"
+    r = run([prefix + "gcc", "-march=rv32i_zicsr", "-mabi=ilp32", "-nostdlib", "-nostartfiles",
              "-Wl,--no-relax", f"-Wl,--defsym=TEXT_BASE={text_base},--defsym=IMEM_LEN={imem_kb * 1024}",
              f"-I{TESTS_DIR}", "-T", TESTS_DIR / "link.ld",
-             "-o", elf, PROG_DIR / f"{name}.S"])
+             f"-I{PRIV_DIR}", "-o", elf, src])
     if r.returncode:
         return None, r.stderr.strip()
     for sect, fname in ((".text", "imem.bin"), (".data", "dmem.bin")):
@@ -134,7 +138,7 @@ def compile_tb(core, prim_sim, imem_kb=8, dmem_kb=8):
              f"-Ptb_core.DMEM_KB={dmem_kb}", *[f"-DTB_{m}_{kb}K" for m, kb in (("IMEM", imem_kb), ("DMEM", dmem_kb)) if kb > 8],
              TB, *RTL, prim_sim])
     errors = [l for l in r.stderr.splitlines() if "constant selects in always_" not in l
-              and "Not enough words" not in l]
+              and "Not enough words" not in l and "must be automatic" not in l]
     if r.returncode:
         sys.exit(f"Ошибка компиляции тестбенча ({core}):\n" + "\n".join(errors))
     return vvp
@@ -174,7 +178,7 @@ def main():
 
     sys.path.insert(0, str(TESTS_DIR))
     from gen_rv32i import ORDER
-    available = [t for t in ORDER if (PROG_DIR / f"{t}.S").exists()]
+    available = [t for t in ORDER if (PROG_DIR / f"{t}.S").exists()] +                 [t for t in PRIV_ORDER if (PRIV_DIR / f"{t}.S").exists()]
     names = a.tests or available
     unknown = [t for t in names if t not in available]
     if unknown:
@@ -227,7 +231,8 @@ def main():
                 print(f"  {n:<6} [{c}] тест {i.get('test', '?')}: {i.get('name', '?')}"
                       + (f"  получено {i['got']}, ожидалось {i['expected']}" if "got" in i else "")
                       + (f"  PC={i['pc']}" if "pc" in i else ""))
-                print(f"         см. hw/sim/tests/rv32i/{n}.S, строка с TEST_...({i.get('test', '?')}, ...")
+                folder = "priv" if n in PRIV_ORDER else "rv32i"
+                print(f"         см. hw/sim/tests/{folder}/{n}.S, строка с TEST_...({i.get('test', '?')}, ...")
             else:
                 print(f"  {n:<6} [{c}] {r['text']}")
     if a.vcd:
