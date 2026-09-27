@@ -3,6 +3,8 @@
 
 import re
 from sys import argv
+import sys
+sys.stdout.reconfigure(encoding="utf-8") #Вывод в UTF-8: консоль сборки Eclipse (Java 18+) декодирует вывод как UTF-8
 #0.1 Соотносим блоки BSRAM и начальные позиции записи в строке *.fs
               #    0    1    2    3    4    5    6    7   8   9  10
 bsram_stPosR10 = [2570,2390,2210,2030,1850,1670,1490,950,770,590,410]

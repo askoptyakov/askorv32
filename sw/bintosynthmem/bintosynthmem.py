@@ -1,5 +1,7 @@
 import re
 from sys import argv
+import sys
+sys.stdout.reconfigure(encoding="utf-8") #Вывод в UTF-8: консоль сборки Eclipse (Java 18+) декодирует вывод как UTF-8
 
 #Переменные объёма памяти инструкций и данных
 imem_bytesize = 0
@@ -30,7 +32,7 @@ print("SYNTH ", end='')
 print("DMEM: {0:11d} байт".format(dmem_bytesize))
 
 
-data = re.findall('(\:[\t ][a-fA-F0-9]{8})', binary_data)
+data = re.findall(r'(\:[\t ][a-fA-F0-9]{8})', binary_data)
 
 instrlist = []
 for string in data:
