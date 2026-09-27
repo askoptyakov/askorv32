@@ -1,0 +1,127 @@
+Установка ПО (Windows)
+======================
+
+Что нужно для работы с askoRV32 и в каком порядке ставить. Версии в таблице — те, на которых проект проверен; более новые, как правило, тоже подходят.
+
+**Установщики всех программ из таблицы:** [Яндекс Диск](https://disk.yandex.ru/d/RUoj9YPl-qn_gw). Ссылки на официальные сайты — в разделах ниже, если нужна более свежая версия.
+
+| # | Программа | Зачем | Установщик | Версия | Статус |
+|:-:|-----------|-------|---------------|--------|:------:|
+| 1 | GitHub Desktop + Git | работа с репозиторием | `GitHubDesktopSetup-x64.exe` | Git 2.55 | ✅ |
+| 2 | Python | утилиты из `sw/` (`.py`-версии) | `python-manager-26.3.msix` | 3.14.6 | ✅ |
+| 3 | Icarus Verilog + GTKWave | симуляция и просмотр диаграмм | `iverilog-v14-20260804-x64_setup.exe` | 14.0 / GTKWave 3.3.128 | ✅ |
+| 4 | GOWIN EDA (Education) | синтез ПЛИС и прошивка платы | `Gowin_V1.9.11.03_Education_x64_win.exe` | 1.9.11.03 | ✅ |
+| 5 | xPack RISC-V GCC | компилятор прошивки | `xpack-riscv-none-elf-gcc-15.2.0-1-win32-x64.zip` | 15.2.0-1 | ✅ |
+| 6 | xPack Windows Build Tools | `make`, `rm` для сборки в Eclipse | `xpack-windows-build-tools-4.4.1-3-win32-x64.zip` | 4.4.1-3 | ✅ |
+| 7 | Eclipse IDE + Embedded CDT | среда для прошивки `fw/` | `eclipse-inst-jre-win64.exe` | 4.41, Embedded CDT 6.8.0 | ✅ |
+
+Ставьте программы в пути **без кириллицы**, а лучше и без пробелов.
+
+> **«Файл занят другой программой» при запуске установщика.** Обычно это антивирус (например, Kaspersky), который проверяет только что скачанный файл. Подождите минуту и запустите снова. Если не помогло, посмотрите в отчётах антивируса, не попал ли файл в карантин.
+
+---
+
+## 1. GitHub Desktop и Git
+
+1. Установить `GitHubDesktopSetup-x64.exe` (свежая версия: <https://desktop.github.com/>).
+2. Войти в свой аккаунт GitHub и клонировать репозиторий `askorv32`.
+3. **Git для командной строки ставится отдельно.** GitHub Desktop использует свой встроенный Git и не добавляет его в `PATH`. Для терминала и скриптов нужен **Git for Windows**: <https://git-scm.com/download/win>, настройки по умолчанию.
+4. Проверка: в новом окне терминала выполнить `git --version`.
+
+## 2. Python
+
+1. Установить `python-manager-26.3.msix`. Это новый менеджер установок Python (команда `py`).
+2. Поставить интерпретатор: `py install 3.14`.
+3. Проверка: `py list` и `python --version`.
+
+> Утилиты используют только стандартную библиотеку. В `sw/` лежат готовые `.exe`, поэтому Python нужен только для правки утилит.
+
+**Пересборка `.exe` утилит** (после правки `.py`):
+1. Один раз поставить PyInstaller: `py -m pip install pyinstaller` (проверено на 6.22.3).
+2. Из корня репозитория, для каждой утилиты (`mergetool`, `instrtosynthmem`, `instrtobsram`):
+   ```
+   py -m PyInstaller --onefile --noconfirm --distpath sw/mergetool --workpath %TEMP%\pyi --specpath %TEMP%\pyi sw/mergetool/mergetool.py
+   ```
+   - Ключ `--noconsole` не нужен: утилиты печатают статистику в консоль сборки Eclipse.
+   - Утилиты выводят текст в **UTF-8** (`sys.stdout.reconfigure`), потому что консоль сборки Eclipse на Java 18+ читает вывод как UTF-8.
+   - Антивирус может проверять только что собранный `.exe`. При ошибке «файл занят» подождать минуту.
+
+## 3. Icarus Verilog и GTKWave (симулятор)
+
+1. Установить `iverilog-v14-20260804-x64_setup.exe` (свежие сборки для Windows: <https://bleyer.org/icarus/>). Путь — без пробелов, например `C:\iverilog`.
+2. В установщике отметить компонент **GTKWave** — просмотр временных диаграмм (`.vcd`). Он ставится в ту же папку `bin`.
+3. Добавить `C:\iverilog\bin` в `PATH`: установщик версии 14 этого не предлагает.
+   1. **Win + R** → `rundll32 sysdm.cpl,EditEnvironmentVariables`.
+   2. В блоке «Переменные среды пользователя» выбрать `Path` → **Изменить…** → **Создать** → `C:\iverilog\bin` → **ОК**.
+   3. Перезапустить терминал.
+4. Проверка в новом окне терминала: `iverilog -V` и `gtkwave --version`.
+
+> SystemVerilog включается ключом `-g2012`: `iverilog -g2012 -o sim.out <файлы>.sv`, затем `vvp sim.out`. Поддержка SystemVerilog у Icarus неполная, поэтому часть конструкций `core.sv` может потребовать упрощения. Это выясним на шаге 0.
+
+## 4. GOWIN EDA
+
+1. Скачать **Gowin EDA Education** (Windows x64): <https://www.gowinsemi.com/en/support/download_eda/>. Нужна бесплатная регистрация.
+2. Установить. Лицензия для Education не нужна, GW1NR-9 поддерживается.
+3. В установщике оставить отмеченным **Programmer**.
+4. Драйвер USB-JTAG: если плата не видна в Programmer, установите его из `<Gowin>\Programmer\driver`.
+5. Проверка:
+   1. Открыть `hw/riscv.gprj`.
+   2. Запустить **Run All**: синтез и P&R должны пройти без ошибок.
+   3. В Programmer должно определяться устройство **GW1NR-9C**.
+
+## 5. xPack RISC-V GCC
+
+1. Скачать архив `xpack-riscv-none-elf-gcc-<версия>-win32-x64.zip`: <https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack/releases>.
+2. Распаковать в `C:\Program Files\Eclipse\riscv-toolchain\` — рядом с Eclipse, чтобы всё лежало в одном месте.
+3. Проверка: `"C:\Program Files\Eclipse\riscv-toolchain\xpack-riscv-none-elf-gcc-15.2.0-1\bin\riscv-none-elf-gcc" --version`.
+
+## 6. xPack Windows Build Tools
+
+1. Скачать `xpack-windows-build-tools-<версия>-win32-x64.zip`: <https://github.com/xpack-dev-tools/windows-build-tools-xpack/releases>.
+2. Распаковать туда же, в `C:\Program Files\Eclipse\riscv-toolchain\`.
+3. Проверка: `"C:\Program Files\Eclipse\riscv-toolchain\xpack-windows-build-tools-4.4.1-3\bin\make" --version`.
+
+## 7. Eclipse IDE и расширение Embedded CDT
+
+### 7.1. Установка Eclipse через установщик
+
+1. Скачать **Eclipse Installer** (`eclipse-inst-jre-win64.exe`) по кнопке *Download x86_64* на <https://www.eclipse.org/downloads/>. Java входит в состав.
+2. Запустить установщик и выбрать **Eclipse IDE for C/C++ Developers**.
+3. В поле *Installation Folder* указать путь без пробелов, например `C:\eclipse`. Путь по умолчанию лежит в профиле пользователя, а в нём есть пробел (`Koptyakov A`).
+4. Оставить галочки *create start menu entry* и *create desktop shortcut* → **INSTALL** → принять лицензии → **LAUNCH**.
+   - Окно **Trust Artifacts** с сертификатом *Eclipse.org Foundation — Expired* — это нормально: старые пакеты (например, `javax.xml` 2010 года) подписаны сертификатом, срок которого уже истёк. Отметить строку **Eclipse.org Foundation Inc.**, оставить *Remember selected signers* → **Trust Selected**. Галочку *Always trust all content* не ставить.
+   - Установка в `C:\Program Files\...` возможна, но расширения (п. 7.2) может понадобиться ставить, запустив Eclipse **от имени администратора**.
+5. При первом запуске выбрать папку рабочего пространства (workspace) без пробелов, например `C:\eclipse-workspace`.
+
+> В списке установщика есть и готовый пакет **Eclipse IDE for Embedded C/C++ Developers**. Если выбрать его, пункт 7.2 можно пропустить. Проверка та же: в **Window → Preferences** есть раздел **MCU**.
+>
+> Установщик кладёт сами плагины не в папку Eclipse, а в общий пул `%USERPROFILE%\.p2\pool`. При полном удалении Eclipse нужно удалить и `%USERPROFILE%\.p2`.
+
+### 7.2. Установка расширения Embedded CDT (RISC-V)
+
+1. **Help → Install New Software…**
+2. В поле *Work with* вставить адрес `https://download.eclipse.org/embed-cdt/updates/v6/` и нажать **Enter**.
+3. Раскрыть категорию **Embedded C/C++ Cross Development Tools** и отметить **Embedded C/C++ RISC-V Cross Compiler** — под него настроен проект `fw/`.
+   - Если в категории написано **All items are installed** — всё уже стоит, нажать **Cancel**.
+   - Категорию **…Developer Resources** не ставить: это исходники самих плагинов.
+4. **Next → Next** → принять лицензию → **Finish**.
+5. Если Eclipse спросит про доверие к подписи (*Trust Authorities / Trust Artifacts*), отметить источник `eclipse.org` → **Trust Selected**.
+6. Перезапустить Eclipse (**Restart Now**).
+7. Проверка: в **Window → Preferences** появился раздел **MCU**.
+
+### 7.3. Настройка и сборка проекта
+
+1. Указать пути к инструментам: **Window → Preferences → MCU**.
+   - **Global RISC-V Toolchains Paths** (Toolchain: *xPack GNU RISC-V Embedded GCC*): `C:\Program Files\Eclipse\riscv-toolchain\xpack-riscv-none-elf-gcc-15.2.0-1\bin`.
+   - **Global Build Tools Path**: `C:\Program Files\Eclipse\riscv-toolchain\xpack-windows-build-tools-4.4.1-3\bin`.
+2. Импортировать проект: **File → Import → General → Existing Projects into Workspace** → папка `fw/`.
+3. Кодировка проекта. Исходники `fw/` сохранены в **Windows-1251**.
+   1. Правой кнопкой на проект `riscv` → **Properties → Resource**.
+   2. В блоке *Text file encoding* выбрать **Other** и **вписать вручную** `windows-1251` → **Apply and Close**.
+   - Настройка сохраняется в `fw/.settings/` и попадает в репозиторий.
+   - Кодировку рабочего пространства (**Preferences → General → Workspace**) не трогать. Пакет Embedded задаёт там UTF-8, и пункт *Default (windows-1251)* не сохраняется: Eclipse возвращает UTF-8.
+4. **Сменить префикс компилятора.** Проект создавался под старый тулчейн `riscv-none-embed-`, а xPack называется `riscv-none-elf-`.
+   1. Открыть **Project → Properties → C/C++ Build → Settings → Toolchains**.
+   2. Для конфигураций *Debug* и *Release* выставить *Prefix* = `riscv-none-elf-`.
+5. Проверка: **Project → Build Project** — в `fw/Debug/` должны появиться `riscv.elf`, `riscv.bin` и `riscv.lst`, а в конце лога — статистика `BSRAM IMEM / DMEM` от `mergetool`.
+   - `make: *** No rule to make target 'clean'` при самом первом **Clean** — не ошибка: makefile ещё не сгенерирован.

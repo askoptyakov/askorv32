@@ -19,6 +19,11 @@ hw/src/gwlib/*_tmp.v
 hw/*.user
 hw/src/test
 
+# sdk (установщики в репозитории не храним)
+sdk/*.exe
+sdk/*.msix
+sdk/*.zip
+
 # General
 *.bck
 *.bak
