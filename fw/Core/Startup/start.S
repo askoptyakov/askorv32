@@ -61,7 +61,7 @@ __vector_table:
 	j Default_Handler		/*  8 */
 	j Default_Handler		/*  9 */
 	j Default_Handler		/* 10 */
-	j MEI_IRQHandler		/* 11 Внешнее прерывание (резерв под PLIC) */
+	j MEI_IRQHandler		/* 11 Внешнее прерывание: PLIC (диспетчер в plic.c) */
 	j Default_Handler		/* 12 */
 	j Default_Handler		/* 13 */
 	j Default_Handler		/* 14 */

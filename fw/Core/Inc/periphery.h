@@ -32,6 +32,7 @@
 #define   GPIO_BASE		(0x11000000U)
 #define TM1638_BASE		(0x12000000U)
 #define   STIM_BASE		(0x13000000U)
+#define   PLIC_BASE		(0x0C000000U)
 
 /* Объявление структур регистров */
 typedef struct
@@ -77,6 +78,29 @@ typedef struct
   __IO uint32_t MTIME_HI;			//0xBFFC: Машинный таймер, старшее слово
 } CLINT_TypeDef;
 
+typedef struct
+{
+  __IO uint32_t PRIORITY[1024];		//0x000000 + 4*N: Приоритет источника N (0 - запрещён)
+  __I  uint32_t PENDING;			//0x001000: Бит N - источник N ожидает обработки
+  uint32_t      RESERVED0[1023];
+  __IO uint32_t ENABLE;				//0x002000: Бит N - разрешение источника N
+  uint32_t      RESERVED1[522239];
+  __IO uint32_t THRESHOLD;			//0x200000: Порог приоритета
+  __IO uint32_t CLAIM;				//0x200004: Чтение - claim, запись - complete
+} PLIC_TypeDef;
+
+/* Источники PLIC (номер = бит в PENDING/ENABLE). Номер 0 зарезервирован. Новую периферию
+   подключать к свободным номерам 2..PLIC_NUM_SOURCES (hw/src/top.sv, сигнал irq_ext) */
+typedef enum
+{
+  PLIC_SRC_STIM = 1,		//Таймер STIM (он же - локальное прерывание LI0)
+  PLIC_SRC_2    = 2,		//Свободны
+  PLIC_SRC_3, PLIC_SRC_4, PLIC_SRC_5, PLIC_SRC_6, PLIC_SRC_7, PLIC_SRC_8
+} PLIC_SRC_Type;
+
+#define PLIC_NUM_SOURCES			8U		//PLIC_SOURCES в top.sv
+#define PLIC_MAX_PRIORITY			7U		//PRIO_BITS = 3
+
 /* Биты регистров таймера STIM */
 #define STIM_SR_UIF					(1U << 0)
 
@@ -91,5 +115,6 @@ typedef struct
 #define GPIO 	((GPIO_TypeDef*) 	GPIO_BASE)
 #define TM1638 	((TM1638_TypeDef*) 	TM1638_BASE)
 #define STIM 	((STIM_TypeDef*) 	STIM_BASE)
+#define PLIC 	((PLIC_TypeDef*) 	PLIC_BASE)
 
 #endif /* __PERIPHERY_H */

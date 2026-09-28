@@ -6,7 +6,8 @@
  * @brief       Примеры работы с прерываниями. Пример выбирается макросом EXAMPLE:
  *                0 - прежний пример: счётчик таймера STIM на индикаторе TM1638 (без прерываний);
  *                1 - светодиод LED0 мигает раз в секунду по прерыванию таймера STIM;
- *                2 - светодиод LED0 мигает раз в секунду по прерыванию машинного таймера CLINT.
+ *                2 - светодиод LED0 мигает раз в секунду по прерыванию машинного таймера CLINT;
+ *                3 - светодиод LED0 мигает раз в секунду по прерыванию таймера STIM через PLIC.
  *              Светодиод переключается каждые 0.5 с: 0.5 с горит, 0.5 с не горит.
  *****************************************************************************************
  */
@@ -17,6 +18,7 @@
 #include "tm1638.h"
 #include "tim.h"
 #include "clint.h"
+#include "plic.h"
 
 #ifndef EXAMPLE
 #define EXAMPLE 1
@@ -28,12 +30,14 @@
 /*Прототипы функций*/
 unsigned int dig_transform(unsigned int digit);
 
+#if EXAMPLE != 0
 volatile unsigned int blink_count = 0;	//Число переключений светодиода
 
 static void LED_Toggle(void) {
 	GPIO->OUT ^= (1U << GPIO_LED0);
 	blink_count++;
 }
+#endif
 
 #if EXAMPLE == 1
 /*
@@ -74,6 +78,31 @@ static void Example_Init(void) {
 	CLINT_SetTimeout(MTIME_HALF_PERIOD);
 	IRQ_Enable(MTI_IRQn);
 	__enable_irq();
+}
+#endif
+
+#if EXAMPLE == 3
+/*
+ * Пример 3: тот же таймер STIM, но через контроллер PLIC (источник 1, MEI, mcause = 0x8000000B).
+ * Так подключается любая периферия: приоритет и разрешение источника в PLIC, MEI в ядре.
+ * Диспетчер MEI_IRQHandler (plic.c) делает claim, вызывает PLIC_STIM_IRQHandler и complete.
+ * Обработчик источника - обычная функция, без __IRQ. Прерывание LI0 (STIM_IRQn) не
+ * разрешается: иначе одно событие таймера обрабатывалось бы дважды.
+ */
+void PLIC_STIM_IRQHandler(void) {
+	STIM_CLEAR_FLAG_UPDATE();
+	LED_Toggle();
+}
+
+static void Example_Init(void) {
+	STIM_InitPeriodic(SYSCLK_HZ / 1000U - 1U, BLINK_HALF_PERIOD_MS - 1U);
+	STIM_IT_STATE(TIM_ENABLE);
+	PLIC_Init();
+	PLIC_SetPriority(PLIC_SRC_STIM, 1);
+	PLIC_Enable(PLIC_SRC_STIM);
+	IRQ_Enable(MEI_IRQn);
+	__enable_irq();
+	STIM_STATE(TIM_ENABLE);
 }
 #endif
 
