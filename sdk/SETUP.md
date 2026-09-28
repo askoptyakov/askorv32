@@ -14,6 +14,8 @@
 | 5 | xPack RISC-V GCC | компилятор прошивки | `xpack-riscv-none-elf-gcc-15.2.0-1-win32-x64.zip` | 15.2.0-1 | ✅ |
 | 6 | xPack Windows Build Tools | `make`, `rm` для сборки в Eclipse | `xpack-windows-build-tools-4.4.1-3-win32-x64.zip` | 4.4.1-3 | ✅ |
 | 7 | Eclipse IDE + Embedded CDT | среда для прошивки `fw/` | `eclipse-inst-jre-win64.exe` | 4.41, Embedded CDT 6.8.0 | ✅ |
+| 8 | xPack OpenOCD | отладка через JTAG платы | `xpack-openocd-<версия>-win32-x64.zip` | 0.12 и новее | ⬜ |
+| 9 | Zadig | драйвер WinUSB для OpenOCD | `zadig-<версия>.exe` | 2.9 | ⬜ |
 
 Ставьте программы в пути **без кириллицы**, а лучше и без пробелов.
 
@@ -125,3 +127,50 @@
    2. Для конфигураций *Debug* и *Release* выставить *Prefix* = `riscv-none-elf-`.
 5. Проверка: **Project → Build Project** — в `fw/Debug/` должны появиться `riscv.elf`, `riscv.bin` и `riscv.lst`, а в конце лога — статистика `BSRAM IMEM / DMEM` от `mergetool`.
    - `make: *** No rule to make target 'clean'` при самом первом **Clean** — не ошибка: makefile ещё не сгенерирован.
+
+---
+
+## 8. Отладка: OpenOCD и драйвер JTAG
+
+Отладка кода на плате через встроенный программатор Tang Nano 9K. Как устроен отладчик и как его проверить на плате — [hw/info/debug.md](../hw/info/debug.md).
+
+### 8.1. xPack OpenOCD
+
+1. Скачать `xpack-openocd-<версия>-win32-x64.zip` со страницы <https://github.com/xpack-dev-tools/openocd-xpack/releases> (или с Яндекс Диска).
+2. Распаковать рядом с компилятором: `C:\Program Files\Eclipse\riscv-toolchain\xpack-openocd-<версия>`.
+3. Проверка: `"C:\Program Files\Eclipse\riscv-toolchain\xpack-openocd-<версия>\bin\openocd.exe" --version`.
+
+### 8.2. Драйвер WinUSB (Zadig)
+
+OpenOCD работает с программатором через libusb, поэтому интерфейсу JTAG программатора нужен драйвер **WinUSB**. Gowin Programmer работает через драйвер FTDI и после замены драйвера может перестать видеть плату.
+
+Удобный порядок:
+1. Записать прошивку ПЛИС (с `DEBUG_EN = 1`) во встроенную flash через **Gowin Programmer** в режиме *Embedded Flash Mode*. Тогда она загружается при каждом включении.
+2. Заменить драйвер и отлаживать. Новая версия программы загружается отладчиком, пересобирать ПЛИС для этого не нужно.
+3. Когда снова понадобится Gowin Programmer (изменилась аппаратная часть), вернуть драйвер FTDI (см. ниже).
+
+Замена драйвера:
+1. Скачать Zadig с <https://zadig.akeo.ie>, подключить плату, запустить.
+2. **Options → List All Devices**.
+3. Выбрать в списке интерфейс программатора с USB ID **`0403 6010`** и **Interface 0** (обычно так и написано в названии). Interface 1 — это UART, его не трогать.
+4. Справа выбрать **WinUSB** → **Replace Driver**.
+
+Возврат драйвера FTDI: **Диспетчер устройств** → то же устройство (Interface 0) → **Удалить устройство** с галочкой *Удалить драйвер* → отключить и снова подключить плату. Windows поставит драйвер FTDI заново.
+
+### 8.3. Проверка подключения
+
+Из папки `fw/openocd`:
+```
+openocd -c "set JTAG_ONLY 1" -f askorv32_tangnano9k.cfg -c "init; irscan gw1nr9.cpu 0x42; drscan gw1nr9.cpu 32 0; shutdown"
+```
+Должно быть `tap/device found: 0x1100481b` и `00001071`. Если нет — см. [debug.md, «Первый запуск на плате»](../hw/info/debug.md#первый-запуск-на-плате).
+
+### 8.4. Отладка в Eclipse
+
+1. **Window → Preferences → MCU → Global OpenOCD Path**: *Executable* = `openocd.exe`, *Folder* = `C:\Program Files\Eclipse\riscv-toolchain\xpack-openocd-<версия>\bin` → **Apply and Close**.
+2. Обновить проект (**F5** на `riscv`): появится конфигурация `riscv Debug OpenOCD.launch` из папки `fw/`.
+3. **Project → Build Project**, затем **Run → Debug Configurations → GDB OpenOCD Debugging → riscv Debug OpenOCD → Debug**.
+4. Eclipse запустит OpenOCD, сбросит систему, загрузит программу и остановится на `main`. Во вкладке *Console* видны выводы OpenOCD и GDB.
+
+- Путь к папке проекта не должен содержать пробелов: программа загружается командой GDB `restore`, которая не понимает кавычки.
+- Настройки конфигурации (вкладки *Debugger* и *Startup*) и причины такого выбора — в [debug.md, «Eclipse»](../hw/info/debug.md#eclipse).
