@@ -21,14 +21,20 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
              parameter bit DMEM_TYPE       =        `BSRAM_MEM, 
              parameter int BSRAM_DMEM_SIZE =                 8, //кБайт (поддерживаемые значения 8/16/32)
              parameter int SYNTH_DMEM_SIZE =               256, //слов по 4 Байт
-             parameter     DMEM_INIT_FILE  =  "mem_init/d.mem")   
+             parameter     DMEM_INIT_FILE  =  "mem_init/d.mem",
+                //Отладка и прерывания
+             parameter bit DEBUG_EN        =                 1, //1 - модуль отладки через JTAG (несовместим с GAO)
+             parameter int PLIC_SOURCES    =                 8) //Число источников PLIC (1..31)
             (input  logic       clk,     //Вход тактирования
              input  logic       rst_n,   //Вход сброса (кнопка S2)
              inout        [5:0] led,     //Выход на 6 светодиодов
              inout        [5:0] GMB_GPIO,//Выход на дискреты GMB 
              inout        [1:0] GMB_DRIVER_E,//Выход на драйвер порта E
              output        [1:0] GMB_DRIVER_D,//Выход на драйвер порта D 
-             inout        [2:0] GPIO
+             inout        [2:0] GPIO,
+             //Выводы JTAG ПЛИС: для примитива GW_JTAG (отладчик), назначения в .cst не требуются
+             input  logic       tck_pad_i, tms_pad_i, tdi_pad_i,
+             output logic       tdo_pad_o
 );
     //#0 Настройка тактирования 
     //DESCRIPTION: Для однотактного ядра при использовании BSAM делаем псевдооднотактный процессор
@@ -65,6 +71,9 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     assign rst_sync = ~rst_sync_n;
 
     //#2 Подключаем ядро процессора
+        //Сброс системы: кнопка или модуль отладки (ndmreset). Модуль отладки сбрасывает только кнопка
+    logic ndmreset, rst_sys;
+    assign rst_sys = rst_sync | ndmreset;
         //Интерфейс памяти команд
     logic [31:0] imem_data;
     logic        imem_re, imem_rst;
@@ -72,79 +81,141 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
         //Интерфейс памяти данных
     logic [31:0] dmem_ReadData;
     logic [ 3:0] dmem_Write;
+    logic        dmem_Read;
     logic [31:0] dmem_Addr, dmem_WriteData;
         //Прерывания
-    logic        irq_msi, irq_mti, irq_stim;
+    logic        irq_msi, irq_mti, irq_stim, irq_plic;
     logic [15:0] irq_local;
     assign irq_local = {15'd0, irq_stim};  //LI0 (mcause 16) - простой таймер STIM
+        //Отладка
+    logic        dbg_haltreq, dbg_resumereq, dbg_halted;
+    logic [ 4:0] dbg_gpr_addr;
+    logic        dbg_gpr_we, dbg_csr_we;
+    logic [11:0] dbg_csr_addr;
+    logic [31:0] dbg_gpr_rdata, dbg_csr_rdata, dbg_wdata;
+        //Системная шина модуля отладки
+    logic        sb_active, sb_read, sb_imem;
+    logic [ 3:0] sb_wstrb;
+    logic [31:0] sb_addr, sb_wdata;
         //Ядро
-    
+
     core #(CORE_TYPE, IMEM_TYPE, DMEM_TYPE)
-           riscv  
-          (.clk(clk_core), .rst(rst_sync),                                                       //Системные
+           riscv
+          (.clk(clk_core), .rst(rst_sys),                                                        //Системные
            .imem_data(imem_data), .imem_re(imem_re), .imem_rst(imem_rst), .imem_addr(imem_addr), //Интерфейс памяти команд
-           .dmem_ReadData(dmem_ReadData), .dmem_Write(dmem_Write),                               //Интерфейс памяти данных
+           .dmem_ReadData(dmem_ReadData), .dmem_Write(dmem_Write), .dmem_Read(dmem_Read),        //Интерфейс памяти данных
            .dmem_Addr(dmem_Addr), .dmem_WriteData(dmem_WriteData),
-           .irq_msi(irq_msi), .irq_mti(irq_mti), .irq_mei(1'b0), .irq_local(irq_local));        //Прерывания
-   
+           .irq_msi(irq_msi), .irq_mti(irq_mti), .irq_mei(irq_plic), .irq_local(irq_local),     //Прерывания
+           .dbg_haltreq(dbg_haltreq), .dbg_resumereq(dbg_resumereq), .dbg_halted(dbg_halted),   //Отладка
+           .dbg_gpr_addr(dbg_gpr_addr), .dbg_gpr_we(dbg_gpr_we), .dbg_gpr_rdata(dbg_gpr_rdata),
+           .dbg_csr_addr(dbg_csr_addr), .dbg_csr_we(dbg_csr_we), .dbg_csr_rdata(dbg_csr_rdata),
+           .dbg_wdata(dbg_wdata));
+
+    //#2.1 Модуль отладки: DTM на пользовательском JTAG GOWIN и DM
+    generate if (DEBUG_EN) begin : g_debug
+        logic        dmi_req_tgl, dmi_ack_tgl;
+        logic [ 6:0] dmi_addr;
+        logic [31:0] dmi_wdata, dmi_rdata;
+        logic [ 1:0] dmi_op;
+        dtm_gowin dtm (.clk(clk),
+                       .tck_pad_i(tck_pad_i), .tms_pad_i(tms_pad_i), .tdi_pad_i(tdi_pad_i), .tdo_pad_o(tdo_pad_o),
+                       .dmi_req_tgl(dmi_req_tgl), .dmi_addr(dmi_addr), .dmi_wdata(dmi_wdata), .dmi_op(dmi_op),
+                       .dmi_ack_tgl(dmi_ack_tgl), .dmi_rdata(dmi_rdata));
+        dm dm (.clk(clk_core), .rst(rst_sync),
+               .dmi_req_tgl(dmi_req_tgl), .dmi_addr(dmi_addr), .dmi_wdata(dmi_wdata), .dmi_op(dmi_op),
+               .dmi_ack_tgl(dmi_ack_tgl), .dmi_rdata(dmi_rdata),
+               .ndmreset(ndmreset), .sys_rst(rst_sys),
+               .haltreq(dbg_haltreq), .resumereq(dbg_resumereq), .halted(dbg_halted),
+               .gpr_addr(dbg_gpr_addr), .gpr_we(dbg_gpr_we), .gpr_rdata(dbg_gpr_rdata),
+               .csr_addr(dbg_csr_addr), .csr_we(dbg_csr_we), .csr_rdata(dbg_csr_rdata), .reg_wdata(dbg_wdata),
+               .sb_active(sb_active), .sb_addr(sb_addr), .sb_wdata(sb_wdata), .sb_wstrb(sb_wstrb),
+               .sb_read(sb_read), .sb_rdata(sb_imem ? imem_data : dmem_ReadData));
+    end else begin : g_no_debug
+        assign {ndmreset, dbg_haltreq, dbg_resumereq, dbg_gpr_we, dbg_csr_we} = '0;
+        assign {dbg_gpr_addr, dbg_csr_addr, dbg_wdata} = '0;
+        assign {sb_active, sb_read, sb_wstrb, sb_addr, sb_wdata} = '0;
+        assign tdo_pad_o = 1'b0;
+    end
+    endgenerate
+        //Остановленное ядро не обращается к памяти: шины отдаются модулю отладки.
+        //Адреса 0x00xxxxxx - память инструкций, остальные - шина данных
+    assign sb_imem = sb_active && (sb_addr[31:24] == 8'h00);
+
     //#3 Подключаем память инструкций
     mem #(IMEM_TYPE, SYNTH_IMEM_SIZE, BSRAM_IMEM_SIZE, IMEM_INIT_FILE) imem
-          (.clk(clk_imem), .reset(rst_sync|imem_rst), .re(imem_re), .wstrb(4'b0000),
-           .a(imem_addr), .wd(32'd0),
+          (.clk(clk_imem), .reset(rst_sys | (imem_rst & ~sb_imem)), .re(imem_re | sb_imem),
+           .wstrb(sb_imem ? sb_wstrb : 4'b0000),
+           .a(sb_imem ? sb_addr : imem_addr), .wd(sb_wdata),
            .rd(imem_data));
 
     //#4 Подключаем память данных и периферийные модули
-    
-    //-0- Основной мультиплексор
-    logic [ 3:0] mem_Write, leds_Write, tm_Write, tim_Write, clint_Write;
-    logic [31:0] mem_Addr, leds_Addr, tm_Addr, tim_Addr, clint_Addr;
-    logic [31:0] mem_WriteData, leds_WriteData, tm_WriteData, tim_WriteData, clint_WriteData;
-    logic [31:0] mem_ReadData, leds_ReadData, tm_ReadData, tim_ReadData, clint_ReadData;
 
-    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(5),
-              .MATCH_ADDR ({32'h10000000, 32'h11000000, 32'h12000000, 32'h13000000, 32'h02000000}),
-              .MATCH_MASK ({32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000}))
+    //-0- Основной мультиплексор (ведущие - ядро или модуль отладки)
+    logic        bus_sb;
+    assign bus_sb = sb_active & ~sb_imem;
+    logic [ 3:0] mem_Write, leds_Write, tm_Write, tim_Write, clint_Write, plic_Write;
+    logic [31:0] mem_Addr, leds_Addr, tm_Addr, tim_Addr, clint_Addr, plic_Addr;
+    logic [31:0] mem_WriteData, leds_WriteData, tm_WriteData, tim_WriteData, clint_WriteData, plic_WriteData;
+    logic [31:0] mem_ReadData, leds_ReadData, tm_ReadData, tim_ReadData, clint_ReadData, plic_ReadData;
+    logic [ 5:0] sRead;
+
+    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(6),
+              .MATCH_ADDR ({32'h10000000, 32'h11000000, 32'h12000000, 32'h13000000, 32'h02000000, 32'h0C000000}),
+              .MATCH_MASK ({32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000, 32'hff000000}))
             memmux
-             (.clk(clk_dmem), .rst(rst_sync),
+             (.clk(clk_dmem), .rst(rst_sys),
               // Интерфейс мастера
-              .mWrite(dmem_Write),
-              .mAddr (dmem_Addr), .mWData(dmem_WriteData), 
+              .mWrite(bus_sb ? sb_wstrb : dmem_Write), .mRead(bus_sb ? sb_read : dmem_Read),
+              .mAddr (bus_sb ? sb_addr  : dmem_Addr),  .mWData(bus_sb ? sb_wdata : dmem_WriteData),
               .mRData(dmem_ReadData),
               // Интерфейс подчинённых
-              .sWrite({mem_Write,    leds_Write,    tm_Write,       tim_Write,     clint_Write}),
-              .sAddr ({mem_Addr,     leds_Addr,     tm_Addr,        tim_Addr,      clint_Addr}),
-              .sWData({mem_WriteData,leds_WriteData,tm_WriteData,   tim_WriteData, clint_WriteData}),
-              .sRData({mem_ReadData, leds_ReadData, tm_ReadData,    tim_ReadData,  clint_ReadData}));
+              .sWrite({mem_Write,    leds_Write,    tm_Write,       tim_Write,     clint_Write,     plic_Write}),
+              .sRead (sRead),
+              .sAddr ({mem_Addr,     leds_Addr,     tm_Addr,        tim_Addr,      clint_Addr,      plic_Addr}),
+              .sWData({mem_WriteData,leds_WriteData,tm_WriteData,   tim_WriteData, clint_WriteData, plic_WriteData}),
+              .sRData({mem_ReadData, leds_ReadData, tm_ReadData,    tim_ReadData,  clint_ReadData,  plic_ReadData}));
 
     //-1- Память данных
     mem #(DMEM_TYPE, SYNTH_DMEM_SIZE, BSRAM_DMEM_SIZE, DMEM_INIT_FILE) dmem
-          (.clk(clk_dmem), .reset(rst_sync), .re(1'b1), .wstrb(mem_Write),
+          (.clk(clk_dmem), .reset(rst_sys), .re(1'b1), .wstrb(mem_Write),
            .a(mem_Addr), .wd(mem_WriteData),
            .rd(mem_ReadData));
-    
+
     //-2- Встроенные светодиоды(6шт.)
     wire  [17:0] empty_gpio;
     gpio_top #(DMEM_TYPE) gpio
-              (.clk(clk_dmem), .rst(rst_sync),
+              (.clk(clk_dmem), .rst(rst_sys),
                .Write(leds_Write), .Addr(leds_Addr), .WData(leds_WriteData), .RData(leds_ReadData),
                .io_ports({empty_gpio[17:0], GMB_DRIVER_E[1:0], GMB_GPIO[5:0], led[5:0]}));
 
     //-3- Внешний модуль tm1638
     tm1638_top #(DMEM_TYPE) tm1638
-                (.clk(clk_dmem), .rst(rst_sync),
+                (.clk(clk_dmem), .rst(rst_sys),
                  .Write(tm_Write), .Addr(tm_Addr), .WData(tm_WriteData), .RData(tm_ReadData),
                  .tm_dio(GPIO[0]), .tm_clk(GPIO[1]), .tm_stb(GPIO[2]));
 
     //-4- Модуль простого таймера
     logic [31:0] empty_tim_port;
     stim_top #(DMEM_TYPE) stim
-                (.clk(clk_dmem), .rst(rst_sync),
+                (.clk(clk_dmem), .rst(rst_sys),
                  .Write(tim_Write), .Addr(tim_Addr), .WData(tim_WriteData), .RData(tim_ReadData),
                  .tim_out(GMB_DRIVER_D[0]), .irq(irq_stim));
 
     //-5- Машинный таймер и программное прерывание (CLINT, адреса как у SiFive)
     clint_top #(DMEM_TYPE) clint
-                (.clk(clk_dmem), .rst(rst_sync),
+                (.clk(clk_dmem), .rst(rst_sys),
                  .Write(clint_Write), .Addr(clint_Addr), .WData(clint_WriteData), .RData(clint_ReadData),
                  .irq_msi(irq_msi), .irq_mti(irq_mti));
+
+    //-6- Контроллер прерываний периферии (PLIC, адреса как у SiFive) -> MEI (mcause 11)
+    //Источник 1 - таймер STIM (для примера: он же подключён к LI0, в программе разрешают один путь).
+    //Новую периферию (UART, SPI...) подключать к свободным источникам 2..PLIC_SOURCES через irq_ext:
+    //например, assign irq_ext[2] = irq_uart; (уровень, держится до обслуживания в устройстве)
+    wire [PLIC_SOURCES:2] irq_ext;
+    assign irq_ext = '0;
+    wire [PLIC_SOURCES:1] plic_src = {irq_ext, irq_stim};
+    plic_top #(.MEMORY_TYPE(DMEM_TYPE), .NSRC(PLIC_SOURCES)) plic
+                (.clk(clk_dmem), .rst(rst_sys),
+                 .Write(plic_Write), .Read(sRead[0]), .Addr(plic_Addr), .WData(plic_WriteData), .RData(plic_ReadData),
+                 .src(plic_src), .irq(irq_plic));
 endmodule

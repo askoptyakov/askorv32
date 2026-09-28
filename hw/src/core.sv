@@ -10,12 +10,24 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
               //Интерфейс памяти данных
               input  logic [31:0] dmem_ReadData,
               output logic [ 3:0] dmem_Write,
+              output logic        dmem_Read,  //Строб чтения: загрузка в стадии M (для регистров с побочным действием)
               output logic [31:0] dmem_Addr, dmem_WriteData,
               //Запросы прерываний (уровень, активная 1; источник держит запрос, пока программа не сбросит флаг)
               input  logic        irq_msi,   //Программное прерывание машинного режима (CLINT msip)
               input  logic        irq_mti,   //Прерывание машинного таймера (CLINT mtime >= mtimecmp)
               input  logic        irq_mei,   //Внешнее прерывание (резерв под контроллер PLIC)
-              input  logic [15:0] irq_local  //Локальные прерывания LI0..LI15 (коды mcause 16..31)
+              input  logic [15:0] irq_local, //Локальные прерывания LI0..LI15 (коды mcause 16..31)
+              //Отладка: модуль DM (Debug Module). Доступ к регистрам - только в режиме останова
+              input  logic        dbg_haltreq,   //Запрос останова (уровень)
+              input  logic        dbg_resumereq, //Запрос продолжения (импульс)
+              output logic        dbg_halted,    //Ядро в режиме отладки (остановлено)
+              input  logic [ 4:0] dbg_gpr_addr,
+              input  logic        dbg_gpr_we,
+              output logic [31:0] dbg_gpr_rdata,
+              input  logic [11:0] dbg_csr_addr,
+              input  logic        dbg_csr_we,
+              output logic [31:0] dbg_csr_rdata,
+              input  logic [31:0] dbg_wdata
 );
 
     //Сигналы тракта данных
@@ -45,7 +57,8 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     //Сигналы системных инструкций и ловушек (прерывания и исключения)
     logic        ValidD, CsrD, MretD, EcallD, EbreakD, IllegalD; //Valid = 0: в стадии «пузырь» (сброшенная инструкция)
     logic        ValidE, CsrE, MretE, EcallE, EbreakE, IllegalE;
-    logic        TrapE, RedirectE;                               //Ловушка в стадии E; смена PC ловушкой или mret
+    logic        TrapE, KillE, RedirectE;                        //Ловушка в стадии E; гашение инструкции; смена PC
+    logic        StallFC, FlushEC;                               //Приостановка PC и сброс стадии E с учётом останова
     logic [31:0] RedirectPCE, PCNextSrcE, CsrRDataE, ResultE;
     logic        PCSrcF;                                         //Любая смена PC: переход, ловушка, mret
 
@@ -74,7 +87,10 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
                                 //Предсказание перехода branch
                                .PCSrcE(PCSrcF), .FlushD(FlushD));
     //FETCH/////////////////////////////////////////////////////////////////////////////////////////
-    fetch fetch(    .clk(clk), .rst(rst), .PCSrc(PCSrcF), .StallF(StallF),
+    //В режиме останова PC заморожен (кроме смены PC при продолжении), стадия E непрерывно сбрасывается
+    assign StallFC = StallF | (dbg_halted & ~PCSrcF);
+    assign FlushEC = FlushE | dbg_halted;
+    fetch fetch(    .clk(clk), .rst(rst), .PCSrc(PCSrcF), .StallF(StallFC),
                     .PCTarget(PCNextSrcE),
                     .PC(PCF), .PCPlus4(PCPlus4F), .Instr(InstrF),
                     //Интерфейс памяти инструкций
@@ -86,28 +102,30 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     regmem  #(CORE_TYPE, IMEM_TYPE) rm_fetch (clk, FlushD|rst, StallD, InstrF, InstrD);
     regdata #(2, CORE_TYPE)         rd_fetch (clk, FlushD|rst, StallD, {PCF, PCPlus4F},
                                                                        {PCD, PCPlus4D});
-    regcontrol #(1, CORE_TYPE)      rc_fetch (clk, FlushD|rst, StallD, 1'b1, ValidD); //В однотактном ядре ValidD = 1
+    regcontrol #(1, CORE_TYPE)      rc_fetch (clk, FlushD|rst, StallD, ~dbg_halted, ValidD); //В однотактном ядре ValidD = ~dbg_halted
     //DECODE////////////////////////////////////////////////////////////////////////////////////////
     decode #(CORE_TYPE) decode(  .clk(clk), .rst(rst), .RegWrite(RegWriteW), .ImmSrc(ImmSrcD),
                                  .Addr1(Rs1D), .Addr2(Rs2D), .Addr3(RdW), .Imm(ImmD),
                                  .Result(ResultW),
-                                 .RD1(RD1D), .RD2(RD2D), .ImmExt(ImmExtD));
+                                 .RD1(RD1D), .RD2(RD2D), .ImmExt(ImmExtD),
+                                 .DbgSel(dbg_halted), .DbgAddr(dbg_gpr_addr), .DbgWe(dbg_gpr_we & dbg_halted), .DbgWData(dbg_wdata),
+                                 .DbgRData(dbg_gpr_rdata));
     assign Rs1D    = InstrD[19:15];
     assign Rs2D    = InstrD[24:20];
     assign RdD     = InstrD[11:7];
     assign ImmD    = InstrD[31:7];
     assign Funct3D = InstrD[14:12];
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    regdata #(5, CORE_TYPE) rd_decode     (clk, FlushE|rst, 1'b0, {PCD, PCPlus4D, ImmExtD, RD1D, RD2D},
+    regdata #(5, CORE_TYPE) rd_decode     (clk, FlushEC|rst, 1'b0, {PCD, PCPlus4D, ImmExtD, RD1D, RD2D},
                                                                   {PCE, PCPlus4E, ImmExtE, RD1E, RD2E});
-    regrf   #(3, CORE_TYPE) rf_decode     (clk, FlushE|rst, 1'b0, {Rs1D, Rs2D, RdD},
+    regrf   #(3, CORE_TYPE) rf_decode     (clk, FlushEC|rst, 1'b0, {Rs1D, Rs2D, RdD},
                                                                   {Rs1E, Rs2E, RdE});
-    regcontrol #(17, CORE_TYPE) rc_decode (clk, FlushE|rst, 1'b0,
+    regcontrol #(17, CORE_TYPE) rc_decode (clk, FlushEC|rst, 1'b0,
                     {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[3:0], ALUSrcD[2:0], Funct3D[2:0], JALSrcD},
                     {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[3:0], ALUSrcE[2:0], Funct3E[2:0], JALSrcE});
     //Признаки системных инструкций идут в стадию E вместе с признаком действительной инструкции:
     //сброшенная инструкция 0x00000000 декодируется как недопустимая, но ловушку вызывать не должна
-    regcontrol #(6, CORE_TYPE) rs_decode  (clk, FlushE|rst, 1'b0,
+    regcontrol #(6, CORE_TYPE) rs_decode  (clk, FlushEC|rst, 1'b0,
                     {ValidD, CsrD & ValidD, MretD & ValidD, EcallD & ValidD, EbreakD & ValidD, IllegalD & ValidD},
                     {ValidE, CsrE,          MretE,          EcallE,          EbreakE,          IllegalE});
     //EXECUTE///////////////////////////////////////////////////////////////////////////////////////
@@ -146,8 +164,12 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
               .Load(ResultSrcE == 2'b01), .Store(MemWriteE), .MemAddr(ALUResultE),
               //Запросы прерываний
               .irq_msi(irq_msi_c), .irq_mti(irq_mti_c), .irq_mei(irq_mei_c), .irq_local(irq_local_c),
+              //Отладка
+              .haltreq(dbg_haltreq), .resumereq(dbg_resumereq), .Halted(dbg_halted),
+              .DbgCsrAddr(dbg_csr_addr), .DbgCsrWe(dbg_csr_we), .DbgWData(dbg_wdata),
               //Результат
-              .CsrRData(CsrRDataE), .Trap(TrapE), .Redirect(RedirectE), .RedirectPC(RedirectPCE));
+              .CsrRData(CsrRDataE), .Trap(TrapE), .Kill(KillE), .Redirect(RedirectE), .RedirectPC(RedirectPCE));
+    assign dbg_csr_rdata = CsrRDataE;
     //Смена PC: ловушка и mret важнее перехода
     assign PCSrcF     = PCSrcE | RedirectE;
     assign PCNextSrcE = RedirectE ? RedirectPCE : PCTargetE;
@@ -159,7 +181,8 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
                                                            {PCPlus4M, WriteDataM, ALUResultM});
     regrf      #(1, CORE_TYPE) rf_execute (clk, rst, 1'b0, {RdE},
                                                            {RdM});
-    regcontrol #(7, CORE_TYPE) rc_execute (clk, rst, 1'b0, {RegWriteE & ~TrapE, ResultSrcE[1:0], MemWriteE & ~TrapE, Funct3E[2:0]},
+    //(в однотактном ядре ValidE = 0 в режиме останова: инструкция по замороженному PC не выполняется)
+    regcontrol #(7, CORE_TYPE) rc_execute (clk, rst, 1'b0, {RegWriteE & ValidE & ~KillE, ResultSrcE[1:0], MemWriteE & ValidE & ~KillE, Funct3E[2:0]},
                                                            {RegWriteM,          ResultSrcM[1:0], MemWriteM,          Funct3M[2:0]});
     //MEMORY////////////////////////////////////////////////////////////////////////////////////////
     memory memory ( .MemWrite(MemWriteM), .Funct3(Funct3M),
@@ -177,6 +200,7 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
                                                                   {RdW});
     regcontrol #(6, CORE_TYPE)         rc_memory (clk, rst, 1'b0, {RegWriteM, ResultSrcM[1:0], Funct3M[2:0]}, 
                                                                   {RegWriteW, ResultSrcW[1:0], Funct3W[2:0]});
+    assign dmem_Read = (ResultSrcM == 2'b01) & RegWriteM;   //Загрузка, не погашенная ловушкой
     //WRITEBACK/////////////////////////////////////////////////////////////////////////////////////
     writeback writeback (   .ResultSrc(ResultSrcW), .Funct3(Funct3W),
                             .ALUResult(ALUResultW), .ReadData(ReadDataW), .PCPlus4(PCPlus4W),
@@ -334,9 +358,16 @@ module trap_unit (
     //Запросы прерываний
     input  logic        irq_msi, irq_mti, irq_mei,
     input  logic [15:0] irq_local,
+    //Отладка
+    input  logic        haltreq, resumereq,
+    output logic        Halted,
+    input  logic [11:0] DbgCsrAddr,
+    input  logic        DbgCsrWe,
+    input  logic [31:0] DbgWData,
     //Результат
     output logic [31:0] CsrRData,          //Старое значение CSR - результат CSR-инструкции
     output logic        Trap,              //Ловушка: инструкция в стадии E гасится
+    output logic        Kill,              //Инструкция в стадии E гасится (ловушка или вход в отладку)
     output logic        Redirect,          //Смена PC ловушкой или mret
     output logic [31:0] RedirectPC
 );
@@ -344,7 +375,8 @@ module trap_unit (
     localparam logic [11:0] MSTATUS  = 12'h300, MISA   = 12'h301, MIE    = 12'h304, MTVEC   = 12'h305,
                             MSCRATCH = 12'h340, MEPC   = 12'h341, MCAUSE = 12'h342, MTVAL   = 12'h343,
                             MIP      = 12'h344, MCYCLE = 12'hB00, MCYCLEH = 12'hB80,
-                            CYCLE    = 12'hC00, CYCLEH = 12'hC80;
+                            CYCLE    = 12'hC00, CYCLEH = 12'hC80,
+                            DCSR     = 12'h7B0, DPC    = 12'h7B1;
 
     //#2 Регистры
     logic        mstatus_mie, mstatus_mpie;
@@ -375,7 +407,23 @@ module trap_unit (
         if (pending[3])  irq_code = 5'd3;   //MSI
         if (pending[11]) irq_code = 5'd11;  //MEI
     end
-    assign irq_take = mstatus_mie & (|pending) & Valid;
+    //#3.1 Режим отладки (RISC-V Debug 0.13). Вход - в стадии E на действительной инструкции, она не
+    //выполняется: dpc = её PC. Причины: ebreak при dcsr.ebreakm = 1 (cause 1), запрос останова от
+    //DM (cause 3), завершение шага при dcsr.step = 1 (cause 4). Вход в отладку важнее ловушек.
+    //В режиме останова PC заморожен, конвейер пуст; продолжение - PC = dpc. Во время шага
+    //прерывания запрещены (dcsr.stepie = 0).
+    logic        halted, step_active, step_passed;
+    logic        dcsr_ebreakm, dcsr_step;
+    logic [ 2:0] dcsr_cause;
+    logic [31:2] dpc;
+    logic        debug_entry, resume_do;
+    logic [ 2:0] debug_cause;
+    assign debug_entry = Valid & ~halted & ((Ebreak & dcsr_ebreakm) | haltreq | (step_active & step_passed));
+    assign debug_cause = (Ebreak & dcsr_ebreakm) ? 3'd1 : haltreq ? 3'd3 : 3'd4;
+    assign resume_do   = halted & resumereq;
+    assign Halted      = halted;
+
+    assign irq_take = mstatus_mie & (|pending) & Valid & ~step_active & ~debug_entry;
 
     //#4 Исключения
     logic       misalign_fetch, misalign_load, misalign_store, misalign_mem, exc;
@@ -398,15 +446,19 @@ module trap_unit (
 
     //#5 Ловушка и смена PC. Прерывание принимается до выполнения инструкции и важнее исключения
     logic mret_do;
-    assign Trap       = irq_take | exc;
-    assign mret_do    = Mret & ~irq_take;   //= Mret & ~Trap: других исключений у mret нет (короче путь)
-    assign Redirect   = Trap | mret_do;
-    assign RedirectPC = Trap ? ((mtvec_mode & irq_take) ? {mtvec_base[31:7], irq_code, 2'b00} : {mtvec_base, 2'b00})
-                             : {mepc, 2'b00};
+    assign Trap       = (irq_take | exc) & ~debug_entry;
+    assign Kill       = Trap | debug_entry;
+    assign mret_do    = Mret & ~irq_take & ~debug_entry; //= Mret & ~Kill: других исключений у mret нет (короче путь)
+    assign Redirect   = Trap | mret_do | debug_entry | resume_do;
+    assign RedirectPC = resume_do ? {dpc, 2'b00} :
+                        Trap      ? ((mtvec_mode & irq_take) ? {mtvec_base[31:7], irq_code, 2'b00} : {mtvec_base, 2'b00}) :
+                        mret_do   ? {mepc, 2'b00} : PC;      //При входе в отладку PC не важен: он замораживается
 
-    //#6 Чтение CSR
+    //#6 Чтение CSR. В режиме останова адрес CSR задаёт модуль отладки (конвейер пуст)
+    logic [11:0] csr_addr;
+    assign csr_addr = halted ? DbgCsrAddr : CsrAddr;
     always_comb
-        case (CsrAddr)
+        case (csr_addr)
             MSTATUS:         CsrRData = {19'd0, 2'b11, 3'd0, mstatus_mpie, 3'd0, mstatus_mie, 3'd0}; //MPP = 11 (M)
             MISA:            CsrRData = 32'h4000_0100;                                                 //RV32I
             MIE:             CsrRData = mie;
@@ -418,6 +470,9 @@ module trap_unit (
             MIP:             CsrRData = mip;
             MCYCLE,  CYCLE:  CsrRData = mcycle[31:0];
             MCYCLEH, CYCLEH: CsrRData = mcycle[63:32];
+            //dcsr: xdebugver = 4, ebreakm, cause, step, prv = 3 (M); доступны только в режиме отладки
+            DCSR:            CsrRData = halted ? {4'd4, 12'd0, dcsr_ebreakm, 6'd0, dcsr_cause, 3'd0, dcsr_step, 2'b11} : 32'd0;
+            DPC:             CsrRData = halted ? {dpc, 2'b00} : 32'd0;
             default:         CsrRData = 32'd0;
         endcase
 
@@ -427,7 +482,12 @@ module trap_unit (
     assign csr_src = Funct3[2] ? {27'd0, Zimm} : Rs1Data;
     //CSR-инструкция не обращается к памяти и не выполняет переход, поэтому гасит её только
     //прерывание: ~irq_take вместо ~Trap убирает из пути АЛУ и проверки выравнивания
-    assign csr_we  = Csr & ~irq_take & ((Funct3[1:0] == 2'b01) | (Zimm != 5'd0));
+    assign csr_we  = Csr & ~irq_take & ~debug_entry & ((Funct3[1:0] == 2'b01) | (Zimm != 5'd0));
+    //Запись от модуля отладки - только в режиме останова, значение целиком
+    logic        we_any;
+    logic [31:0] wdata_any;
+    assign we_any    = halted ? DbgCsrWe  : csr_we;
+    assign wdata_any = halted ? DbgWData  : csr_wdata;
     always_comb
         case (Funct3[1:0])
             2'b10:   csr_wdata = CsrRData |  csr_src;   //csrrs
@@ -443,9 +503,14 @@ module trap_unit (
             mscratch    <= '0;   mepc         <= '0;   mtval <= '0;
             mcause_int  <= 1'b0; mcause_code  <= '0;
             mcycle      <= '0;
+            dpc         <= '0;   dcsr_cause   <= '0;
+            dcsr_ebreakm <= 1'b0; dcsr_step   <= 1'b0;
         end else begin
             mcycle <= mcycle + 64'd1;
-            if (Trap) begin
+            if (debug_entry) begin
+                dpc        <= PC[31:2];
+                dcsr_cause <= debug_cause;
+            end else if (Trap) begin
                 mepc         <= PC[31:2];
                 mcause_int   <= irq_take;
                 mcause_code  <= irq_take ? irq_code : exc_code;
@@ -455,20 +520,33 @@ module trap_unit (
             end else if (mret_do) begin
                 mstatus_mie  <= mstatus_mpie;
                 mstatus_mpie <= 1'b1;
-            end else if (csr_we)
-                case (CsrAddr)
-                    MSTATUS:  begin mstatus_mie <= csr_wdata[3]; mstatus_mpie <= csr_wdata[7]; end
-                    MIE:      {mie_local, mie_meie, mie_mtie, mie_msie} <= {csr_wdata[31:16], csr_wdata[11], csr_wdata[7], csr_wdata[3]};
-                    MTVEC:    begin mtvec_base <= csr_wdata[31:2]; mtvec_mode <= csr_wdata[0]; end
-                    MSCRATCH: mscratch <= csr_wdata;
-                    MEPC:     mepc     <= csr_wdata[31:2];
-                    MCAUSE:   begin mcause_int <= csr_wdata[31]; mcause_code <= csr_wdata[4:0]; end
-                    MTVAL:    mtval    <= csr_wdata;
-                    MCYCLE:   mcycle[31:0]  <= csr_wdata;
-                    MCYCLEH:  mcycle[63:32] <= csr_wdata;
+            end else if (we_any)
+                case (csr_addr)
+                    MSTATUS:  begin mstatus_mie <= wdata_any[3]; mstatus_mpie <= wdata_any[7]; end
+                    MIE:      {mie_local, mie_meie, mie_mtie, mie_msie} <= {wdata_any[31:16], wdata_any[11], wdata_any[7], wdata_any[3]};
+                    MTVEC:    begin mtvec_base <= wdata_any[31:2]; mtvec_mode <= wdata_any[0]; end
+                    MSCRATCH: mscratch <= wdata_any;
+                    MEPC:     mepc     <= wdata_any[31:2];
+                    MCAUSE:   begin mcause_int <= wdata_any[31]; mcause_code <= wdata_any[4:0]; end
+                    MTVAL:    mtval    <= wdata_any;
+                    MCYCLE:   mcycle[31:0]  <= wdata_any;
+                    MCYCLEH:  mcycle[63:32] <= wdata_any;
+                    DCSR:     if (halted) begin dcsr_ebreakm <= wdata_any[15]; dcsr_step <= wdata_any[2]; end
+                    DPC:      if (halted) dpc <= wdata_any[31:2];
                     default: ;
                 endcase
         end
+
+    //Состояние отладки: останов, шаг
+    always_ff @(posedge clk)
+        if (rst) begin
+            halted <= 1'b0; step_active <= 1'b0; step_passed <= 1'b0;
+        end else if (debug_entry) begin
+            halted <= 1'b1; step_active <= 1'b0; step_passed <= 1'b0;
+        end else if (resume_do) begin
+            halted <= 1'b0; step_active <= dcsr_step; step_passed <= 1'b0;
+        end else if (step_active & Valid & ~halted)
+            step_passed <= 1'b1;             //Первая инструкция шага прошла стадию E (выполнена или вызвала ловушку)
 endmodule
 
 module conflict_prevention_unit 
@@ -575,12 +653,27 @@ module decode
     input logic  [ 4:0] Addr1, Addr2, Addr3,
     input logic  [31:7] Imm,
     input  logic [31:0] Result,
-    output logic [31:0] RD1, RD2, ImmExt
+    output logic [31:0] RD1, RD2, ImmExt,
+    //Доступ модуля отладки (ядро остановлено, стадия W пуста): через порты чтения 1 и записи
+    input  logic        DbgSel,           //Ядро остановлено: порт чтения 1 отдан отладчику
+    input  logic [ 4:0] DbgAddr,
+    input  logic        DbgWe,
+    input  logic [31:0] DbgWData,
+    output logic [31:0] DbgRData
 );
     //#rf - Регистровый файл//
     //DESCRIPTION: Трёхпортовый регистровый файл имеет два порта для считывания
     //и один порт для загрузки данных по сигналу разрешения RegWrite
     logic [31:0] rf[31:0];
+    //Отладчик пользуется портами ядра, а не своими: отдельные порты на регистровом файле из
+    //триггеров стоят мультиплексор на каждый бит (запись) и ещё один выбор 32:1 (чтение)
+    logic [ 4:0] ra1, wa;
+    logic [31:0] wd;
+    logic        we;
+    assign ra1 = DbgSel ? DbgAddr  : Addr1;
+    assign wa  = DbgWe  ? DbgAddr  : Addr3;
+    assign wd  = DbgWe  ? DbgWData : Result;
+    assign we  = DbgWe | RegWrite;
     
     generate if (CORE_TYPE) begin   //Однотактное ядро
         always_ff @(posedge clk, posedge rst)
@@ -617,8 +710,8 @@ module decode
                 rf[30] <= 0; //x30
                 rf[31] <= 0; //x31
             end
-            else if (RegWrite) rf[Addr3] <= Result;
-        assign RD1 = (Addr1 != 0) ? rf[Addr1] : 0;
+            else if (we) rf[wa] <= wd;
+        assign RD1 = (ra1 != 0) ? rf[ra1] : 0;
         assign RD2 = (Addr2 != 0) ? rf[Addr2] : 0;
     end else begin                  //Конвеерное ядро
         always_ff @(negedge clk, posedge rst)
@@ -655,9 +748,9 @@ module decode
                 rf[30] <= 0; //x30
                 rf[31] <= 0; //x31
             end
-            else if (RegWrite) rf[Addr3] <= Result;
+            else if (we) rf[wa] <= wd;
         
-        assign RD1 = (Addr1 != 0) ? rf[Addr1] : 0;
+        assign RD1 = (ra1 != 0) ? rf[ra1] : 0;
         assign RD2 = (Addr2 != 0) ? rf[Addr2] : 0;
         //always_ff @(posedge clk) begin
         //    RD1 <= (Addr1 != 0) ? rf[Addr1] : 0;
@@ -665,6 +758,8 @@ module decode
         //end
     end
     endgenerate
+    assign DbgRData = RD1;
+
     //#ie - Знаковое расширение непосредственного числа//
     //DESCRIPTION: Производится знаковое расширение непосредственного числа
     //в зависимости от типа регистра ImmSrc. Знаковый бит Imm[31] копируется

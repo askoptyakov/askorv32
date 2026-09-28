@@ -7,15 +7,23 @@
     <FileList>
         <File path="src/clock.sv" type="file.verilog" enable="1"/>
         <File path="src/core.sv" type="file.verilog" enable="1"/>
+        <File path="src/debug/dm.sv" type="file.verilog" enable="1"/>
+        <File path="src/debug/dtm_gowin.sv" type="file.verilog" enable="1"/>
+        <File path="src/debug/fpgacapzero/dff_reg_sync.v" type="file.verilog" enable="1"/>
+        <File path="src/debug/fpgacapzero/dff_sync.v" type="file.verilog" enable="1"/>
+        <File path="src/debug/fpgacapzero/gw_jtag.v" type="file.verilog" enable="1"/>
+        <File path="src/debug/fpgacapzero/jtag_tap_gowin.v" type="file.verilog" enable="1"/>
         <File path="src/mem.sv" type="file.verilog" enable="1"/>
         <File path="src/periph/clint.sv" type="file.verilog" enable="1"/>
         <File path="src/periph/gpio.sv" type="file.verilog" enable="1"/>
         <File path="src/periph/mux.sv" type="file.verilog" enable="1"/>
+        <File path="src/periph/plic.sv" type="file.verilog" enable="1"/>
         <File path="src/periph/simple_timer/tim.sv" type="file.verilog" enable="1"/>
         <File path="src/periph/tm1638.sv" type="file.verilog" enable="1"/>
         <File path="src/top.sv" type="file.verilog" enable="1"/>
         <File path="src/riscv.cst" type="file.cst" enable="1"/>
-        <File path="src/riscv.rao" type="file.gao" enable="1"/>
+        <File path="src/riscv.sdc" type="file.sdc" enable="1"/>
+        <File path="src/riscv.rao" type="file.gao" enable="0"/>
         <File path="src/mem_init/imem.mi" type="file.other" enable="1"/>
     </FileList>
 </Project>

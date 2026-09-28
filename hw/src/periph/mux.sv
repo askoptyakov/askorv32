@@ -6,10 +6,12 @@ module memmux
    (input  logic                   clk, rst,
     // Интерфейс мастера
     input  logic            [ 3:0] mWrite,
+    input  logic                   mRead,  //Строб чтения (загрузка): для регистров с побочным действием при чтении
     input  logic            [31:0] mAddr, mWData, 
     output logic            [31:0] mRData,
     // Интерфейс подчинённых
     output logic [(SLAVES* 4)-1:0] sWrite,
+    output logic [ SLAVES    -1:0] sRead,
     output logic [(SLAVES*32)-1:0] sAddr, sWData,
     input  logic [(SLAVES*32)-1:0] sRData
 ); 
@@ -20,6 +22,7 @@ module memmux
             assign match[i] = (mAddr & MATCH_MASK[i*32+:32]) == MATCH_ADDR[i*32+:32];//rvfpga
             //assign match[i] = ~|((mAddr ^ MATCH_ADDR[i*32+:32]) & MATCH_MASK[i*32+:32]);//picotiny
             assign sWrite[i*4+:4] = mWrite & {4{match[i]}}; 
+            assign sRead[i]       = mRead  & match[i];
         end
     endgenerate
 
