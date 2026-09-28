@@ -23,6 +23,8 @@
 //перехватывает тестбенч):
 //  0x1F000000..08 - TOHOST: код завершения и аргументы
 //  0x1F00000C     - консоль: младший байт записи выводится как символ
+//  0x1F000014     - уровни источников PLIC 2..8 (бит N - источник N)
+//+dbgtest - сценарий отладки через JTAG (tb_debug.svh) параллельно с программой
 //
 //Результат - одна строка "RESULT PASS|FAIL|INCOMPLETE|TIMEOUT ..." для run_tests.py.
 //==============================================================================================
@@ -45,12 +47,21 @@ module tb_core;
     wire [5:0] led, GMB_GPIO;
     wire [1:0] GMB_DRIVER_E, GMB_DRIVER_D;
     wire [2:0] GPIO;
+    logic      tck = 1'b0, tms = 1'b1, tdi = 1'b0;    //JTAG: управляет сценарий отладки (tb_debug.svh)
+    wire       tdo;
 
     top #(.CORE_TYPE(CORE_TYPE),
           .IMEM_TYPE(1'b1), .BSRAM_IMEM_SIZE(IMEM_KB),
           .DMEM_TYPE(1'b1), .BSRAM_DMEM_SIZE(DMEM_KB))
         dut (.clk(clk), .rst_n(rst_n), .led(led), .GMB_GPIO(GMB_GPIO),
-             .GMB_DRIVER_E(GMB_DRIVER_E), .GMB_DRIVER_D(GMB_DRIVER_D), .GPIO(GPIO));
+             .GMB_DRIVER_E(GMB_DRIVER_E), .GMB_DRIVER_D(GMB_DRIVER_D), .GPIO(GPIO),
+             .tck_pad_i(tck), .tms_pad_i(tms), .tdi_pad_i(tdi), .tdo_pad_o(tdo));
+
+    //Источники PLIC 2..8 выставляет программа записью по адресу 0x1F000014 (бит N - источник N),
+    //источник 1 - таймер STIM, как в top.sv
+    logic [31:0] sim_plic_src = 32'd0;
+    wire [8:2] sim_irq_ext = sim_plic_src[8:2];      //Icarus: force от part-select переменной не отслеживается
+    initial force dut.irq_ext = sim_irq_ext;
 
     //Внутренние сигналы top.sv, на которые опирается тестбенч
     wire        clk_core = dut.clk_core;
@@ -176,6 +187,14 @@ module tb_core;
             gpio_out_q <= dut.gpio.out_r;
         end
 
+    //#5.1 Сценарий отладки через JTAG
+    `include "tb_debug.svh"
+    initial if ($test$plusargs("dbgtest")) begin
+        wait (!rst);
+        repeat (20) @(posedge clk_core);
+        dbg_scenario();
+    end
+
     //#6 Перехват записи по адресу TOHOST
     logic [31:0] arg_actual = 32'd0, arg_expected = 32'd0;
 
@@ -188,6 +207,9 @@ module tb_core;
                 4'h0: finish_test(dmem_WriteData);
                 default: ;
             endcase
+
+    always @(posedge clk_dmem)
+        if (!rst && (|dmem_Write) && dmem_Addr == 32'h1F00_0014) sim_plic_src <= dmem_WriteData;
 
     task automatic finish_test(input logic [31:0] code);
         int n;

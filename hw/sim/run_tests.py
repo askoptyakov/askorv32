@@ -28,11 +28,14 @@ HW_DIR = SIM_DIR.parent
 TESTS_DIR = SIM_DIR / "tests"
 PROG_DIR = TESTS_DIR / "rv32i"
 PRIV_DIR = TESTS_DIR / "priv"          # CSR, исключения, прерывания (пишутся вручную)
-PRIV_ORDER = ["csr", "trap", "irq"]
+PRIV_ORDER = ["csr", "trap", "irq", "plic", "dbg"]
 BUILD_DIR = SIM_DIR / "build"
 
 RTL = [HW_DIR / "src" / f for f in ("top.sv", "core.sv", "mem.sv", "clock.sv", "periph/mux.sv", "periph/gpio.sv",
-                                     "periph/tm1638.sv", "periph/simple_timer/tim.sv", "periph/clint.sv")]
+                                     "periph/tm1638.sv", "periph/simple_timer/tim.sv", "periph/clint.sv",
+                                     "periph/plic.sv", "debug/dm.sv", "debug/dtm_gowin.sv",
+                                     "debug/fpgacapzero/jtag_tap_gowin.v", "debug/fpgacapzero/dff_reg_sync.v",
+                                     "debug/fpgacapzero/dff_sync.v")] + [SIM_DIR / "gw_jtag_model.sv"]
 TB = SIM_DIR / "tb_core.sv"
 MEM_BYTES = 8 * 1024
 CORES = {"single": 1, "pipeline": 0}  # значение параметра CORE_TYPE
@@ -124,6 +127,13 @@ def build_program(name, prefix, imem_kb=8, text_base=0):
     (out / "imem.hex").write_text(to_hex_words(imem))
     (out / "dmem.hex").write_text(to_hex_words(dmem))
     names = parse_names((out / "names.bin").read_bytes())
+    #Программа для сценария отладки: адреса меток и параметры запуска
+    extra = []
+    if name == "dbg":
+        sym = {l.split()[2]: l.split()[0] for l in run([prefix + "nm", elf]).stdout.splitlines() if len(l.split()) == 3}
+        extra = ["+dbgtest", f"+dbg_bp={sym['bp_here']}", f"+dbg_flag={sym['flag']}",
+                 f"+dbg_tdata={sym['tdata']}", "+timeout=3000000"]
+    (out / "args.txt").write_text(" ".join(extra))
     (out / "names.txt").write_text("".join(f"{n} {s}\n" for n, s in sorted(names.items())))
     return {"dir": out, "imem": len(imem), "tests": len(names)}, None
 
@@ -133,7 +143,7 @@ def build_program(name, prefix, imem_kb=8, text_base=0):
 # ----------------------------------------------------------------------------------------
 def compile_tb(core, prim_sim, imem_kb=8, dmem_kb=8):
     vvp = BUILD_DIR / f"tb_core_{core}_i{imem_kb}_d{dmem_kb}.vvp"
-    r = run([need("iverilog"), "-g2012", "-o", vvp, "-s", "tb_core",
+    r = run([need("iverilog"), "-g2012", "-o", vvp, "-s", "tb_core", f"-I{SIM_DIR}",
              f"-Ptb_core.CORE_TYPE={CORES[core]}", f"-Ptb_core.IMEM_KB={imem_kb}",
              f"-Ptb_core.DMEM_KB={dmem_kb}", *[f"-DTB_{m}_{kb}K" for m, kb in (("IMEM", imem_kb), ("DMEM", dmem_kb)) if kb > 8],
              TB, *RTL, prim_sim])
@@ -148,6 +158,7 @@ def simulate(vvp, name, core, vcd):
     d = BUILD_DIR / name
     args = [need("vvp"), "-n", vvp, f"+prog={name}", f"+imem={(d / 'imem.hex').as_posix()}",
             f"+dmem={(d / 'dmem.hex').as_posix()}", f"+names={(d / 'names.txt').as_posix()}"]
+    args += (d / "args.txt").read_text().split()
     if vcd:
         args.append(f"+vcd={(BUILD_DIR / f'{name}_{core}.vcd').as_posix()}")
     r = run(args, timeout=600)
