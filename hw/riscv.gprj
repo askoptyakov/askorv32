@@ -7,6 +7,7 @@
     <FileList>
         <File path="src/clock.sv" type="file.verilog" enable="1"/>
         <File path="src/core.sv" type="file.verilog" enable="1"/>
+        <File path="src/mdu.sv" type="file.verilog" enable="1"/>
         <File path="src/debug/dm.sv" type="file.verilog" enable="1"/>
         <File path="src/debug/dtm_gowin.sv" type="file.verilog" enable="1"/>
         <File path="src/debug/fpgacapzero/dff_reg_sync.v" type="file.verilog" enable="1"/>

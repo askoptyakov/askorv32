@@ -1,7 +1,7 @@
 #### Прерывания
 Описание аппаратной части: [hw/info/interrupts.md](../hw/info/interrupts.md).
 
-- **Сборка:** `-march=rv32i_zicsr`. В Eclipse: *C/C++ Build → Settings → Target Processor → Other extensions* = `_zicsr`, уже задано в `.cproject`.
+- **Сборка:** `-march=rv32im_zicsr`. В Eclipse: *C/C++ Build → Settings → Target Processor*: *Multiply extension (RVM)* включено, *Other extensions* = `_zicsr`, уже задано в `.cproject`. Если ядро собрано без расширения M (`M_EXT = 0` в `top.sv`), галочку RVM нужно снять: иначе `mul`/`div` вызовут исключение «недопустимая инструкция».
 - **Стартовый код** `start.S`:
   - `mtvec` = `__vector_table | 1` (векторный режим);
   - таблица из 32 переходов, выравнивание 128 байт: вход 0 — исключения, вход N — прерывание с кодом N;

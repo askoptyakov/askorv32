@@ -87,7 +87,7 @@ RVTEST_CODE_BEGIN
     csrci mstatus, 8; csrw mie, x0
     LA_ABS(x1, vtable); ori x1, x1, 1; csrw mtvec, x1
 
-    //#7 Точность ловушек: вычисление с загрузками, записями, load-use, переходами и вызовами
+    //#7 Точность ловушек: вычисление с загрузками, записями, load-use, переходами, вызовами, mul и div
     //без прерываний и под потоком прерываний MTI и LI0 должно дать одинаковый результат
     jal x17, init_buf
     LA_ABS(x1, tbuf); li x2, 300; jal x17, work
@@ -122,6 +122,12 @@ work:
 1:  andi x4, x3, 15; slli x4, x4, 2; add x4, x4, x1
     lw x7, 0(x4)
     add x14, x14, x7                                  //load-use
+    ori x9, x3, 1                                     //Расширение M: прерывание посреди деления гасит его,
+    divu x10, x7, x9                                  //после mret деление выполняется заново
+    add x14, x14, x10
+    rem x10, x14, x9
+    mul x10, x10, x7
+    xor x14, x14, x10
     xor x7, x7, x3
     sw x7, 0(x4)
     andi x15, x3, 3

@@ -52,7 +52,7 @@ typedef struct
 
 typedef struct
 {
-  __IO uint32_t PR;    				//0x00: Регистр предделителя системной частоты таймера (PRESCALER)
+  __IO uint32_t PR;    				//0x00: Регистр предделителя системной частоты таймера (PRESCALER), 16 бит
   union {
 	  __IO uint32_t CR;  			//0x04: Регистр управления счетчика (CONTROL REG)
 	  struct {
@@ -62,9 +62,9 @@ typedef struct
 		  __IO uint32_t CR_UIE 	: 1;	// update interrupt enable - разрешение прерывания по событию обновления
 	  };
   };
-  __IO uint32_t PER;   	  			//0x08: Регистр данных значения переполнения таймера (PERIOD)
-  __IO uint32_t PUL;         		//0x0C: Регистр значения сравнения (PULSE)
-  __I  uint32_t CNT;  	      		//0x10: Регистр значения текущего счетчика таймера (COUNT)
+  __IO uint32_t PER;   	  			//0x08: Регистр данных значения переполнения таймера (PERIOD), 16 бит
+  __IO uint32_t PUL;         		//0x0C: Регистр значения сравнения (PULSE), 16 бит
+  __I  uint32_t CNT;  	      		//0x10: Регистр значения текущего счетчика таймера (COUNT), 16 бит
   __IO uint32_t SR;  	      		//0x14: Регистр состояния (STATUS REG): бит 0 - UIF, сброс записью 1
 } STIM_TypeDef;
 
@@ -106,7 +106,8 @@ typedef enum
 #define STIM_SR_UIF					(1U << 0)
 
 /* Настройки таймера при инициализации */
-#define STIM_PRESCALER 				1000000;
+#define STIM_WIDTH					16U		//Разрядность PR, PER, PUL, CNT (параметр WIDTH в hw/src/periph/simple_timer/tim.sv)
+#define STIM_PRESCALER 				(SYSCLK_HZ / 1000U - 1U);	//Тик счётчика - 1 мс (значение не больше 65535)
 #define STIM_PERIOD 				100;
 #define STIM_COUNTER_MODE 			STIM_COUNTER_MODE_DOWN;
 #define STIM_AUTO_RELOAD_PRELOAD 	1;

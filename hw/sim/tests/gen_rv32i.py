@@ -1,8 +1,8 @@
 """
-Генератор тестовых программ RV32I для askoRV32.
+Генератор тестовых программ RV32IM для askoRV32.
 
 Для каждой инструкции создаётся файл rv32i/<инструкция>.S из макросов riscv_test.h.
-Ожидаемые значения вычисляет эталонная модель RV32I (функции ниже), а не человек.
+Ожидаемые значения вычисляет эталонная модель RV32IM (функции ниже), а не человек.
 
 Запуск (из любой папки):  py hw/sim/tests/gen_rv32i.py
 """
@@ -71,6 +71,37 @@ LOAD = {  # размер в байтах, знаковое расширение
 STORE = {"sb": 1, "sh": 2, "sw": 4}
 
 
+# Расширение M. Деление округляется к нулю, знак остатка - знак делимого.
+# Особые случаи (спецификация, а не ловушки): деление на 0 - частное все единицы, остаток - делимое;
+# переполнение -2^31 / -1 - частное -2^31, остаток 0.
+def ref_div(a, b):
+    a, b = s32(a), s32(b)
+    if b == 0:
+        return M32
+    q = abs(a) // abs(b)
+    return u32(-q if (a < 0) != (b < 0) else q)
+
+
+def ref_rem(a, b):
+    a, b = s32(a), s32(b)
+    if b == 0:
+        return u32(a)
+    r = abs(a) % abs(b)
+    return u32(-r if a < 0 else r)
+
+
+MD = {
+    "mul":    lambda a, b: u32(a * b),
+    "mulh":   lambda a, b: u32((s32(a) * s32(b)) >> 32),
+    "mulhsu": lambda a, b: u32((s32(a) * u32(b)) >> 32),
+    "mulhu":  lambda a, b: u32((u32(a) * u32(b)) >> 32),
+    "div":    ref_div,
+    "divu":   lambda a, b: M32 if u32(b) == 0 else u32(a) // u32(b),
+    "rem":    ref_rem,
+    "remu":   lambda a, b: u32(a) if u32(b) == 0 else u32(a) % u32(b),
+}
+
+
 # ----------------------------------------------------------------------------------------
 # Наборы тестовых значений
 # ----------------------------------------------------------------------------------------
@@ -82,6 +113,15 @@ ARITH_PAIRS = [
     (0xFFFFFFFF, 0x00000001), (0xFFFFFFFF, 0xFFFFFFFF), (0x00000001, 0x7FFFFFFF),
     (0x7FFFFFFF, 0x80000000), (0x80000000, 0x7FFFFFFF), (0xFFFFFFFF, 0x00000000),
     (0x55555555, 0xAAAAAAAA), (0x12345678, 0xFEDCBA98), (0x0F0F0F0F, 0x00FF00FF),
+]
+
+# Дополнительно для умножения и деления: знаки операндов, переполнение, большие беззнаковые
+MD_PAIRS = [
+    (0x80000000, 0xFFFFFFFF), (0x80000000, 0x00000001), (0x00000007, 0xFFFFFFFD),
+    (0xFFFFFFF9, 0x00000003), (0xFFFFFFF9, 0xFFFFFFFD), (0x00000007, 0x00000003),
+    (0xFFFFFFFE, 0xFFFFFFFF), (0xFFFFFFFF, 0x80000000), (0x12345678, 0x0000ABCD),
+    (0xDEADBEEF, 0x00000010), (0x00010000, 0x00010000), (0xFFFF0000, 0x0000FFFF),
+    (0x0001E240, 0x80000001), (0xFFFFFFFF, 0x7FFFFFFF), (0x76543210, 0x76543211),
 ]
 
 SHIFT_VALUES = [0x00000001, 0xFFFFFFFF, 0x21212121, 0x80000000, 0x12345678]
@@ -177,8 +217,8 @@ class Program:
 # Генераторы по классам инструкций
 # ----------------------------------------------------------------------------------------
 def gen_rr(inst):
-    fn = RR[inst]
-    p = Program(inst, "регистр-регистр")
+    fn = RR[inst] if inst in RR else MD[inst]
+    p = Program(inst, "регистр-регистр" if inst in RR else "расширение M")
     is_shift = inst in ("sll", "srl", "sra")
     p.comment("Значения")
     if is_shift:
@@ -190,7 +230,7 @@ def gen_rr(inst):
             p.test("TEST_RR_OP", inst, hx(fn(0x21212121, b)), hx(0x21212121), hx(b))
         a, b = 0x87654321, 7
     else:
-        for a, b in ARITH_PAIRS:
+        for a, b in ARITH_PAIRS + (MD_PAIRS if inst in MD else []):
             p.test("TEST_RR_OP", inst, hx(fn(a, b)), hx(a), hx(b))
         a, b = nonzero_pair(fn, [(0x87654321, 0x0000000B), (0x0000000B, 0x87654321)])
     p.comment("Совпадение регистров")
@@ -210,7 +250,37 @@ def gen_rr(inst):
     p.test("TEST_RR_ZEROSRC2", inst, hx(fn(a, 0)), hx(a))
     p.test("TEST_RR_ZEROSRC12", inst, hx(fn(0, 0)))
     p.test("TEST_RR_ZERODEST", inst, hx(a), hx(b))
+    if inst in MD:
+        gen_md_chain(p, inst, fn, a, b)
     return p.write()
+
+
+def gen_md_chain(p, inst, fn, a, b):
+    """Зависимые цепочки умножения и деления: результат нужен сразу следующей инструкции
+    (приостановка на 1 такт после mul, удержание стадий на время деления)."""
+    other = "divu" if inst.startswith("mul") else "mul"
+    fo = MD[other]
+    c = 0x00000005
+    p.comment("Зависимые цепочки (конвейер)")
+    r = fn(a, b)
+    p.test("TEST_CASE", "x14", hx(fn(r, b)), f'("{inst}->{inst}")',
+           f"li x1, {hx(a)}; li x2, {hx(b)}; {inst} x3, x1, x2; {inst} x14, x3, x2")
+    p.test("TEST_CASE", "x14", hx(fo(r, c)), f'("{inst}->{other}")',
+           f"li x1, {hx(a)}; li x2, {hx(b)}; li x4, {hx(c)}; {inst} x3, x1, x2; {other} x14, x3, x4")
+    r2 = fo(a, c)
+    p.test("TEST_CASE", "x14", hx(fn(r2, b)), f'("{other}->{inst}")',
+           f"li x1, {hx(a)}; li x2, {hx(b)}; li x4, {hx(c)}; {other} x3, x1, x4; {inst} x14, x3, x2")
+    # Инструкции после деления стоят в D и F, пока оно идёт: ни одна не должна потеряться
+    p.test("TEST_CASE", "x14", hx(u32(r + a + 1 + 2)), f'("{inst}[addi,addi,add]")',
+           f"li x1, {hx(a)}; li x2, {hx(b)}; {inst} x3, x1, x2; addi x4, x1, 1; addi x4, x4, 2; add x14, x3, x4")
+    # Запись результата в память сразу после операции
+    p.test("TEST_CASE", "x14", hx(r), f'("{inst}->sw->lw")',
+           f"la x5, md_buf; li x1, {hx(a)}; li x2, {hx(b)}; {inst} x3, x1, x2; sw x3, 0(x5); lw x14, 0(x5)")
+    # Переход по результату сразу после операции
+    p.test("TEST_CASE", "x14", hx(1 if r == 0 else 2), f'("{inst}->bnez")',
+           f"li x1, {hx(a)}; li x2, {hx(b)}; li x14, 2; {inst} x3, x1, x2; bnez x3, 1f; li x14, 1; 1: nop")
+    if not any(l.startswith("md_buf:") for l in p.data):
+        p.data += ["    .align 2", "md_buf: .word 0"]
 
 
 def gen_imm(inst):
@@ -392,13 +462,13 @@ def gen_store(inst):
 
 # ----------------------------------------------------------------------------------------
 ORDER = (["lui", "auipc", "jal", "jalr"] + list(BRANCH) + list(LOAD) + list(STORE)
-         + ["addi", "slti", "sltiu", "xori", "ori", "andi", "slli", "srli", "srai"] + list(RR))
+         + ["addi", "slti", "sltiu", "xori", "ori", "andi", "slli", "srli", "srai"] + list(RR) + list(MD))
 
 
 def main():
     total = 0
     for inst in ORDER:
-        if inst in RR:
+        if inst in RR or inst in MD:
             n = gen_rr(inst)
         elif inst in IMM:
             n = gen_imm(inst)

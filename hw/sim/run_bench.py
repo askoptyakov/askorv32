@@ -49,7 +49,7 @@ def check_eembc_md5():
 def build(prefix, opt, iterations):
     out = rt.BUILD_DIR / "coremark"
     out.mkdir(parents=True, exist_ok=True)
-    flags = f"{opt} -march=rv32i_zicsr -mabi=ilp32"
+    flags = f"{opt} -march=rv32im_zicsr -mabi=ilp32"
     elf = out / "coremark.elf"
     r = rt.run([prefix + "gcc", *flags.split(), f"-I{CM_DIR / 'askorv32'}", f"-I{CM_DIR / 'eembc'}",
                 f"-DITERATIONS={iterations}", "-DPERFORMANCE_RUN=1", f'-DFLAGS_STR="{flags}"',

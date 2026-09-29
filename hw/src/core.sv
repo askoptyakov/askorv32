@@ -1,6 +1,8 @@
 module core #(parameter bit CORE_TYPE = 1, //       Тип процессора: 1 - Однотактный; 0 - Конвейерный;
               parameter bit IMEM_TYPE = 0, //Тип памяти инструкций: 1 - BSRAM;       0 - Синтезированная;
-              parameter bit DMEM_TYPE = 0) //    Тип памяти данных: 1 - BSRAM;       0 - Синтезированная;
+              parameter bit DMEM_TYPE = 0, //    Тип памяти данных: 1 - BSRAM;       0 - Синтезированная;
+              parameter bit M_EXT     = 1, //         Расширение M: 1 - есть;        0 - нет (RV32I);
+              parameter int DIV_BPC   = 2) //  Бит частного за такт: 1, 2, 4 (деление 32/DIV_BPC + 2 такта)
              (input  logic        clk,       //Вход тактирования
               input  logic        rst,       //Вход сброса (кнопка S2)
               //Интерфейс памяти команд
@@ -42,7 +44,7 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     logic [31:0] PCPlus4D, PCD, InstrD, ImmExtD, RD1D, RD2D;
     logic [31:0] PCPlus4E, PCE,         ImmExtE, RD1E, RD2E, WriteDataE, ALUResultE, PCTargetE, SrcAE;
     logic [31:0] PCPlus4M,                                   WriteDataM, ALUResultM, ReadDataM;
-    logic [31:0] PCPlus4W,                                               ALUResultW, ReadDataW, ResultW;
+    logic [31:0] PCPlus4W,                                                           ReadDataW, ResultW;
     logic [31:0] ResultWf;                                      //Результат стадии W для байпаса (без загрузок, Ч3)
     logic [31:0] ResultX;                                       //Результат стадии X - запись в регистровый файл (Ч3)
     logic [ 4:0] RdX;
@@ -75,6 +77,12 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     logic        PredD, PredE;                                   //BTFN: переход выполнен уже в стадии D (jal, переход назад)
     logic [31:0] PCTargetD;                                      //Адрес перехода, вычисленный в стадии D
 
+    //Сигналы расширения M
+    logic        MulD, DivD, MulE, DivE, MulM, DivM;             //Умножение (mul*) и деление (div*, rem*)
+    logic [31:0] MulAM;                                          //Операнд A умножения в стадии M (B - WriteDataM)
+    logic [31:0] MulResM, DivResM;                               //Результаты умножения и деления в стадии M
+    logic        DivHold;                                        //Деление в стадии E не закончено: F, D, E стоят
+
     //Сигналы блока предотвращения конфликтов
     logic [3:0] FwdAD, FwdBD, FwdAE, FwdBE;             //Байпас rs1/rs2, one-hot {M, W, X, рег. файл} (Ч7: считается в D)
     logic [4:0] SelAD, SelAE;                           //Операнд A АЛУ, one-hot {M, W, X, рег. файл, PC}; 0 - ноль
@@ -87,26 +95,31 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     assign funct7b5 = InstrD[30];
     assign funct3   = InstrD[14:12]; //FIXME: Объединить с Funct3D!
     assign op       = InstrD[6:0];
-    control_unit cu (  .op(op), .funct3(funct3), .funct7b5(funct7b5), .imm12(InstrD[31:20]),
+    control_unit #(M_EXT) cu (.op(op), .funct3(funct3), .funct7b5(funct7b5), .imm12(InstrD[31:20]),
                        .RegWrite(RegWriteD), .MemWrite(MemWriteD), .Jump(JumpD), .Branch(BranchD), .JALSrc(JALSrcD),
                        .ResultSrc(ResultSrcD), .ImmSrc(ImmSrcD), .ALUSrc(ALUSrcD), .ALUControl(ALUControlD),
-                       .Csr(CsrD), .Mret(MretD), .Ecall(EcallD), .Ebreak(EbreakD), .Illegal(IllegalD));
+                       .Csr(CsrD), .Mret(MretD), .Ecall(EcallD), .Ebreak(EbreakD), .Illegal(IllegalD),
+                       .Mul(MulD), .Div(DivD));
     conflict_prevention_unit #(CORE_TYPE) pu
                               (.RegWriteE(RegWriteE), .RegWriteM(RegWriteM), .RegWriteW(RegWriteW),
                                .RdM(RdM), .RdW(RdW), .ALUSrcAD(ALUSrcD[2:1]),
                                .ResultSrcM0(ResultSrcM[0]), .ValidD(ValidD),
                                .FwdA(FwdAD), .FwdB(FwdBD), .SelA(SelAD),
                                //Организация пузырька
-                               .ResultSrcE0(ResultSrcE[0]), .Rs1D(Rs1D), .Rs2D(Rs2D), .RdE(RdE),
+                               //Результат умножения и деления, как у загрузки, в стадии M ещё не готов (есть с W)
+                               .ResultSrcE0(ResultSrcE[0] | MulE | DivE), .Rs1D(Rs1D), .Rs2D(Rs2D), .RdE(RdE),
+                               .Hold(DivHold),
                                .StallF(StallF), .StallD(StallD), .FlushE(FlushE),
                                 //Предсказание перехода branch
                                .PCSrcE(PCSrcM), .PredD(PredD), .FlushD(FlushD));
     //FETCH/////////////////////////////////////////////////////////////////////////////////////////
     //В режиме останова PC заморожен (кроме смены PC при продолжении), стадия E непрерывно сбрасывается
-    assign StallFC = StallF | (dbg_halted & ~PCSrcM);
+    //Пока идёт деление, стоят F, D и E. Смена PC важнее: в однотактном ядре ловушка во время деления
+    //меняет PC в том же такте (в конвейере DivHold и PCSrcM не совпадают - DivHold требует ValidX)
+    assign StallFC = StallF | ((DivHold | dbg_halted) & ~PCSrcM);
     //Ч9: сброс стадии D - только регистр ValidD (без выводов RESET памяти инструкций и регистров D);
     //недействительная инструкция в D становится пузырём при переходе в E
-    assign FlushEC = FlushE | dbg_halted | ~ValidD;
+    assign FlushEC = (FlushE | dbg_halted | ~ValidD) & ~DivHold;
     fetch fetch(    .clk(clk), .rst(rst), .PCSrc(PCSrcM), .StallF(StallFC),
                     .PCTarget(PCTargetM), .PredD(PredD), .PCTargetD(PCTargetD),
                     .PC(PCF), .PCPlus4(PCPlus4F), .Instr(InstrF),
@@ -156,23 +169,24 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     end
     endgenerate
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    regdata #(5, CORE_TYPE) rd_decode     (clk, FlushEC|rst, 1'b0, {PCD, PCPlus4D, ImmExtD, RD1D, RD2D},
+    regdata #(5, CORE_TYPE) rd_decode     (clk, FlushEC|rst, DivHold, {PCD, PCPlus4D, ImmExtD, RD1D, RD2D},
                                                                   {PCE, PCPlus4E, ImmExtE, RD1E, RD2E});
-    regrf   #(3, CORE_TYPE) rf_decode     (clk, FlushEC|rst, 1'b0, {Rs1D, Rs2D, RdD},
+    regrf   #(3, CORE_TYPE) rf_decode     (clk, FlushEC|rst, DivHold, {Rs1D, Rs2D, RdD},
                                                                   {Rs1E, Rs2E, RdE});
-    regcontrol #(18, CORE_TYPE) rc_decode (clk, FlushEC|rst, 1'b0,
-                    {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[3:0], ALUSrcD[2:0], Funct3D[2:0], JALSrcD, PredD},
-                    {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[3:0], ALUSrcE[2:0], Funct3E[2:0], JALSrcE, PredE});
-    regcontrol #(13, CORE_TYPE) rw_decode (clk, FlushEC|rst, 1'b0, {FwdAD, FwdBD, SelAD}, {FwdAE, FwdBE, SelAE});
+    //Пока идёт деление (DivHold), регистры стадии E держат инструкцию и не сбрасываются
+    regcontrol #(20, CORE_TYPE) rc_decode (clk, FlushEC|rst, DivHold,
+                    {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[3:0], ALUSrcD[2:0], Funct3D[2:0], JALSrcD, PredD, MulD, DivD},
+                    {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[3:0], ALUSrcE[2:0], Funct3E[2:0], JALSrcE, PredE, MulE, DivE});
+    regcontrol #(13, CORE_TYPE) rw_decode (clk, FlushEC|rst, DivHold, {FwdAD, FwdBD, SelAD}, {FwdAE, FwdBE, SelAE});
     //Ч15: условие перехода раскладывается в стадии D - какое сравнение (one-hot) и нужна ли инверсия.
     //Инверсия учитывает и предсказание: смена PC нужна, если «выполнен» != «предсказан», то есть
     //cond ^ funct3[0] ^ PredD. В стадии E остаётся И-ИЛИ результатов сравнения и один XOR.
     assign BrKindD = {Funct3D[2:1] == 2'b00, Funct3D[2:1] == 2'b10, Funct3D[2:1] == 2'b11};   //{eq, lt, ltu}
     assign BrInvD  = Funct3D[0] ^ PredD;
-    regcontrol #(4, CORE_TYPE)  rb_decode (clk, FlushEC|rst, 1'b0, {BrKindD, BrInvD}, {BrKindE, BrInvE});
+    regcontrol #(4, CORE_TYPE)  rb_decode (clk, FlushEC|rst, DivHold, {BrKindD, BrInvD}, {BrKindE, BrInvE});
     //Признаки системных инструкций идут в стадию E вместе с признаком действительной инструкции:
     //сброшенная инструкция 0x00000000 декодируется как недопустимая, но ловушку вызывать не должна
-    regcontrol #(6, CORE_TYPE) rs_decode  (clk, FlushEC|rst, 1'b0,
+    regcontrol #(6, CORE_TYPE) rs_decode  (clk, FlushEC|rst, DivHold,
                     {ValidD, CsrD & ValidD, MretD & ValidD, EcallD & ValidD, EbreakD & ValidD, IllegalD & ValidD},
                     {ValidE, CsrE,          MretE,          EcallE,          EbreakE,          IllegalE});
     //EXECUTE///////////////////////////////////////////////////////////////////////////////////////
@@ -206,10 +220,10 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     end
     endgenerate
     ////Регистры CSR, прерывания и исключения
-    trap_unit #(.LATE_BR_TRAP(!CORE_TYPE)) trap_unit
+    trap_unit #(.LATE_BR_TRAP(!CORE_TYPE), .M_EXT(M_EXT)) trap_unit
              (.clk(clk), .rst(rst),
               //Инструкция в стадии E
-              .Valid(ValidX), .Csr(CsrE & ValidX), .Mret(MretE & ValidX), .Ecall(EcallE & ValidX), .Ebreak(EbreakE & ValidX), .Illegal(IllegalE & ValidX),
+              .Valid(ValidX), .Hold(DivHold), .Csr(CsrE & ValidX), .Mret(MretE & ValidX), .Ecall(EcallE & ValidX), .Ebreak(EbreakE & ValidX), .Illegal(IllegalE & ValidX),
               .Funct3(Funct3E), .CsrAddr(ImmExtE[11:0]), .Zimm(Rs1E), .Rs1Data(SrcAE),
               .PC(PCE), .Jump(JumpE), .Branch(BranchE), .JalrSel(JALSrcE), .Taken(TakenE), .ImmLo(ImmExtE[1:0]),
               .PCTarget(PCTargetE),
@@ -247,6 +261,24 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     endgenerate
     //Результат CSR-инструкции (старое значение CSR) идёт по тракту ALUResult, поэтому работает байпас
     assign ResultE    = CsrE ? CsrRDataE : ALUResultE;
+    ////Расширение M: деление в стадии E
+    //Деление занимает 32/DIV_BPC + 2 такта в стадии E: F, D и E стоят (DivHold), в M уходят пузыри.
+    //Результат забирается в стадии M, как у умножения: делитель держит его до начала следующего деления.
+    //Так в пути «байпас -> АЛУ -> регистр E/M» не появляется ещё один мультиплексор.
+    //Ловушка во время деления гасит инструкцию и сбрасывает делитель, после mret деление идёт заново.
+    generate if (M_EXT) begin : g_div
+        logic div_done;
+        mdu_div #(DIV_BPC) mdu_div
+                (.clk(clk), .rst(rst),
+                 .req(ValidX & DivE), .cancel(CORE_TYPE ? KillE : 1'b0),   //В конвейере гашение снимает req (ValidX)
+                 .a(SrcAE), .b(WriteDataE), .is_signed(~Funct3E[0]), .is_rem(Funct3E[1]),
+                 .done(div_done), .result(DivResM));
+        assign DivHold = ValidX & DivE & ~div_done;
+    end else begin : g_nodiv
+        assign DivHold = 1'b0;
+        assign DivResM = 32'd0;
+    end
+    endgenerate
     ////////////////////////////////////////////////////////////////////////////////////////////////
     //Инструкция, на которой произошла ловушка, гасится: не пишет в регистры и в память
     regdata    #(3, CORE_TYPE) rd_execute (clk, rst, 1'b0, {PCPlus4E, WriteDataE, ResultE},
@@ -254,8 +286,9 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     regrf      #(1, CORE_TYPE) rf_execute (clk, rst, 1'b0, {RdE},
                                                            {RdM});
     //(в однотактном ядре ValidE = 0 в режиме останова: инструкция по замороженному PC не выполняется)
-    regcontrol #(7, CORE_TYPE) rc_execute (clk, rst, 1'b0, {RegWriteE & ValidX & ~KillE, ResultSrcE[1:0], MemWriteE & ValidX & ~KillE, Funct3E[2:0]},
-                                                           {RegWriteM,          ResultSrcM[1:0], MemWriteM,          Funct3M[2:0]});
+    //Пока идёт деление, в стадию M уходят пузыри: запись разрешена только в последнем такте деления
+    regcontrol #(9, CORE_TYPE) rc_execute (clk, rst, 1'b0, {RegWriteE & ValidX & ~KillE & ~DivHold, ResultSrcE[1:0], MemWriteE & ValidX & ~KillE, Funct3E[2:0], MulE, DivE},
+                                                           {RegWriteM,                     ResultSrcM[1:0], MemWriteM,          Funct3M[2:0], MulM, DivM});
     //MEMORY////////////////////////////////////////////////////////////////////////////////////////
     memory memory ( .MemWrite(MemWriteM), .Funct3(Funct3M),
                     .ALUResult(ALUResultM), .WriteData(WriteDataM),
@@ -264,10 +297,21 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
                     .dmem_ReadData(dmem_ReadData),
                     .dmem_Write(dmem_Write), .dmem_Addr(dmem_Addr),
                     .dmem_WriteData(dmem_WriteData));
+    ////Расширение M: умножение в стадии M на блоках DSP
+    //Операнды защёлкиваются на границе E/M (rs2 - это WriteDataM), результат - на границе M/W (rd_wf).
+    //Зависимой инструкции результат доступен из W: при умножении в E она ждёт 1 такт (как после загрузки)
+    generate if (M_EXT) begin : g_mul
+        regdata #(1, CORE_TYPE) rd_mul (clk, rst, 1'b0, {SrcAE}, {MulAM});
+        mdu_mul mdu_mul (.a(MulAM), .b(WriteDataM), .funct3(Funct3M[1:0]), .result(MulResM));
+    end else begin : g_nomul
+        assign MulAM   = 32'd0;
+        assign MulResM = 32'd0;
+    end
+    endgenerate
     ////////////////////////////////////////////////////////////////////////////////////////////////
     regmem     #(CORE_TYPE, DMEM_TYPE) rm_memory (clk, rst, 1'b0, ReadDataM, ReadDataW);
-    regdata    #(2, CORE_TYPE)         rd_memory (clk, rst, 1'b0, {PCPlus4M, ALUResultM},
-                                                                  {PCPlus4W, ALUResultW});
+    regdata    #(1, CORE_TYPE)         rd_memory (clk, rst, 1'b0, {PCPlus4M},
+                                                                  {PCPlus4W});
     regrf      #(1, CORE_TYPE)         rf_memory (clk, rst, 1'b0, {RdM},
                                                                   {RdW});
     regcontrol #(6, CORE_TYPE)         rc_memory (clk, rst, 1'b0, {RegWriteM, ResultSrcM[1:0], Funct3M[2:0]}, 
@@ -275,7 +319,7 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     assign dmem_Read = (ResultSrcM == 2'b01) & RegWriteM;   //Загрузка, не погашенная ловушкой
     //WRITEBACK/////////////////////////////////////////////////////////////////////////////////////
     writeback writeback (   .ResultSrc(ResultSrcW), .Funct3(Funct3W),
-                            .ALUResult(ALUResultW), .ReadData(ReadDataW), .PCPlus4(PCPlus4W),
+                            .ALUResult(ResultWf), .ReadData(ReadDataW), .PCPlus4(PCPlus4W),   //ResultWf: АЛУ, mul, div
                             //Особенные
                             .Result(ResultW));
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -285,8 +329,9 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     //Байпасу из W остаются только результат АЛУ и PC+4 (ResultWf). В однотактном ядре регистры
     //прозрачны: запись, как раньше, в том же такте.
     //Ч11: значение для байпаса из W (результат АЛУ или PC+4) выбирается ещё в стадии M и защёлкивается:
-    //в W оно готово сразу, без мультиплексора по ResultSrcW
-    regdata    #(1, CORE_TYPE) rd_wf (clk, rst, 1'b0, {(ResultSrcM == 2'b10) ? PCPlus4M : ALUResultM}, {ResultWf});
+    //в W оно готово сразу, без мультиплексора по ResultSrcW. Сюда же - результаты умножения и деления;
+    //у загрузки это адрес (ALUResultM): по младшим битам writeback выравнивает данные
+    regdata    #(1, CORE_TYPE) rd_wf (clk, rst, 1'b0, {MulM ? MulResM : DivM ? DivResM : (ResultSrcM == 2'b10) ? PCPlus4M : ALUResultM}, {ResultWf});
     regdata    #(1, CORE_TYPE) rd_wb (clk, rst, 1'b0, {ResultW},   {ResultX});
     regrf      #(1, CORE_TYPE) rf_wb (clk, rst, 1'b0, {RdW},       {RdX});
     regcontrol #(1, CORE_TYPE) rc_wb (clk, rst, 1'b0, {RegWriteW}, {RegWriteX});
@@ -307,7 +352,7 @@ endmodule
 //счётчика команд: PC=PC+4 при PCSrc=0, PC=PC+Imm при PCSrc=0.
 //4) Дешифратор системных инструкций - CSR-инструкции (Zicsr), ecall,
 //ebreak, mret, wfi и признак недопустимой инструкции.
-module control_unit (
+module control_unit #(parameter bit M_EXT = 1) (
     input logic [6:0]   op,
     input logic [2:0]   funct3,
     input logic         funct7b5,
@@ -317,7 +362,8 @@ module control_unit (
     output logic [1:0]  ResultSrc,
     output logic [2:0]  ImmSrc, ALUSrc,
     output logic [3:0]  ALUControl,
-    output logic        Csr, Mret, Ecall, Ebreak, Illegal
+    output logic        Csr, Mret, Ecall, Ebreak, Illegal,
+    output logic        Mul, Div        //Расширение M: mul/mulh/mulhsu/mulhu; div/divu/rem/remu
 );
 
     logic [1:0] ALUOp;
@@ -364,6 +410,13 @@ module control_unit (
         endcase
     ////#cu.3 Прочие связи 
 
+    ////#cu.5 Расширение M: тип R с funct7 = 0000001, funct3[2] = 0 - умножение, 1 - деление.
+    //Операция АЛУ такой инструкции не используется: результат берётся с умножителя или делителя
+    logic muldiv;
+    assign muldiv = (op == 7'b0110011) & (imm12[11:5] == 7'b0000001);
+    assign Mul    = M_EXT & muldiv & ~funct3[2];
+    assign Div    = M_EXT & muldiv &  funct3[2];
+
     ////#cu.4 Дешифратор системных инструкций
     //SYSTEM (1110011): funct3 != 000 - CSR-инструкции (funct3 = 100 не определён);
     //funct3 = 000 - код в imm12: ecall 000, ebreak 001, mret 302, wfi 105 (выполняется как nop)
@@ -375,7 +428,8 @@ module control_unit (
     assign Mret   = system & (funct3 == 3'b000) & (imm12 == 12'h302);
     always_comb
         casez(op)
-            7'b0000011, 7'b0100011, 7'b0110011, 7'b1100011, 7'b0010011,
+            7'b0110011: Illegal = muldiv & ~M_EXT;                           //Без расширения M - недопустима
+            7'b0000011, 7'b0100011,             7'b1100011, 7'b0010011,
             7'b1101111, 7'b1100111, 7'b0010111, 7'b0110111,
             7'b0001111: Illegal = 1'b0;                                       //RV32I и fence
             7'b1110011: Illegal = ~(Csr | Ecall | Ebreak | Mret |
@@ -424,11 +478,13 @@ endmodule
 //(tselect, tdata1-3) и отладки (dcsr, dpc, dscratch) не реализованы и читаются как 0 -
 //по tdata1.type = 0 отладчик определяет, что аппаратных точек останова нет.
 //Все прочие нереализованные CSR тоже читаются как 0, запись в них игнорируется.
-module trap_unit #(parameter bit LATE_BR_TRAP = 0) (   //1 - конвейер: CSR ловушки перехода на такт позже (Ч1),
+module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CSR ловушки перехода на такт позже (Ч1),
                                                       //доступ DM к CSR через ИЛИ (Ч13)
-    input  logic        clk, rst,
+                   parameter bit M_EXT = 1)           //Расширение M (бит M в misa)
+   (input  logic        clk, rst,
     //Инструкция в стадии E
     input  logic        Valid,             //0 - в стадии пузырь
+    input  logic        Hold,              //Инструкция остаётся в стадии E и в следующем такте (деление)
     input  logic        Csr, Mret, Ecall, Ebreak, Illegal,
     input  logic [ 2:0] Funct3,
     input  logic [11:0] CsrAddr,
@@ -595,7 +651,7 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0) (   //1 - конвейер: C
     always_comb
         case (csr_addr)
             MSTATUS:         CsrRData = {19'd0, 2'b11, 3'd0, mstatus_mpie, 3'd0, mstatus_mie, 3'd0}; //MPP = 11 (M)
-            MISA:            CsrRData = 32'h4000_0100;                                                 //RV32I
+            MISA:            CsrRData = 32'h4000_0100 | (32'(M_EXT) << 12);                            //RV32I[M]
             MIE:             CsrRData = mie;
             MTVEC:           CsrRData = {mtvec_base, 1'b0, mtvec_mode};
             MSCRATCH:        CsrRData = mscratch;
@@ -693,7 +749,7 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0) (   //1 - конвейер: C
             halted <= 1'b1; step_active <= 1'b0; step_passed <= 1'b0;
         end else if (resume_do) begin
             halted <= 1'b0; step_active <= dcsr_step; step_passed <= 1'b0;
-        end else if (step_active & Valid & ~halted)
+        end else if (step_active & Valid & ~halted & ~Hold)
             step_passed <= 1'b1;             //Первая инструкция шага прошла стадию E (выполнена или вызвала ловушку)
 endmodule
 
@@ -709,6 +765,7 @@ module conflict_prevention_unit
     //Организация пузырька
     input  logic       ResultSrcE0,
     input  logic [4:0] Rs1D, Rs2D, RdE,
+    input  logic       Hold,               //Деление в стадии E не закончено (StallF и FlushE - в ядре)
     output logic       StallF, StallD, FlushE,
     //Предсказание перехода branch
     input  logic       PCSrcE,
@@ -761,14 +818,16 @@ module conflict_prevention_unit
     //Регистры стадии D и выход BSRAM при этом сбрасываются FlushD (сброс важнее приостановки),
     //поэтому StallD остаётся коротким путём: от него зависит вход CE блоков памяти инструкций
     assign StallF = lwStall & ~PCSrcE;
-    assign StallD = lwStall;
+    //Деление держит и стадию D. В однотактном ядре регистров стадий нет, достаточно стоящего PC, а StallD
+    //запретил бы чтение BSRAM в середине такта - и память не выдала бы инструкцию по новому PC
+    assign StallD = lwStall | (CORE_TYPE ? 1'b0 : Hold);
 
     //#3 Предсказатель перехода branch
     generate if (CORE_TYPE) begin   //#1 - Однотактное ядро
         assign FlushD = 1'b0;
         assign FlushE = lwStall;
     end else begin                  //#0 - Конвеерное ядро
-        assign FlushD = PCSrcE | (PredD & ~lwStall);  //Переход из D сбрасывает только выбранную следом инструкцию
+        assign FlushD = PCSrcE | (PredD & ~StallD);   //Переход из D сбрасывает только выбранную следом инструкцию
         assign FlushE = lwStall | PCSrcE;
     end
     endgenerate

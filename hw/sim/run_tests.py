@@ -32,7 +32,7 @@ PRIV_DIR = TESTS_DIR / "priv"          # CSR, исключения, прерыв
 PRIV_ORDER = ["csr", "trap", "irq", "plic", "dbg"]
 BUILD_DIR = SIM_DIR / "build"
 
-RTL = [HW_DIR / "src" / f for f in ("top.sv", "core.sv", "mem.sv", "clock.sv", "periph/mux.sv", "periph/gpio.sv",
+RTL = [HW_DIR / "src" / f for f in ("top.sv", "core.sv", "mdu.sv", "mem.sv", "clock.sv", "periph/mux.sv", "periph/gpio.sv",
                                      "periph/tm1638.sv", "periph/simple_timer/tim.sv", "periph/clint.sv",
                                      "periph/plic.sv", "debug/dm.sv", "debug/dtm_gowin.sv",
                                      "debug/fpgacapzero/jtag_tap_gowin.v", "debug/fpgacapzero/dff_reg_sync.v",
@@ -108,7 +108,7 @@ def build_program(name, prefix, imem_kb=8, text_base=0):
     out.mkdir(parents=True, exist_ok=True)
     elf = out / f"{name}.elf"
     src = PRIV_DIR / f"{name}.S" if name in PRIV_ORDER else PROG_DIR / f"{name}.S"
-    r = run([prefix + "gcc", "-march=rv32i_zicsr", "-mabi=ilp32", "-nostdlib", "-nostartfiles",
+    r = run([prefix + "gcc", "-march=rv32im_zicsr", "-mabi=ilp32", "-nostdlib", "-nostartfiles",
              "-Wl,--no-relax", f"-Wl,--defsym=TEXT_BASE={text_base},--defsym=IMEM_LEN={imem_kb * 1024}",
              f"-I{TESTS_DIR}", "-T", TESTS_DIR / "link.ld",
              f"-I{PRIV_DIR}", "-o", elf, src])

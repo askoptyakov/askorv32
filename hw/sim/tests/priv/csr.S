@@ -32,7 +32,7 @@ RVTEST_CODE_BEGIN
     TEST_CASE(19, x14, 1,          ("cycle[alias]"),           csrr x1, mcycle; csrr x14, cycle; sub x14, x14, x1)
 
     //Регистры только для чтения и нереализованные CSR
-    TEST_CASE(20, x14, 0x40000100, ("misa[RV32I]"),            csrr x14, misa)
+    TEST_CASE(20, x14, 0x40001100, ("misa[RV32IM]"),           csrr x14, misa)
     TEST_CASE(21, x14, 0,          ("mhartid"),                csrr x14, mhartid)
     TEST_CASE(22, x14, 0,          ("mvendorid"),              csrr x14, mvendorid)
     TEST_CASE(23, x14, 0,          ("tdata1[type=0:no-triggers]"), csrr x14, tdata1)

@@ -189,7 +189,7 @@
         reg_rd(16'h1000, v);
         dbg_check(v == 32'd0, "gpr-read:x0=0", v, 0);
         reg_rd(16'h0301, v);
-        dbg_check(v == 32'h4000_0100, "csr-read:misa", v, 32'h40000100);
+        dbg_check(v == 32'h4000_1100, "csr-read:misa", v, 32'h40001100);
         dmi_wr(DM_COMMAND, {8'd0, 1'b0, 3'd2, 1'b0, 1'b0, 1'b1, 1'b0, 16'h1020});   //f0 - нет
         dmi_rd(DM_ABSTRACTCS, v);
         dbg_check(v[10:8] == 3'd3, "reg-nonexistent:cmderr=3", v[10:8], 3);

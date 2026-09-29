@@ -12,6 +12,9 @@
 //============================================================================================== 
         
 module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
+                //Расширение M (умножение и деление)
+             parameter bit M_EXT           =                 1, //1 - mul/mulh*/div*/rem*; 0 - RV32I (такие инструкции недопустимы)
+             parameter int DIV_BPC         =                 2, //Бит частного за такт: 1, 2, 4 (деление 32/DIV_BPC + 2 такта)
                 //Настройки памяти инструкций
              parameter bit IMEM_TYPE       =        `BSRAM_MEM,
              parameter int BSRAM_IMEM_SIZE =                 8, //кБайт (поддерживаемые значения 8/16/32)
@@ -109,7 +112,7 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     logic [31:0] sb_addr, sb_wdata;
         //Ядро
 
-    core #(CORE_TYPE, IMEM_TYPE, DMEM_TYPE)
+    core #(CORE_TYPE, IMEM_TYPE, DMEM_TYPE, M_EXT, DIV_BPC)
            riscv
           (.clk(clk_core), .rst(rst_sys),                                                        //Системные
            .imem_data(imem_data), .imem_re(imem_re), .imem_rst(imem_rst), .imem_addr(imem_addr), //Интерфейс памяти команд

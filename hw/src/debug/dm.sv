@@ -61,7 +61,9 @@ module dm (
     logic [15:0] regno;
     logic        reg_is_gpr, reg_write;
 
-    typedef enum logic [2:0] {IDLE, EXEC, REG_RD, SB_CHECK, SB_A, SB_B, ACK, REG_WAIT} state_t;
+    //Ч16: адреса CSR, GPR и System Bus выставляются не меньше чем за 2 такта до использования
+    //(состояния CSR_WR, REG_WAIT2, SB_WAIT), и пути от них в riscv.sdc объявлены двухтактными
+    typedef enum logic [3:0] {IDLE, EXEC, REG_RD, SB_CHECK, SB_A, SB_B, ACK, REG_WAIT, REG_WAIT2, CSR_WR, SB_WAIT} state_t;
     state_t state;
     logic [6:0]  a;         //Адрес текущего запроса
     logic [31:0] w;         //Данные текущего запроса
@@ -157,7 +159,7 @@ module dm (
                           dmi_rdata <= rd;
                           state     <= ACK;
                           if (op == 2'd1 && a == SBDATA0 && dmactive && sbreadondata && sb_start_ok())
-                              begin sb_is_read <= 1'b1; state <= SB_CHECK; end           //Чтение sbdata0 запускает следующее чтение
+                              begin sb_is_read <= 1'b1; state <= SB_WAIT; end           //Чтение sbdata0 запускает следующее чтение
                           if (op == 2'd2) begin
                               if (a == DMCONTROL) begin
                                   dmactive <= w[0];
@@ -185,7 +187,7 @@ module dm (
                                                                                          cmderr <= 3'd3;   //нет такого регистра
                                                       else if (w[16]) begin                               //запись: data0 -> регистр
                                                           if (w[15:0] >= 16'h1000) gpr_we <= 1'b1;
-                                                          else begin csr_we <= 1'b1; csr_addr_q <= w[11:0]; end
+                                                          else begin csr_addr_q <= w[11:0]; state <= CSR_WR; end   //Ч16: запись тактом позже
                                                       end else begin                                      //чтение: регистр -> data0
                                                           state <= REG_WAIT;
                                                           if (w[15:0] < 16'h1000) csr_addr_q <= w[11:0];
@@ -201,18 +203,24 @@ module dm (
                                             end
                                       SBADDRESS0: begin
                                                 sbaddress <= w;
-                                                if (sbreadonaddr && sb_start_ok()) begin sb_is_read <= 1'b1; state <= SB_CHECK; end
+                                                if (sbreadonaddr && sb_start_ok()) begin sb_is_read <= 1'b1; state <= SB_WAIT; end
                                             end
                                       SBDATA0: begin
                                                 sbdata <= w;
-                                                if (sb_start_ok()) begin sb_is_read <= 1'b0; state <= SB_CHECK; end
+                                                if (sb_start_ok()) begin sb_is_read <= 1'b0; state <= SB_WAIT; end
                                             end
                                       default: ;
                                   endcase
                           end
                       end
-                REG_WAIT: state <= REG_RD;                      //Ч11: значение GPR защёлкивается в gpr_q
-                REG_RD: begin                                   //Адрес регистра выставлен два такта назад
+                REG_WAIT:  state <= REG_WAIT2;                  //Ч11: значение GPR защёлкивается в gpr_q
+                REG_WAIT2: state <= REG_RD;                     //Ч16: путь в gpr_q - двухтактный
+                CSR_WR: begin                                   //Ч16: адрес CSR выставлен такт назад, запись - в ACK
+                          csr_we <= 1'b1;
+                          state  <= ACK;
+                      end
+                SB_WAIT: state <= SB_CHECK;                    //Ч16: пути от sbaddress - двухтактные
+                REG_RD: begin                                   //Адрес регистра выставлен три такта назад
                           data0 <= reg_is_gpr ? gpr_q : csr_rdata;
                           state <= ACK;
                       end
