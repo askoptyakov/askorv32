@@ -53,6 +53,13 @@ RVTEST_CODE_BEGIN
     TEST_CASE(35, x14, 0,          ("wfi[nop]"),               li x14, 0; wfi; nop)
     TEST_CASE(36, x14, 0,          ("fence[nop]"),             li x14, 0; fence)
 
+    //Р3: mcycle и mtime CLINT - один счётчик; time - синоним cycle
+    TEST_CASE(37, x14, 1,          ("mtime-write->mcycle"),    li x2, CLINT_MTIME; li x1, 1000; sw x1, 0(x2); nop; nop; csrr x14, mcycle; addi x14, x14, -1000; sltiu x14, x14, 16)
+    TEST_CASE(38, x14, 5,          ("mtimeh-write->mcycleh"),  li x2, CLINT_MTIME; li x1, 5; sw x1, 4(x2); nop; nop; csrr x14, mcycleh)
+    TEST_CASE(39, x14, 1,          ("mcycle-write->mtime"),    li x2, CLINT_MTIME; li x1, 2000; csrw mcycle, x1; lw x14, 0(x2); addi x14, x14, -2000; sltiu x14, x14, 16)
+    TEST_CASE(40, x14, 1,          ("time[alias]"),            csrr x1, mcycle; csrr x14, time; sub x14, x14, x1)
+    TEST_CASE(41, x14, 0,          ("timeh=mcycleh"),          csrr x1, mcycleh; csrr x14, timeh; sub x14, x14, x1)
+
     csrw mtvec, x0
     j pass
 

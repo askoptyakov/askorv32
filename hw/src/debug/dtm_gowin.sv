@@ -8,8 +8,11 @@
 //
 //Сигналы JTAG выбираются тактом clk (обёртка jtag_tap_gowin из fpgacapZero), поэтому частота TCK
 //должна быть заметно ниже clk: при clk = 27 МГц - не выше ~2 МГц (adapter speed 1000 в OpenOCD).
-//Сдвиговые регистры устроены как в проверенном на GW1NR-9 jtag_reg_iface_gowin (fpgacapZero):
-//отдельные регистры для приёма (shift_in) и выдачи (capture/shift_out).
+//Р4: один сдвиговый регистр sr на оба регистра данных (выбран всегда только один из них). Обёртка
+//выдаёт стробы по спаду TCK: shift_out - в состоянии Capture/Shift-DR, shift_in - тем же стробом тактом
+//позже. Поэтому регистр сдвигается по любому из них, а TDI вдвигается только по shift_in: выдаваемые
+//биты (младшие) уходят в TDO в том же порядке, что из отдельного регистра выдачи в jtag_reg_iface_gowin
+//(fpgacapZero), а принятые оказываются в младших 32 (dtmcs) или 41 (dmi) битах, как в регистре приёма.
 //
 //Обмен с DM (другой тактовый домен): запрос выставляется вместе с переключением dmi_req_tgl и
 //не меняется до ответа - переключения dmi_ack_tgl. Пока ответа нет, операция занята: DMI-скан
@@ -50,58 +53,51 @@ module dtm_gowin (
                         .update(update), .sel(sel),
                         .tms_pad_i(tms_pad_i), .tck_pad_i(tck_pad_i), .tdi_pad_i(tdi_pad_i), .tdo_pad_o(tdo_pad_o));
 
-    //#2 Ответ DM
+    //#2 Ответ DM. Р4: данные ответа не копируются - DM держит dmi_rdata от ответа до следующего запроса,
+    //а новый запрос возможен только после ответа (busy = 0). Пока busy = 1, данные при захвате могут
+    //меняться, но тогда op = 3 (busy) и отладчик данные не берёт
     logic [2:0]  ack_s = 3'd0;
     logic        busy;
-    logic [31:0] resp_data = 32'd0;
-    always_ff @(posedge clk) begin
-        ack_s <= {ack_s[1:0], dmi_ack_tgl};
-        if (ack_s[2] != ack_s[1]) resp_data <= dmi_rdata;   //Данные стабильны: DM держит их до следующего запроса
-    end
+    always_ff @(posedge clk) ack_s <= {ack_s[1:0], dmi_ack_tgl};
     assign busy = (req_tgl != ack_s[2]);
 
-    //#3 dtmcs (ER1)
+    //#3 dtmcs (ER1) и dmi (ER2): [40:34] адрес, [33:2] данные, [1:0] op
     logic [ 1:0] dmistat = 2'd0;
-    logic [31:0] dtmcs_in = 32'd0, dtmcs_out = 32'd0;
     logic [31:0] dtmcs;
     assign dtmcs = {14'd0, 1'b0, 1'b0, 1'b0, IDLE, dmistat, ABITS, 4'd1};   //version 1 = Debug 0.13
 
-    //#4 dmi (ER2)
-    logic [40:0] dmi_in = 41'd0, dmi_out = 41'd0;
-    logic [ 6:0] last_addr = 7'd0;
+    logic [40:0] sr = 41'd0;                //Р4: общий сдвиговый регистр ER1 (биты [31:0]) и ER2 ([40:0])
     logic        cap_busy = 1'b0, scanning = 1'b0;
 
     always_ff @(posedge clk) begin
-        //dtmcs
-        if (capture[0])        dtmcs_out <= dtmcs;
-        else if (shift_out[0]) dtmcs_out <= {1'b0, dtmcs_out[31:1]};
-        if (shift_in[0])       dtmcs_in  <= {tdi, dtmcs_in[31:1]};
-        if (update[0] && (dtmcs_in[16] || dtmcs_in[17])) dmistat <= 2'd0;   //dmireset / dmihardreset
+        //Захват: dtmcs или результат последней операции DMI (адрес - это адрес запроса req_addr)
+        if (capture[0])      sr <= {9'd0, dtmcs};
+        else if (capture[1]) sr <= {req_addr, dmi_rdata, busy ? 2'd3 : dmistat};
+        else if (shift_out[0] | shift_out[1] | shift_in[0] | shift_in[1]) begin
+            sr[39:0] <= sr[40:1];
+            sr[40]   <= tdi;                                     //dmi: TDI вдвигается в бит 40
+            sr[31]   <= shift_in[0] ? tdi : sr[32];              //dtmcs: в бит 31
+        end
+        if (update[0] && (sr[16] || sr[17])) dmistat <= 2'd0;   //dmireset / dmihardreset
 
-        //dmi: при захвате - результат последней операции
+        //dmi: состояние скана
         if (capture[1]) begin
-            dmi_out  <= {last_addr, resp_data, busy ? 2'd3 : dmistat};
             cap_busy <= busy;
             scanning <= 1'b0;
-        end else if (shift_out[1]) begin
-            dmi_out <= {1'b0, dmi_out[40:1]};
-            if (!scanning) begin                          //Начало скана при незавершённой операции
-                scanning <= 1'b1;
-                if (cap_busy) dmistat <= 2'd3;
-            end
+        end else if (shift_out[1] && !scanning) begin           //Начало скана при незавершённой операции
+            scanning <= 1'b1;
+            if (cap_busy) dmistat <= 2'd3;
         end
-        if (shift_in[1]) dmi_in <= {tdi, dmi_in[40:1]};
         if (update[1]) begin
             scanning <= 1'b0;
-            if (dmistat == 2'd0 && !cap_busy && !busy && (dmi_in[1:0] == 2'd1 || dmi_in[1:0] == 2'd2)) begin
-                req_addr    <= dmi_in[40:34];
-                req_wdata   <= dmi_in[33:2];
-                req_op      <= dmi_in[1:0];
-                last_addr   <= dmi_in[40:34];
+            if (dmistat == 2'd0 && !cap_busy && !busy && (sr[1:0] == 2'd1 || sr[1:0] == 2'd2)) begin
+                req_addr    <= sr[40:34];
+                req_wdata   <= sr[33:2];
+                req_op      <= sr[1:0];
                 req_tgl <= ~req_tgl;
             end
         end
     end
 
-    assign tdo = {dmi_out[0], dtmcs_out[0]};
+    assign tdo = {sr[0], sr[0]};
 endmodule

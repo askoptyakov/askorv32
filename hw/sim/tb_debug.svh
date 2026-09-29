@@ -129,6 +129,8 @@
         dbg_check(cs[14:12] == 3'd0, $sformatf("mem_rd[0x%08h]:sberror", addr), cs[14:12], 0);
     endtask
 
+    logic [2:0] ack_hold;                   //Удерживаемый ответ DM (проверка busy, Р4)
+
     task automatic dbg_scenario();
         logic [63:0] r;
         logic [31:0] v, st, pc, orig, bp, flag_addr, tdata_addr;
@@ -150,6 +152,23 @@
         dmi_rd(DM_DMSTATUS, st);
         dbg_check(st[3:0] == 4'd2 && st[7], "dmstatus[version=2,authenticated]", st, 32'h82);
         dbg_check(st[11] && !st[9], "dmstatus[running]", st, 32'h800);
+        //Р4: занятость DMI и сброс dtmcs.dmireset через общий сдвиговый регистр DTM. Ответ DM удерживается
+        //(force): скан возвращает op = 3 (busy), dmistat залипает и держится и после ответа - до dmireset
+        ack_hold = dut.g_debug.dtm.ack_s;
+        force dut.g_debug.dtm.ack_s = ack_hold;
+        jtag_dr(41, {23'd0, DM_DMSTATUS, 32'd0, 2'd1}, r);
+        jtag_dr(41, 64'd0, r);
+        dbg_check(r[1:0] == 2'd3, "dmi-busy[op=3]", r[1:0], 3);
+        release dut.g_debug.dtm.ack_s;
+        jtag_idle(16);
+        jtag_dr(41, 64'd0, r);
+        dbg_check(r[1:0] == 2'd3, "dmistat[sticky]", r[1:0], 3);
+        jtag_ir(8'h42); jtag_dr(32, 64'd0, r);
+        dbg_check(r[11:10] == 2'd3, "dtmcs.dmistat=3", r[11:10], 3);
+        jtag_dr(32, 64'h1_0000, r); jtag_ir(8'h43);                     //dmireset
+        jtag_dr(41, {23'd0, DM_DMSTATUS, 32'd0, 2'd1}, r);
+        jtag_dr(41, 64'd0, r);
+        dbg_check(r[1:0] == 2'd0 && r[33:2] == st && r[40:34] == DM_DMSTATUS, "dmireset[read-dmstatus]", r[33:2], st);
         dmi_wr(DM_COMMAND, {8'd0, 1'b0, 3'd2, 1'b0, 1'b0, 1'b1, 1'b0, 16'h1000});
         dmi_rd(DM_ABSTRACTCS, v);
         dbg_check(v[10:8] == 3'd4, "command-while-running:cmderr=4", v[10:8], 4);

@@ -5,11 +5,15 @@
 create_clock -name clk     -period 37.037 -waveform {0 18.518} [get_ports {clk}]
 //Такт конвейерного ядра и памяти (CORE_TYPE = PIPELINE_CORE): 45 МГц от PLL (параметры PLL_* в top.sv).
 //Ограничение - рабочая частота: отчёт должен быть без отрицательного запаса (TNS = 0). Fmax конвейера с
-//расширением M - 49.3 МГц при place_option 0, 48.9 МГц при 1 или 2 (журнал в hw/info/performance_roadmap.md). Чтобы
+//расширением M - 46.3 МГц при place_option 0, 48.3 МГц при 1 или 2 (журнал в hw/info/performance_roadmap.md). Чтобы
 //проверить запас к другой частоте, поменяйте период. В однотактном ядре такт ядра получается из
 //clk_base делением на 3 (clock.sv) и этим ограничением не описан.
 create_clock -name clk_core -period 22.222 -waveform {0 11.111} [get_nets {clk_base}]
 create_clock -name clk_tck -period 400.000 -waveform {0 200.000} [get_ports {tck_pad_i}]
+//Р3/Р4: запас 0.5 нс к периоду такта ядра (джиттер PLL и резерв). Он же заставляет P&R оптимизировать
+//размещение под 21.7 нс: с мягкой целью 22.222 нс Gowin останавливается раньше и при любом place_option
+//получал 44.3-44.6 МГц, а с запасом 0.5 нс ограничение выполняется при всех трёх вариантах.
+set_clock_uncertainty -setup 0.5 -from [get_clocks {clk_core}] -to [get_clocks {clk_core}]
 set_clock_groups -asynchronous -group [get_clocks {clk_tck}] -group [get_clocks {clk clk_core}]
 //Ч12: clk (27 МГц) и clk_core связаны через PLL, и анализатор считал переходы между ними обычными путями.
 //Единственный переход - DTM (clk) <-> DM (clk_core) - защищён синхронизатором (toggle + 2 триггера)

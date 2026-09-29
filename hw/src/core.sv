@@ -29,7 +29,11 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
               input  logic [11:0] dbg_csr_addr,
               input  logic        dbg_csr_we,
               output logic [31:0] dbg_csr_rdata,
-              input  logic [31:0] dbg_wdata
+              input  logic [31:0] dbg_wdata,
+              //Р3: счётчик тактов mcycle - он же mtime CLINT; запись в mtime по шине приходит из CLINT
+              output logic [63:0] mtime,
+              input  logic [ 1:0] mtime_we,
+              input  logic [31:0] mtime_wdata
 );
 
     //Сигналы тракта данных
@@ -233,6 +237,8 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
               //Отладка
               .haltreq(dbg_haltreq), .resumereq(dbg_resumereq), .Halted(dbg_halted),
               .DbgCsrAddr(dbg_csr_addr), .DbgCsrWe(dbg_csr_we), .DbgWData(dbg_wdata),
+              //Счётчик mcycle = mtime
+              .Mtime(mtime), .MtimeWe(mtime_we), .MtimeWData(mtime_wdata),
               //Результат
               .CsrRData(CsrRDataE), .Trap(TrapE), .Kill(KillE), .Redirect(RedirectE), .RedirectEarly(RedirectEarlyE), .RedirectSel(RedirectSelE), .RedirectPC(RedirectPCE));
     assign dbg_csr_rdata = CsrRDataE;
@@ -507,6 +513,10 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
     input  logic [11:0] DbgCsrAddr,
     input  logic        DbgCsrWe,
     input  logic [31:0] DbgWData,
+    //Р3: mcycle - он же mtime CLINT (один счётчик); запись в mtime по шине
+    output logic [63:0] Mtime,
+    input  logic [ 1:0] MtimeWe,
+    input  logic [31:0] MtimeWData,
     //Результат
     output logic [31:0] CsrRData,          //Старое значение CSR - результат CSR-инструкции
     output logic        Trap,              //Ловушка: инструкция в стадии E гасится
@@ -520,7 +530,7 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
     localparam logic [11:0] MSTATUS  = 12'h300, MISA   = 12'h301, MIE    = 12'h304, MTVEC   = 12'h305,
                             MSCRATCH = 12'h340, MEPC   = 12'h341, MCAUSE = 12'h342, MTVAL   = 12'h343,
                             MIP      = 12'h344, MCYCLE = 12'hB00, MCYCLEH = 12'hB80,
-                            CYCLE    = 12'hC00, CYCLEH = 12'hC80,
+                            CYCLE    = 12'hC00, CYCLEH = 12'hC80, TIME = 12'hC01, TIMEH = 12'hC81,
                             DCSR     = 12'h7B0, DPC    = 12'h7B1;
 
     //#2 Регистры
@@ -534,6 +544,7 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
     logic        mcause_int;
     logic [ 4:0] mcause_code;
     logic [63:0] mcycle;
+    assign Mtime = mcycle;
 
     logic [31:0] mip, mie;
     assign mip = {irq_local, 4'b0, irq_mei,  3'b0, irq_mti,  3'b0, irq_msi,  3'b0};
@@ -659,8 +670,8 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
             MCAUSE:          CsrRData = {mcause_int, 26'd0, mcause_code};
             MTVAL:           CsrRData = mtval;
             MIP:             CsrRData = mip;
-            MCYCLE,  CYCLE:  CsrRData = mcycle[31:0];
-            MCYCLEH, CYCLEH: CsrRData = mcycle[63:32];
+            MCYCLE,  CYCLE,  TIME:  CsrRData = mcycle[31:0];    //Р3: time = cycle (mtime = mcycle)
+            MCYCLEH, CYCLEH, TIMEH: CsrRData = mcycle[63:32];
             //dcsr: xdebugver = 4, ebreakm, cause, step, prv = 3 (M); доступны только в режиме отладки
             DCSR:            CsrRData = halted ? {4'd4, 12'd0, dcsr_ebreakm, 6'd0, dcsr_cause, 3'd0, dcsr_step, 2'b11} : 32'd0;
             DPC:             CsrRData = halted ? {dpc, 2'b00} : 32'd0;
@@ -702,6 +713,10 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
             dcsr_ebreakm <= 1'b0; dcsr_step   <= 1'b0;
         end else begin
             mcycle <= mcycle + 64'd1;
+            //Р3: запись в mtime по шине. CSR-запись ниже важнее: в конвейере CSR-инструкция (стадия E)
+            //младше записи в память (стадия M) того же такта
+            if (MtimeWe[0]) mcycle[31:0]  <= MtimeWData;
+            if (MtimeWe[1]) mcycle[63:32] <= MtimeWData;
             if (we_any)
                 case (csr_addr)
                     MSTATUS:  begin mstatus_mie <= wdata_any[3]; mstatus_mpie <= wdata_any[7]; end

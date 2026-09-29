@@ -107,7 +107,7 @@ typedef enum
 
 /* Настройки таймера при инициализации */
 #define STIM_WIDTH					16U		//Разрядность PR, PER, PUL, CNT (параметр WIDTH в hw/src/periph/simple_timer/tim.sv)
-#define STIM_PRESCALER 				(SYSCLK_HZ / 1000U - 1U);	//Тик счётчика - 1 мс (значение не больше 65535)
+#define STIM_PRESCALER 				(SYSCLK_HZ / 1000U - 1U)	//Тик счётчика - 1 мс (значение не больше 65535)
 #define STIM_PERIOD 				100;
 #define STIM_COUNTER_MODE 			STIM_COUNTER_MODE_DOWN;
 #define STIM_AUTO_RELOAD_PRELOAD 	1;

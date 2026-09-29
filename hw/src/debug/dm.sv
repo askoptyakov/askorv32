@@ -65,9 +65,13 @@ module dm (
     //(состояния CSR_WR, REG_WAIT2, SB_WAIT), и пути от них в riscv.sdc объявлены двухтактными
     typedef enum logic [3:0] {IDLE, EXEC, REG_RD, SB_CHECK, SB_A, SB_B, ACK, REG_WAIT, REG_WAIT2, CSR_WR, SB_WAIT} state_t;
     state_t state;
+    //Р4: запрос не копируется - DTM держит адрес, данные и op неизменными до ответа (dmi_ack_tgl)
     logic [6:0]  a;         //Адрес текущего запроса
     logic [31:0] w;         //Данные текущего запроса
     logic [1:0]  op;
+    assign a  = dmi_addr;
+    assign w  = dmi_wdata;
+    assign op = dmi_op;
     logic        sb_is_read;
 
     assign gpr_addr  = regno[4:0];
@@ -151,10 +155,7 @@ module dm (
             if (resume_pending && !halted) begin resumeack <= 1'b1; resume_pending <= 1'b0; end
 
             case (state)
-                IDLE: if (req_new) begin
-                          a <= dmi_addr; w <= dmi_wdata; op <= dmi_op;
-                          state <= EXEC;
-                      end
+                IDLE: if (req_new) state <= EXEC;
                 EXEC: begin
                           dmi_rdata <= rd;
                           state     <= ACK;

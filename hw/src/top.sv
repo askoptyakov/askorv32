@@ -98,6 +98,9 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     logic [31:0] dmem_Addr, dmem_WriteData;
         //Прерывания
     logic        irq_msi, irq_mti, irq_stim, irq_plic;
+    logic [63:0] mtime;                 //Р3: один счётчик на mcycle ядра и mtime CLINT
+    logic [ 1:0] mtime_we;
+    logic [31:0] mtime_wdata;
     logic [15:0] irq_local;
     assign irq_local = {15'd0, irq_stim};  //LI0 (mcause 16) - простой таймер STIM
         //Отладка
@@ -122,7 +125,8 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
            .dbg_haltreq(dbg_haltreq), .dbg_resumereq(dbg_resumereq), .dbg_halted(dbg_halted),   //Отладка
            .dbg_gpr_addr(dbg_gpr_addr), .dbg_gpr_we(dbg_gpr_we), .dbg_gpr_rdata(dbg_gpr_rdata),
            .dbg_csr_addr(dbg_csr_addr), .dbg_csr_we(dbg_csr_we), .dbg_csr_rdata(dbg_csr_rdata),
-           .dbg_wdata(dbg_wdata));
+           .dbg_wdata(dbg_wdata),
+           .mtime(mtime), .mtime_we(mtime_we), .mtime_wdata(mtime_wdata));                        //Счётчик mcycle = mtime
 
     //#2.1 Модуль отладки: DTM на пользовательском JTAG GOWIN и DM
     generate if (DEBUG_EN) begin : g_debug
@@ -224,7 +228,8 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     clint_top #(DMEM_TYPE) clint
                 (.clk(clk_dmem), .rst(rst_sys),
                  .Write(clint_Write), .Addr(clint_Addr), .WData(clint_WriteData), .RData(clint_ReadData),
-                 .irq_msi(irq_msi), .irq_mti(irq_mti));
+                 .irq_msi(irq_msi), .irq_mti(irq_mti),
+                 .mtime(mtime), .mtime_we(mtime_we), .mtime_wdata(mtime_wdata));   //Р3: mtime = mcycle ядра
 
     //-6- Контроллер прерываний периферии (PLIC, адреса как у SiFive) -> MEI (mcause 11)
     //Источник 1 - таймер STIM (для примера: он же подключён к LI0, в программе разрешают один путь).
