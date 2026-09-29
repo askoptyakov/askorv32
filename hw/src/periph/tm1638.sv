@@ -1,5 +1,6 @@
 module tm1638_top 
-  #(parameter                      MEMORY_TYPE = 0)
+  #(parameter                      MEMORY_TYPE = 0,
+    parameter int                  CLK_MHZ     = 27)  //Частота clk, МГц (целая часть): от неё - делители интерфейса TM1638
    (input  logic                   clk, rst,
     // Интерфейс обмена
     input  logic            [ 3:0] Write,
@@ -50,7 +51,7 @@ module tm1638_top
     end
     endgenerate
 
-    tm1638_board_controller #(.clk_mhz(27)) tm1638_board_controller
+    tm1638_board_controller #(.clk_mhz(CLK_MHZ)) tm1638_board_controller
         (.clk(clk), .rst(rst),
          .digit_in(tm_digit), .ledr(tm_led), .keys(tm_key),
          .sio_dio(tm_dio), .sio_clk(tm_clk), .sio_stb(tm_stb));
@@ -141,7 +142,8 @@ module tm1638_board_controller
         C_ADDR  = 8'b11000000,
         C_DISP  = 8'b10001111;
 
-    localparam CLK_DIV = 4;//19; // speed of FSM scanner
+    //Счётчик должен досчитать до clk_mhz + 1 (пауза строба 1 мкс), при 50 МГц 5 бит не хватает
+    localparam CLK_DIV = ($clog2(clk_mhz + 2) > 4) ? $clog2(clk_mhz + 2) : 4; // speed of FSM scanner
     logic  [CLK_DIV:0] counter;
 
     // TM1632 requires at least 1us strobe duration
@@ -306,7 +308,9 @@ module tm1638_sio
     output logic       dio_out
 );
 
-    localparam CLK_DIV1 = 4;//$clog2 (clk_mhz*1000/2/700) - 1; // 700 kHz is recommended SIO clock
+    //Период SIO = 2^(CLK_DIV1+1) тактов clk, частота SIO не выше 700 кГц (рекомендуемая).
+    //13.5 МГц -> 4 (422 кГц), 27 МГц -> 5, 45 и 50 МГц -> 6 (352 и 390 кГц)
+    localparam CLK_DIV1 = $clog2(clk_mhz * 1000 / 700) - 1;
     localparam [1:0]
         S_IDLE      = 2'h0,
         S_WAIT      = 2'h1,

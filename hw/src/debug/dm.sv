@@ -61,7 +61,7 @@ module dm (
     logic [15:0] regno;
     logic        reg_is_gpr, reg_write;
 
-    typedef enum logic [2:0] {IDLE, EXEC, REG_RD, SB_CHECK, SB_A, SB_B, ACK} state_t;
+    typedef enum logic [2:0] {IDLE, EXEC, REG_RD, SB_CHECK, SB_A, SB_B, ACK, REG_WAIT} state_t;
     state_t state;
     logic [6:0]  a;         //Адрес текущего запроса
     logic [31:0] w;         //Данные текущего запроса
@@ -69,7 +69,15 @@ module dm (
     logic        sb_is_read;
 
     assign gpr_addr  = regno[4:0];
-    assign csr_addr  = regno[11:0];
+    //Ч11: значение регистра защёлкивается сразу на выходе регистрового файла, а в data0 идёт на такт
+    //позже (состояние REG_WAIT). Иначе путь «адрес порта чтения -> регистровый файл -> логика DM»
+    //попадал в критический: для анализатора адрес порта идёт и от инструкции в стадии D
+    logic [31:0] gpr_q;
+    always_ff @(posedge clk) gpr_q <= gpr_rdata;
+    //Ч13: адрес CSR - только на время команды DM (иначе 0): в ядре он объединяется с адресом
+    //CSR-инструкции через ИЛИ, без выбора по halted
+    logic [11:0] csr_addr_q;
+    assign csr_addr  = csr_addr_q;
     assign reg_wdata = data0;
 
     //Байтовые стробы и выравнивание для System Bus
@@ -129,6 +137,7 @@ module dm (
             state <= IDLE; dmi_ack_tgl <= 1'b0; dmi_rdata <= 32'd0;
             dmactive <= 1'b0; ndmreset <= 1'b0; haltreq <= 1'b0; resumereq <= 1'b0;
             gpr_we <= 1'b0; csr_we <= 1'b0; sb_read <= 1'b0; sb_wstrb <= 4'd0; havereset <= 1'b1;
+            csr_addr_q <= 12'd0;
         end else begin
             gpr_we    <= 1'b0;
             csr_we    <= 1'b0;
@@ -175,8 +184,12 @@ module dm (
                                                       else if (w[15:0] > 16'h101F || (w[15:0] > 16'h0FFF && w[15:0] < 16'h1000))
                                                                                          cmderr <= 3'd3;   //нет такого регистра
                                                       else if (w[16]) begin                               //запись: data0 -> регистр
-                                                          if (w[15:0] >= 16'h1000) gpr_we <= 1'b1; else csr_we <= 1'b1;
-                                                      end else state <= REG_RD;                           //чтение: регистр -> data0
+                                                          if (w[15:0] >= 16'h1000) gpr_we <= 1'b1;
+                                                          else begin csr_we <= 1'b1; csr_addr_q <= w[11:0]; end
+                                                      end else begin                                      //чтение: регистр -> data0
+                                                          state <= REG_WAIT;
+                                                          if (w[15:0] < 16'h1000) csr_addr_q <= w[11:0];
+                                                      end
                                                   end
                                       SBCS: begin
                                                 if (w[22]) sbbusyerror <= 1'b0;
@@ -198,8 +211,9 @@ module dm (
                                   endcase
                           end
                       end
-                REG_RD: begin                                   //Адрес регистра выставлен в прошлом такте
-                          data0 <= reg_is_gpr ? gpr_rdata : csr_rdata;
+                REG_WAIT: state <= REG_RD;                      //Ч11: значение GPR защёлкивается в gpr_q
+                REG_RD: begin                                   //Адрес регистра выставлен два такта назад
+                          data0 <= reg_is_gpr ? gpr_q : csr_rdata;
                           state <= ACK;
                       end
                 SB_CHECK: begin                                 //Проверки; стробы (регистровые) активны в SB_A
@@ -215,6 +229,7 @@ module dm (
                 SB_A: state <= SB_B;                            //Строб: запись/чтение по фронту в конце такта
                 SB_B: state <= ACK;                             //Данные чтения (BSRAM - с задержкой на такт) готовы
                 ACK: begin
+                          csr_addr_q  <= 12'd0;            //Ч13: команда завершена - адрес CSR снят
                           dmi_ack_tgl <= ~dmi_ack_tgl;
                           state       <= IDLE;
                       end

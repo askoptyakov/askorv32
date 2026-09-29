@@ -24,7 +24,11 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
              parameter     DMEM_INIT_FILE  =  "mem_init/d.mem",
                 //Отладка и прерывания
              parameter bit DEBUG_EN        =                 1, //1 - модуль отладки через JTAG (несовместим с GAO)
-             parameter int PLIC_SOURCES    =                 8) //Число источников PLIC (1..31)
+             parameter int PLIC_SOURCES    =                 8, //Число источников PLIC (1..31)
+                //Такт ядра от rPLL: 27 МГц * (FBDIV+1) / (IDIV+1), см. clk_pll в clock.sv
+             parameter int PLL_IDIV_SEL    =                 2,
+             parameter int PLL_FBDIV_SEL   =                 4, //27 * 5 / 3 = 45 МГц
+             parameter int PLL_ODIV_SEL    =                16) //VCO = 45 * 16 = 720 МГц
             (input  logic       clk,     //Вход тактирования
              input  logic       rst_n,   //Вход сброса (кнопка S2)
              inout        [5:0] led,     //Выход на 6 светодиодов
@@ -39,16 +43,21 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     //#0 Настройка тактирования 
     //DESCRIPTION: Для однотактного ядра при использовании BSAM делаем псевдооднотактный процессор
     //с тремя тактами на одну инструкцию. Тактируем imem и dmem 2ым и 3ьим тактом.
-    logic clk_div2 = 1'b0; 
-    always_ff @(posedge clk) clk_div2 <= ~clk_div2;
+    //Базовый такт - от PLL по глобальной тактовой сети (раньше - триггер-делитель clk/2)
+    logic clk_base, pll_lock;
+    clk_pll #(PLL_IDIV_SEL, PLL_FBDIV_SEL, PLL_ODIV_SEL) clk_pll (.clkin(clk), .clkout(clk_base), .lock(pll_lock));
+    //Частота тактирования периферии (clk_dmem), МГц, целая часть: для делителей периферии (TM1638).
+    //Однотактное ядро с BSRAM делит базовую частоту на 3. Прошивке то же значение задаёт SYSCLK_HZ.
+    localparam int CLK_BASE_MHZ = 27 * (PLL_FBDIV_SEL + 1) / (PLL_IDIV_SEL + 1);
+    localparam int CLK_DMEM_MHZ = ((IMEM_TYPE | DMEM_TYPE) & CORE_TYPE) ? CLK_BASE_MHZ / 3 : CLK_BASE_MHZ;
 
     logic clk_core, clk_imem, clk_dmem;
     generate if ((IMEM_TYPE | DMEM_TYPE) & CORE_TYPE) begin   //#1 - Для однотактного ядра с BSRAM
-        divideby3 divideby3(.clk(clk_div2), .clk_div3(clk_core), .clk_imem(clk_imem), .clk_dmem(clk_dmem));
+        divideby3 divideby3(.clk(clk_base), .clk_div3(clk_core), .clk_imem(clk_imem), .clk_dmem(clk_dmem));
     end else begin                                            //#0 - Прочие конфигурации
-        assign clk_core = clk_div2;
-        assign clk_imem = clk_div2;
-        assign clk_dmem = clk_div2;
+        assign clk_core = clk_base;
+        assign clk_imem = clk_base;
+        assign clk_dmem = clk_base;
     end
     endgenerate
     
@@ -57,8 +66,9 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     logic rst_sync_n = 0;
     logic rst_sync;
     
+    //Пока PLL не захватил частоту (LOCK = 0), система держится в сбросе, как при нажатой кнопке
     always_ff @(posedge clk_core)
-        if (rst_n)
+        if (rst_n & pll_lock)
             btn_sync <= {btn_sync[14:0], 1'b1};
         else
             btn_sync <= {1'b0, btn_sync[15:1]};
@@ -151,8 +161,14 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     //#4 Подключаем память данных и периферийные модули
 
     //-0- Основной мультиплексор (ведущие - ядро или модуль отладки)
+    //Ч11: шина данных отдаётся модулю отладки по отдельному регистру - копии «ядро остановлено»,
+    //а не логикой от halted через состояние DM и адрес: этот путь шёл в дешифрацию адреса периферии.
+    //Пока ядро стоит, к шине обращается только DM: стробы sb_* есть лишь во время его обращения,
+    //а адрес IMEM (0x00xxxxxx) не попадает ни в одно устройство memmux. Копия на такт позже halted:
+    //при останове DM начинает обращение через несколько тактов, после продолжения первая загрузка
+    //или запись ядра доходит до стадии M не раньше чем через 3 такта.
     logic        bus_sb;
-    assign bus_sb = sb_active & ~sb_imem;
+    always_ff @(posedge clk_core) bus_sb <= DEBUG_EN & dbg_halted;
     logic [ 3:0] mem_Write, leds_Write, tm_Write, tim_Write, clint_Write, plic_Write;
     logic [31:0] mem_Addr, leds_Addr, tm_Addr, tim_Addr, clint_Addr, plic_Addr;
     logic [31:0] mem_WriteData, leds_WriteData, tm_WriteData, tim_WriteData, clint_WriteData, plic_WriteData;
@@ -189,7 +205,7 @@ module top #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
                .io_ports({empty_gpio[17:0], GMB_DRIVER_E[1:0], GMB_GPIO[5:0], led[5:0]}));
 
     //-3- Внешний модуль tm1638
-    tm1638_top #(DMEM_TYPE) tm1638
+    tm1638_top #(.MEMORY_TYPE(DMEM_TYPE), .CLK_MHZ(CLK_DMEM_MHZ)) tm1638
                 (.clk(clk_dmem), .rst(rst_sys),
                  .Write(tm_Write), .Addr(tm_Addr), .WData(tm_WriteData), .RData(tm_ReadData),
                  .tm_dio(GPIO[0]), .tm_clk(GPIO[1]), .tm_stb(GPIO[2]));

@@ -50,7 +50,11 @@ module plic_top
                 best_prio = prio[i];
             end
     end
-    assign irq = (best_id != 5'd0);
+    //Ч11: запрос на ядро - через регистр. Поиск лучшего источника (цепочка сравнений приоритетов) иначе
+    //шёл прямо в решение о ловушке ядра. Прерывание приходит на такт позже - для периферии это неважно
+    always_ff @(posedge clk)
+        if (rst) irq <= 1'b0;
+        else     irq <= (best_id != 5'd0);
 
     //#2 Регистры
     logic we, claim_rd, complete_wr;

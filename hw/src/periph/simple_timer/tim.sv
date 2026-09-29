@@ -66,7 +66,11 @@ module stim_top
         else if (tim_update)                               tim_uif <= 1'b1;
         else if (Addr[4:2] == 3'd5 && Write[0] && WData[0]) tim_uif <= 1'b0;
 
-    assign irq = tim_uif & tim_counter_mode[4];
+    //Ч14: запрос на ядро - через регистр (как у PLIC): иначе путь «регистры таймера -> запрос ->
+    //решение о ловушке -> адрес PC» ограничивал частоту ядра. Прерывание приходит на такт позже
+    always_ff @(posedge clk)
+        if (rst) irq <= 1'b0;
+        else     irq <= tim_uif & tim_counter_mode[4];
 
     generate if (MEMORY_TYPE) begin   //#1 - Память BSRAM
         always_ff @(posedge clk)
