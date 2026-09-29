@@ -182,11 +182,13 @@ mti_isr:
 
 li0_isr:
     csrr x20, mcause; csrr x21, mepc; addi x23, x23, 1
-    li x24, STIM_BASE; li x25, 1; sw x25, STIM_SR(x24) //Сброс UIF записью 1
+    li x24, STIM_BASE
     bnez x22, 1f
-    sw x0, STIM_CR(x24)                               //Однократно: таймер выключается
+    sw x0, STIM_CR(x24)                               //Однократно: таймер выключается ДО сброса UIF,
+1:  li x25, 1; sw x25, STIM_SR(x24)                   //иначе событие между записями снова выставит UIF
+    bnez x22, 2f
     li x26, 16; sw x26, 0(x27); addi x27, x27, 4
-1:  mret
+2:  mret
 
 exc_isr:
     csrr x20, mcause; li x26, 0xE

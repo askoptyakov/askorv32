@@ -27,7 +27,7 @@ EEMBC = ["core_list_join.c", "core_main.c", "core_matrix.c", "core_state.c", "co
 PORT = ["crt0.S", "core_portme.c", "ee_printf.c"]
 IMEM_KB = 32
 # Частота ядра на плате: clk 27 МГц -> clk_div2; однотактному ядру с BSRAM нужно 3 такта clk_div2
-CORE_MHZ = {"single": 27 / 2 / 3, "pipeline": 27 / 2}
+CORE_MHZ = {"single": 45 / 3, "pipeline": 45}   #Частота ядра на плате: PLL 45 МГц (top.sv)
 
 
 def check_eembc_md5():

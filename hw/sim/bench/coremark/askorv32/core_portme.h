@@ -33,9 +33,9 @@ static inline unsigned int read_mcycle(void)
 }
 
 /* Частота ядра на плате (Гц): только для перевода тактов в секунды в отчёте CoreMark.
-   Конвейерное ядро: 27 МГц / 2 = 13.5 МГц; однотактное с BSRAM: 13.5 / 3 = 4.5 МГц */
+   Конвейерное ядро: 45 МГц от PLL; однотактное с BSRAM: 45 / 3 = 15 МГц */
 #ifndef CORE_CLOCK_HZ
-#define CORE_CLOCK_HZ 13500000
+#define CORE_CLOCK_HZ 45000000
 #endif
 
 #define HAS_FLOAT  0
