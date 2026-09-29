@@ -5,6 +5,7 @@
     py hw/sim/run_tests.py add sub lw          # выбранные инструкции
     py hw/sim/run_tests.py --core pipeline     # только конвейерное ядро
     py hw/sim/run_tests.py sra --core single --vcd   # + временные диаграммы для GTKWave
+    py hw/sim/run_tests.py --rf-garbage              # регистры при старте - мусор, как на плате
     py hw/sim/run_tests.py --gen               # сначала перегенерировать tests/rv32i/*.S
 
 Инструменты ищутся в PATH, затем в стандартных папках установки (см. sdk/SETUP.md).
@@ -154,11 +155,13 @@ def compile_tb(core, prim_sim, imem_kb=8, dmem_kb=8):
     return vvp
 
 
-def simulate(vvp, name, core, vcd):
+def simulate(vvp, name, core, vcd, rf_garbage=False):
     d = BUILD_DIR / name
     args = [need("vvp"), "-n", vvp, f"+prog={name}", f"+imem={(d / 'imem.hex').as_posix()}",
             f"+dmem={(d / 'dmem.hex').as_posix()}", f"+names={(d / 'names.txt').as_posix()}"]
     args += (d / "args.txt").read_text().split()
+    if rf_garbage:
+        args.append("+rf_garbage")
     if vcd:
         args.append(f"+vcd={(BUILD_DIR / f'{name}_{core}.vcd').as_posix()}")
     r = run(args, timeout=600)
@@ -176,6 +179,8 @@ def main():
     ap.add_argument("tests", nargs="*", help="инструкции (по умолчанию - все из tests/rv32i)")
     ap.add_argument("--core", choices=["single", "pipeline", "both"], default="both")
     ap.add_argument("--vcd", action="store_true", help="сохранить .vcd в hw/sim/build")
+    ap.add_argument("--rf-garbage", action="store_true",
+                    help="регистры x1..x31 при старте - мусор, как на плате (по умолчанию нули)")
     ap.add_argument("--gen", action="store_true", help="перегенерировать tests/rv32i/*.S")
     ap.add_argument("--imem-kb", type=int, choices=[8, 16, 32], default=8,
                     help="размер памяти инструкций BSRAM (как BSRAM_IMEM_SIZE в top.sv)")
@@ -211,7 +216,7 @@ def main():
     vvps = {c: compile_tb(c, prim_sim, a.imem_kb) for c in cores}
     jobs = [(n, c) for n in names for c in cores]
     with ThreadPoolExecutor(a.jobs) as ex:
-        results = dict(zip(jobs, ex.map(lambda j: simulate(vvps[j[1]], j[0], j[1], a.vcd), jobs)))
+        results = dict(zip(jobs, ex.map(lambda j: simulate(vvps[j[1]], j[0], j[1], a.vcd, a.rf_garbage), jobs)))
 
     # 3. Отчёт
     print(f"\nТесты RV32I, память BSRAM (IMEM {a.imem_kb} кБайт, код с 0x{a.text_base:x}). Ядра: {', '.join(cores)}\n")
