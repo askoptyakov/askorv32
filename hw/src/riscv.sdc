@@ -5,7 +5,7 @@
 create_clock -name clk     -period 37.037 -waveform {0 18.518} [get_ports {clk}]
 //Такт конвейерного ядра и памяти (CORE_TYPE = PIPELINE_CORE): 45 МГц от PLL (параметры PLL_* в top.sv).
 //Ограничение - рабочая частота: отчёт должен быть без отрицательного запаса (TNS = 0). Fmax конвейера с
-//расширением M - 46.3 МГц при place_option 0, 48.3 МГц при 1 или 2 (журнал в hw/info/performance_roadmap.md). Чтобы
+//расширением M - 47.5-48.2 МГц при настройках Gowin по умолчанию (шаг 19 журнала в hw/info/performance_roadmap.md). Чтобы
 //проверить запас к другой частоте, поменяйте период. В однотактном ядре такт ядра получается из
 //clk_base делением на 3 (clock.sv) и этим ограничением не описан.
 create_clock -name clk_core -period 22.222 -waveform {0 11.111} [get_nets {clk_base}]

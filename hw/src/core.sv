@@ -60,6 +60,8 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
 
     //Сигналы блока управления
     logic RegWriteD, MemWriteD, JumpD, BranchD, JALSrcD;                 logic [1:0] ResultSrcD; logic [2:0] Funct3D, ALUSrcD, ImmSrcD; logic [3:0] ALUControlD;
+    logic [8:0] ALUSelD, ALUSelE;   //В: выбор результата АЛУ one-hot {CSR, sum, and, or, xor, slt, sltu, sll, srl/sra}
+    logic [14:0] CsrSelD, CsrSelE;  //Д: номер CSR one-hot (дешифрация в стадии D), см. csr_decode
     logic RegWriteE, MemWriteE, JumpE, BranchE, JALSrcE, PCSrcE, TakenE; logic [1:0] ResultSrcE; logic [2:0] Funct3E, ALUSrcE;          logic [3:0] ALUControlE;
     logic RegWriteM, MemWriteM;                                          logic [1:0] ResultSrcM; logic [2:0] Funct3M;
     logic RegWriteW;                                                     logic [1:0] ResultSrcW; logic [2:0] Funct3W;
@@ -73,6 +75,7 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     logic        BrInvD, BrInvE;                                 //Инверсия условия (bne/bge/bgeu) XOR предсказание (Ч15)
     logic        StallFC, FlushEC;                               //Приостановка PC и сброс стадии E с учётом останова
     logic [31:0] RedirectPCE, PCNextSrcE, CsrRDataE, ResultE;
+    logic [31:0] RedirectAddrE;                                  //П1: адрес ловушки/mret/resume для регистра
     logic [31:0] AddrSumE;                                       //Адрес загрузки/записи с сумматора АЛУ (Ч8)
     logic        PCSrcF;                                         //Любая смена PC: переход, ловушка, mret (решение в стадии E)
     logic        PCSrcM;                                         //Смена PC применяется (конвейер: на такт позже, Ч1)
@@ -188,6 +191,26 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     assign BrKindD = {Funct3D[2:1] == 2'b00, Funct3D[2:1] == 2'b10, Funct3D[2:1] == 2'b11};   //{eq, lt, ltu}
     assign BrInvD  = Funct3D[0] ^ PredD;
     regcontrol #(4, CORE_TYPE)  rb_decode (clk, FlushEC|rst, DivHold, {BrKindD, BrInvD}, {BrKindE, BrInvE});
+    //В: выбор результата АЛУ раскладывается в one-hot-код в стадии D (как коды байпаса в Ч7). В стадии E
+    //вместо дерева выбора по ALUControl (и отдельного выбора «CSR или АЛУ») остаётся одно И-ИЛИ
+    always_comb
+        if (CsrD) ALUSelD = 9'b1_0000_0000;                 //CSR-инструкция: старое значение CSR
+        else case (ALUControlD)
+            4'b0010: ALUSelD = 9'b0_0100_0000;               //and
+            4'b0011: ALUSelD = 9'b0_0010_0000;               //or
+            4'b0100: ALUSelD = 9'b0_0001_0000;               //xor
+            4'b0101: ALUSelD = 9'b0_0000_1000;               //slt
+            4'b1001: ALUSelD = 9'b0_0000_0100;               //sltu
+            4'b0110: ALUSelD = 9'b0_0000_0010;               //sll
+            4'b0111,
+            4'b1000: ALUSelD = 9'b0_0000_0001;               //srl, sra
+            default: ALUSelD = 9'b0_1000_0000;               //add, sub (и адрес загрузки/записи, lui, auipc)
+        endcase
+    regcontrol #(9, CORE_TYPE)  ra_decode (clk, FlushEC|rst, DivHold, ALUSelD, ALUSelE);
+    //Д: номер CSR раскладывается в one-hot-код в стадии D: в стадии E чтение и запись CSR выбираются
+    //по готовому коду, без сравнения 12-битного номера
+    csr_decode csr_dec_d (.addr(InstrD[31:20]), .sel(CsrSelD));
+    regcontrol #(15, CORE_TYPE) rx_decode (clk, FlushEC|rst, DivHold, CsrSelD, CsrSelE);
     //Признаки системных инструкций идут в стадию E вместе с признаком действительной инструкции:
     //сброшенная инструкция 0x00000000 декодируется как недопустимая, но ловушку вызывать не должна
     regcontrol #(6, CORE_TYPE) rs_decode  (clk, FlushEC|rst, DivHold,
@@ -195,7 +218,7 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
                     {ValidE, CsrE,          MretE,          EcallE,          EbreakE,          IllegalE});
     //EXECUTE///////////////////////////////////////////////////////////////////////////////////////
     execute #(CORE_TYPE) execute
-             (.JALSrc(JALSrcE), .FwdA(FwdAE), .FwdB(FwdBE), .SelA(SelAE), .ALUSrc(ALUSrcE), .ALUControl(ALUControlE),
+             (.JALSrc(JALSrcE), .FwdA(FwdAE), .FwdB(FwdBE), .SelA(SelAE), .ALUSrc(ALUSrcE), .ALUControl(ALUControlE), .ALUSel(ALUSelE[7:0]),
               .RD1(RD1E), .RD2(RD2E), .PC(PCE), .ImmExt(ImmExtE), .ResultW(ResultWf), .ALUResultM(ALUResultM), .ResultX(ResultX),
               .BrFlags(BrFlagsE), .ALUResult(ALUResultE), .WriteData(WriteDataE),
               //Особенные
@@ -228,7 +251,7 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
              (.clk(clk), .rst(rst),
               //Инструкция в стадии E
               .Valid(ValidX), .Hold(DivHold), .Csr(CsrE & ValidX), .Mret(MretE & ValidX), .Ecall(EcallE & ValidX), .Ebreak(EbreakE & ValidX), .Illegal(IllegalE & ValidX),
-              .Funct3(Funct3E), .CsrAddr(ImmExtE[11:0]), .Zimm(Rs1E), .Rs1Data(SrcAE),
+              .Funct3(Funct3E), .CsrSel(CsrSelE), .Zimm(Rs1E), .Rs1Data(SrcAE),
               .PC(PCE), .Jump(JumpE), .Branch(BranchE), .JalrSel(JALSrcE), .Taken(TakenE), .ImmLo(ImmExtE[1:0]),
               .PCTarget(PCTargetE),
               .Load(ResultSrcE == 2'b01), .Store(MemWriteE), .MemAddr(AddrSumE),   //Ч8: mtval - с сумматора, без выбора операции АЛУ
@@ -240,7 +263,8 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
               //Счётчик mcycle = mtime
               .Mtime(mtime), .MtimeWe(mtime_we), .MtimeWData(mtime_wdata),
               //Результат
-              .CsrRData(CsrRDataE), .Trap(TrapE), .Kill(KillE), .Redirect(RedirectE), .RedirectEarly(RedirectEarlyE), .RedirectSel(RedirectSelE), .RedirectPC(RedirectPCE));
+              .CsrRData(CsrRDataE), .Trap(TrapE), .Kill(KillE), .Redirect(RedirectE), .RedirectEarly(RedirectEarlyE), .RedirectSel(RedirectSelE), .RedirectPC(RedirectPCE),
+              .RedirectAddr(RedirectAddrE));
     assign dbg_csr_rdata = CsrRDataE;
     //Смена PC: ловушка и mret важнее перехода
     assign PCSrcF     = PCSrcE | RedirectEarlyE;   //Ч15: без части ловушки, зависящей от Taken (её покрывает PCSrcE)
@@ -257,16 +281,26 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
         assign PCTargetM = PCNextSrcE;
         assign ValidX    = ValidE;
     end else begin                  //#0 - Конвеерное ядро
+        //П1: смена PC ловушкой, mret, входом в отладку и продолжением - в два шага. В такте решения PC
+        //меняется, как при переходе (сброс младших инструкций), на адрес перехода или PC+4 - он не важен.
+        //Адрес ловушки защёлкивается в RedirectPC_q, и тактом позже PC меняется ещё раз, уже на него.
+        //Так 32-битный выбор адреса ловушки не стоит после решения о ловушке в одном такте с выбором PC,
+        //а у PCTargetM остаётся выбор по регистрам. Цена - ловушка, mret и вход в отладку на такт дольше.
+        logic        redirect_q;
+        logic [31:0] RedirectPC_q;
         always_ff @(posedge clk)
-            if (rst) PCSrcM <= 1'b0;
-            else     PCSrcM <= PCSrcF;
-        always_ff @(posedge clk)
-            PCTargetM <= PCNextSrcE;
+            if (rst) begin PCSrcM <= 1'b0; redirect_q <= 1'b0; end
+            else     begin PCSrcM <= PCSrcF | redirect_q; redirect_q <= RedirectE; end
+        always_ff @(posedge clk) begin
+            RedirectPC_q <= RedirectAddrE;
+            PCTargetM    <= redirect_q ? RedirectPC_q : (PredE ? PCPlus4E : PCTargetE);
+        end
         assign ValidX = ValidE & ~PCSrcM;
     end
     endgenerate
     //Результат CSR-инструкции (старое значение CSR) идёт по тракту ALUResult, поэтому работает байпас
-    assign ResultE    = CsrE ? CsrRDataE : ALUResultE;
+    //В: у CSR-инструкции все биты выбора АЛУ равны 0, поэтому ИЛИ вместо мультиплексора
+    assign ResultE    = ALUResultE | ({32{ALUSelE[8]}} & CsrRDataE);
     ////Расширение M: деление в стадии E
     //Деление занимает 32/DIV_BPC + 2 такта в стадии E: F, D и E стоят (DivHold), в M уходят пузыри.
     //Результат забирается в стадии M, как у умножения: делитель держит его до начала следующего деления.
@@ -445,6 +479,33 @@ module control_unit #(parameter bit M_EXT = 1) (
 
 endmodule
 
+//#csr - Дешифратор номера CSR (Д)//
+//DESCRIPTION: 12-битный номер CSR -> one-hot-код реализованных CSR. Для инструкции дешифрация идёт в стадии D,
+//код защёлкивается вместе с инструкцией; для модуля отладки - в trap_unit (путь двухтактный, Ч16).
+//  0 mstatus  1 misa   2 mie     3 mtvec  4 mscratch  5 mepc  6 mcause  7 mtval  8 mip
+//  9 mcycle/cycle/time (чтение)  10 mcycleh/cycleh/timeh (чтение)  11 dcsr  12 dpc
+//  13 mcycle (запись)  14 mcycleh (запись); нереализованные номера - код 0 (читаются как 0)
+module csr_decode (
+    input  logic [11:0] addr,
+    output logic [14:0] sel
+);
+    assign sel[0]  = (addr == 12'h300);
+    assign sel[1]  = (addr == 12'h301);
+    assign sel[2]  = (addr == 12'h304);
+    assign sel[3]  = (addr == 12'h305);
+    assign sel[4]  = (addr == 12'h340);
+    assign sel[5]  = (addr == 12'h341);
+    assign sel[6]  = (addr == 12'h342);
+    assign sel[7]  = (addr == 12'h343);
+    assign sel[8]  = (addr == 12'h344);
+    assign sel[9]  = (addr == 12'hB00) | (addr == 12'hC00) | (addr == 12'hC01);
+    assign sel[10] = (addr == 12'hB80) | (addr == 12'hC80) | (addr == 12'hC81);
+    assign sel[11] = (addr == 12'h7B0);
+    assign sel[12] = (addr == 12'h7B1);
+    assign sel[13] = (addr == 12'hB00);
+    assign sel[14] = (addr == 12'hB80);
+endmodule
+
 module branch_unit (
     input  logic       Branch,
     input  logic [2:0] funct3,
@@ -493,7 +554,7 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
     input  logic        Hold,              //Инструкция остаётся в стадии E и в следующем такте (деление)
     input  logic        Csr, Mret, Ecall, Ebreak, Illegal,
     input  logic [ 2:0] Funct3,
-    input  logic [11:0] CsrAddr,
+    input  logic [14:0] CsrSel,            //Д: номер CSR one-hot из стадии D (csr_decode)
     input  logic [ 4:0] Zimm,              //Поле rs1: непосредственное значение csrr*i / признак rs1 = x0
     input  logic [31:0] Rs1Data,           //rs1 с учётом байпаса
     input  logic [31:0] PC,
@@ -524,14 +585,10 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
     output logic        Redirect,          //Смена PC ловушкой или mret
     output logic        RedirectSel,       //Адрес смены PC берётся из RedirectPC (известно до сравнения, Ч1)
     output logic        RedirectEarly,     //Смена PC ловушкой/mret/отладкой без части, зависящей от Taken (Ч15)
-    output logic [31:0] RedirectPC
+    output logic [31:0] RedirectPC,
+    output logic [31:0] RedirectAddr       //П1: адрес смены PC для регистра RedirectPC_q (конвейер)
 );
-    //#1 Адреса CSR
-    localparam logic [11:0] MSTATUS  = 12'h300, MISA   = 12'h301, MIE    = 12'h304, MTVEC   = 12'h305,
-                            MSCRATCH = 12'h340, MEPC   = 12'h341, MCAUSE = 12'h342, MTVAL   = 12'h343,
-                            MIP      = 12'h344, MCYCLE = 12'hB00, MCYCLEH = 12'hB80,
-                            CYCLE    = 12'hC00, CYCLEH = 12'hC80, TIME = 12'hC01, TIMEH = 12'hC81,
-                            DCSR     = 12'h7B0, DPC    = 12'h7B1;
+    //#1 Адреса CSR - в модуле csr_decode (Д: номер CSR приходит one-hot-кодом CsrSel)
 
     //#2 Регистры
     logic        mstatus_mie, mstatus_mpie;
@@ -579,7 +636,9 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
     assign resume_do   = halted & resumereq;
     assign Halted      = halted;
 
-    assign irq_take = mstatus_mie & (|pending) & Valid & ~step_active & ~debug_entry;
+    logic  irq_pre;                  //Прерывание без учёта входа в отладку (для адреса смены PC, П1)
+    assign irq_pre  = mstatus_mie & (|pending) & Valid & ~step_active;
+    assign irq_take = irq_pre & ~debug_entry;
 
     //#4 Исключения
     //Выравнивание проверяется по младшим битам операндов, а не по результату АЛУ и сумматора
@@ -651,32 +710,38 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
     assign RedirectPC = resume_do ? {dpc, 2'b00} :
                         trap_sel  ? ((mtvec_mode & irq_take) ? {mtvec_base[31:7], irq_code, 2'b00} : {mtvec_base, 2'b00}) :
                         mret_do   ? {mepc, 2'b00} : PC;      //При входе в отладку PC не важен: он замораживается
+    //П1: в конвейере адрес смены PC защёлкивается в регистре и применяется тактом позже, только если смена
+    //PC случилась (Redirect). Поэтому выбор адреса не ждёт решения «ловушка или нет»: ни исключений (у них
+    //тот же вектор, что и без них), ни входа в отладку (тогда адрес не важен - PC замораживается)
+    assign RedirectAddr = resume_do            ? {dpc, 2'b00} :
+                          (Mret & ~irq_pre)    ? {mepc, 2'b00} :
+                          (mtvec_mode & irq_pre) ? {mtvec_base[31:7], irq_code, 2'b00} : {mtvec_base, 2'b00};
 
     //#6 Чтение CSR. В режиме останова адрес CSR задаёт модуль отладки (конвейер пуст)
-    logic [11:0] csr_addr;
-    //Ч13: в конвейере в режиме останова стадия E пуста (CsrAddr = 0, csr_we = 0), а DM выставляет адрес
+    //Д: номер CSR приходит one-hot-кодом из стадии D; номер от модуля отладки дешифруется здесь (он
+    //выставляется за 2 такта до использования, путь двухтактный - Ч16)
+    //Ч13: в конвейере в режиме останова стадия E пуста (CsrSel = 0, csr_we = 0), а DM выставляет адрес
     //и запись только на время своей команды - поэтому ИЛИ вместо выбора по halted (halted - сигнал
     //с большим разветвлением, и выбор по нему стоял в пути чтения и записи CSR). В однотактном ядре
-    //регистры стадий прозрачны: остановленная инструкция держит свой CsrAddr - там выбор по halted
-    assign csr_addr = LATE_BR_TRAP ? (CsrAddr | DbgCsrAddr) : (halted ? DbgCsrAddr : CsrAddr);
-    always_comb
-        case (csr_addr)
-            MSTATUS:         CsrRData = {19'd0, 2'b11, 3'd0, mstatus_mpie, 3'd0, mstatus_mie, 3'd0}; //MPP = 11 (M)
-            MISA:            CsrRData = 32'h4000_0100 | (32'(M_EXT) << 12);                            //RV32I[M]
-            MIE:             CsrRData = mie;
-            MTVEC:           CsrRData = {mtvec_base, 1'b0, mtvec_mode};
-            MSCRATCH:        CsrRData = mscratch;
-            MEPC:            CsrRData = {mepc, 2'b00};
-            MCAUSE:          CsrRData = {mcause_int, 26'd0, mcause_code};
-            MTVAL:           CsrRData = mtval;
-            MIP:             CsrRData = mip;
-            MCYCLE,  CYCLE,  TIME:  CsrRData = mcycle[31:0];    //Р3: time = cycle (mtime = mcycle)
-            MCYCLEH, CYCLEH, TIMEH: CsrRData = mcycle[63:32];
-            //dcsr: xdebugver = 4, ebreakm, cause, step, prv = 3 (M); доступны только в режиме отладки
-            DCSR:            CsrRData = halted ? {4'd4, 12'd0, dcsr_ebreakm, 6'd0, dcsr_cause, 3'd0, dcsr_step, 2'b11} : 32'd0;
-            DPC:             CsrRData = halted ? {dpc, 2'b00} : 32'd0;
-            default:         CsrRData = 32'd0;
-        endcase
+    //регистры стадий прозрачны: остановленная инструкция держит свой CsrSel - там выбор по halted
+    logic [14:0] dbg_sel, sel;
+    csr_decode csr_dec_dbg (.addr(DbgCsrAddr), .sel(dbg_sel));
+    assign sel = LATE_BR_TRAP ? (CsrSel | dbg_sel) : (halted ? dbg_sel : CsrSel);
+    //Чтение - И-ИЛИ по one-hot-коду. Нереализованные CSR читаются как 0 (ни один бит кода не выставлен)
+    assign CsrRData = ({32{sel[0]}}  & {19'd0, 2'b11, 3'd0, mstatus_mpie, 3'd0, mstatus_mie, 3'd0}) |   //mstatus, MPP = 11 (M)
+                      ({32{sel[1]}}  & (32'h4000_0100 | (32'(M_EXT) << 12)))                       |   //misa: RV32I[M]
+                      ({32{sel[2]}}  & mie)                                                         |
+                      ({32{sel[3]}}  & {mtvec_base, 1'b0, mtvec_mode})                              |
+                      ({32{sel[4]}}  & mscratch)                                                    |
+                      ({32{sel[5]}}  & {mepc, 2'b00})                                               |
+                      ({32{sel[6]}}  & {mcause_int, 26'd0, mcause_code})                            |
+                      ({32{sel[7]}}  & mtval)                                                       |
+                      ({32{sel[8]}}  & mip)                                                         |
+                      ({32{sel[9]}}  & mcycle[31:0])                                                |   //mcycle, cycle, time (Р3)
+                      ({32{sel[10]}} & mcycle[63:32])                                               |   //mcycleh, cycleh, timeh
+                      //dcsr: xdebugver = 4, ebreakm, cause, step, prv = 3 (M); dcsr и dpc - только в режиме отладки
+                      ({32{sel[11] & halted}} & {4'd4, 12'd0, dcsr_ebreakm, 6'd0, dcsr_cause, 3'd0, dcsr_step, 2'b11}) |
+                      ({32{sel[12] & halted}} & {dpc, 2'b00});
 
     //#7 Запись CSR. csrrs/csrrc с rs1 = x0 (Zimm = 0) только читают CSR
     logic        csr_we;
@@ -717,21 +782,19 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
             //младше записи в память (стадия M) того же такта
             if (MtimeWe[0]) mcycle[31:0]  <= MtimeWData;
             if (MtimeWe[1]) mcycle[63:32] <= MtimeWData;
-            if (we_any)
-                case (csr_addr)
-                    MSTATUS:  begin mstatus_mie <= wdata_any[3]; mstatus_mpie <= wdata_any[7]; end
-                    MIE:      {mie_local, mie_meie, mie_mtie, mie_msie} <= {wdata_any[31:16], wdata_any[11], wdata_any[7], wdata_any[3]};
-                    MTVEC:    begin mtvec_base <= wdata_any[31:2]; mtvec_mode <= wdata_any[0]; end
-                    MSCRATCH: mscratch <= wdata_any;
-                    MEPC:     mepc     <= wdata_any[31:2];
-                    MCAUSE:   begin mcause_int <= wdata_any[31]; mcause_code <= wdata_any[4:0]; end
-                    MTVAL:    mtval    <= wdata_any;
-                    MCYCLE:   mcycle[31:0]  <= wdata_any;
-                    MCYCLEH:  mcycle[63:32] <= wdata_any;
-                    DCSR:     if (halted) begin dcsr_ebreakm <= wdata_any[15]; dcsr_step <= wdata_any[2]; end
-                    DPC:      if (halted) dpc <= wdata_any[31:2];
-                    default: ;
-                endcase
+            if (we_any) begin                    //Д: запись - по one-hot-коду номера CSR
+                if (sel[0])  begin mstatus_mie <= wdata_any[3]; mstatus_mpie <= wdata_any[7]; end
+                if (sel[2])  {mie_local, mie_meie, mie_mtie, mie_msie} <= {wdata_any[31:16], wdata_any[11], wdata_any[7], wdata_any[3]};
+                if (sel[3])  begin mtvec_base <= wdata_any[31:2]; mtvec_mode <= wdata_any[0]; end
+                if (sel[4])  mscratch <= wdata_any;
+                if (sel[5])  mepc     <= wdata_any[31:2];
+                if (sel[6])  begin mcause_int <= wdata_any[31]; mcause_code <= wdata_any[4:0]; end
+                if (sel[7])  mtval    <= wdata_any;
+                if (sel[13]) mcycle[31:0]  <= wdata_any;                   //только mcycle (cycle, time - чтение)
+                if (sel[14]) mcycle[63:32] <= wdata_any;
+                if (sel[11] & halted) begin dcsr_ebreakm <= wdata_any[15]; dcsr_step <= wdata_any[2]; end
+                if (sel[12] & halted) dpc <= wdata_any[31:2];
+            end
             if (debug_entry) begin
                 dpc        <= PC[31:2];
                 dcsr_cause <= debug_cause;
@@ -983,6 +1046,7 @@ module execute
     input  logic [ 4:0] SelA,             //Операнд A АЛУ, one-hot {M, W, X, рег. файл, PC}
     input  logic [ 2:0] ALUSrc, 
     input  logic [ 3:0] ALUControl,
+    input  logic [ 7:0] ALUSel,           //В: выбор результата one-hot {sum, and, or, xor, slt, sltu, sll, srl/sra}
     input  logic [31:0] RD1, RD2, PC, ImmExt, ResultW, ALUResultM, ResultX,
     output logic [ 2:0] BrFlags, //Сравнение для переходов: {eq, lt, ltu} (Ч5)
     output logic [31:0] ALUResult, WriteData,
@@ -1050,20 +1114,27 @@ module execute
     assign isAddSub = ~ALUControl[3] & ~ALUControl[2] & ~ALUControl[1] |
                       ~ALUControl[3] & ~ALUControl[1] &  ALUControl[0];
 
-    always_comb
-        case (ALUControl)
-            4'b0000: ALUResult = sum;                           //ADD
-            4'b0001: ALUResult = sum;                           //SUB
-            4'b0010: ALUResult = srcA & srcB;                   //AND
-            4'b0011: ALUResult = srcA | srcB;                   //OR
-            4'b0100: ALUResult = srcA ^ srcB;                   //XOR
-            4'b0101: ALUResult = {31'd0, sum[31] ^ v};          //SLT
-            4'b0110: ALUResult = srcA << srcB[4:0];             //SLL
-            4'b0111: ALUResult = srcA >> srcB[4:0];             //SRL
-            4'b1000: ALUResult = $signed(srcA) >>> srcB[4:0];   //SRA
-            4'b1001: ALUResult = {31'd0, ~cout};                //SLTU
-            default: ALUResult = 32'dx;
-        endcase
+    //Р6: один сдвигатель вправо на все три сдвига. Сдвиг влево - это сдвиг вправо развёрнутого слова:
+    //x << s = rev(rev(x) >> s). Для sra старший бит заполнения - знак, для srl и sll - 0
+    function automatic logic [31:0] rev32(input logic [31:0] x);
+        for (int i = 0; i < 32; i++) rev32[i] = x[31 - i];
+    endfunction
+    logic        sh_left;
+    logic [31:0] sh_in, sh_out, sh_rev;
+    assign sh_left = (ALUControl == 4'b0110);
+    assign sh_in   = sh_left ? rev32(srcA) : srcA;
+    assign sh_out  = 32'($signed({(ALUControl == 4'b1000) & srcA[31], sh_in}) >>> srcB[4:0]);
+    assign sh_rev  = rev32(sh_out);
+
+    //В: выбор результата - И-ИЛИ по one-hot-коду из стадии D (вместо дерева выбора по ALUControl)
+    assign ALUResult = ({32{ALUSel[7]}} & sum)                       |   //add, sub
+                       ({32{ALUSel[6]}} & (srcA & srcB))             |   //and
+                       ({32{ALUSel[5]}} & (srcA | srcB))             |   //or
+                       ({32{ALUSel[4]}} & (srcA ^ srcB))             |   //xor
+                       {31'd0, ALUSel[3] & (sum[31] ^ v)}            |   //slt
+                       {31'd0, ALUSel[2] & ~cout}                    |   //sltu
+                       ({32{ALUSel[1]}} & sh_rev)                    |   //sll (Р6: через разворот бит)
+                       ({32{ALUSel[0]}} & sh_out);                       //srl, sra
 
     assign v = ~(ALUControl[0] ^ srcA[31] ^ srcB[31]) & (srcA[31] ^ sum[31]) & isAddSub;   //Переполнение для SLT
 
