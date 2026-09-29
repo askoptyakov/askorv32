@@ -20,10 +20,11 @@
 #define __IO                    volatile        //Чтение и запись
 
 /* Частота тактирования периферии (clk_dmem), Гц: от неё считают таймер STIM и mtime в CLINT.
-   Конвейерное ядро (PIPELINE_CORE): 27 МГц / 2 = 13.5 МГц.
-   Однотактное ядро с BSRAM (SINGLECYCLE_CORE): 13.5 МГц / 3 = 4.5 МГц. */
+   Частоту задаёт PLL (параметры PLL_* в hw/src/top.sv).
+   Конвейерное ядро (PIPELINE_CORE): 45 МГц.
+   Однотактное ядро с BSRAM (SINGLECYCLE_CORE): 45 МГц / 3 = 15 МГц. */
 #ifndef SYSCLK_HZ
-#define SYSCLK_HZ				13500000U
+#define SYSCLK_HZ				45000000U
 #endif
 #define MTIME_HZ				SYSCLK_HZ	//mtime увеличивается на каждом такте clk_dmem
 
