@@ -43,10 +43,12 @@ GCC 15.2.0 (xPack), `-O2 -march=rv32i -mabi=ilp32`, оптимизация пр�
 | Ядро | ISA | Микроархитектура | CoreMark/МГц |
 |------|-----|------------------|-------------:|
 | [SERV](https://github.com/The-OpenROAD-Project/bazel-orfs/pull/986) | RV32I | последовательная (1 бит за такт) | 0.024 |
+| [PicoRV32](https://github.com/YosysHQ/picorv32), по умолчанию ¹ | RV32I | многотактная, CPI ≈4 | 0.270 |
 | [NEORV32](https://github.com/stnolting/neorv32) *small* | RV32I | многотактная, CPI 4.04 | 0.339 |
 | [Ibex](https://github.com/lowRISC/ibex) *micro* | RV32EC | 2 стадии, без умножителя | 0.904 |
 | **askoRV32, конвейер** | **RV32I** | **5 стадий, байпас, без предсказания** | **0.961** |
 | NEORV32 *performance* | RV32IMC | многотактная, CPI 3.54 | 0.952 |
+| PicoRV32, быстрые mul/div, C ¹ | RV32IMC | многотактная | 0.680 |
 | **askoRV32, однотактное** | **RV32I** | **1 инструкция за такт ядра (3 такта `clk_div2`)** | **1.387** |
 | [VexRiscv](https://github.com/SpinalHDL/VexRiscv) *Full, no cache* | RV32IM | 5 стадий | 2.30 |
 | Ibex *small* | RV32IMC | 2 стадии, умножение за 3 такта | 2.47 |
@@ -55,6 +57,8 @@ GCC 15.2.0 (xPack), `-O2 -march=rv32i -mabi=ilp32`, оптимизация пр�
 | SiFive E31 | RV32IMAC | 5 стадий | 2.73 |
 | Ibex *maxperf* | RV32IMC | 3 стадии, умножение за 1 такт | 3.13 |
 | [Hazard3](https://github.com/Wren6991/Hazard3) (RP2350) | RV32IMA + Zb* | 3 стадии | 4.15 |
+
+¹ Измерено здесь же, тем же CoreMark в Icarus: [hw/compare/picorv32](../../compare/picorv32/README.md). Там же — сборка PicoRV32 на GW1NR-9 и сравнение ресурсов и Fmax.
 
 Данные NEORV32 взяты из `docs/datasheet/overview.adoc` его репозитория, остальные — из README проектов (ссылки в таблице). Компиляторы и флаги у всех разные, поэтому точность сравнения около ±10–20 %.
 

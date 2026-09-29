@@ -14,6 +14,7 @@ py hw/sim/run_tests.py jalr --core single --vcd   # + диаграммы hw/sim/
 py hw/sim/run_tests.py --gen                  # перегенерировать tests/rv32i/*.S
 py hw/sim/run_tests.py --imem-kb 32 --text-base 0x1f00   # IMEM 32 кБайт, код на границе кластеров BSRAM
 py hw/sim/run_tests.py csr trap irq plic dbg  # только привилегированная часть
+py hw/sim/run_tests.py --rf-garbage          # x1..x31 при старте - мусор (на плате регистры не сбрасываются)
 ```
 Нужны Icarus Verilog, xPack RISC-V GCC и GOWIN EDA (из неё берётся `prim_sim.v`), см. [sdk/SETUP.md](../../sdk/SETUP.md).
 
