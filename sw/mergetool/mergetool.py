@@ -1,5 +1,5 @@
 #Для создания исполнительного файла EXE используем строку:
-#pyinstaller --noconsole --onefile sw/mergetool/mergetool.py
+#pyinstaller --onefile sw/mergetool/mergetool.py
 
 import re
 from sys import argv
@@ -113,6 +113,11 @@ if bsram_mem[1]:
 with open(inputFs, "r") as file:                                                                    #Открываем *.fs и выгрузим все строки отдельно в список
 #with open("hw/impl/pnr/ao_0.fs", "r") as file:
     conf_data = file.readlines()
+#Номера строк bsram_stStr заданы для заголовка из 21 строки комментариев (файл с GAO, есть строка //GAOCRC);
+#без GAO строк 20 - сдвигаем номера на разницу
+header_len = 0
+while conf_data[header_len].startswith('//'): header_len += 1
+bsram_stStr = [s + header_len - 21 for s in bsram_stStr]
 for m, mem in enumerate(bsram_mem):
     if mem:
         for c, cluster in enumerate(mem):
