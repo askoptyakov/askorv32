@@ -210,33 +210,32 @@ openocd -c "set JTAG_ONLY 1" -f askorv32_tangnano9k.cfg -c "init; irscan gw1nr9.
 | `riscv FPGA SRAM` | загружает ПЛИС в SRAM, до выключения питания | ~3 с |
 | `riscv FPGA Flash` | записывает ПЛИС во встроенную flash, ПЛИС стартует с неё при включении | ~12 с |
 
-Обе перед загрузкой собирают проект `riscv`, затем запускают `mergetool`, который вливает программу (`Debug/riscv.bin`) в последний битстрим Gowin (`hw/impl/pnr/riscv.fs`), и загружают полученный `Debug/riscv.fs` командой `openFPGALoader -b tangnano9k [-f] riscv.fs`. `mergetool` запускается отдельно, потому что сборка Eclipse вызывает его только при изменении `riscv.elf`: после пересборки одной ПЛИС в `Debug/riscv.fs` остался бы старый дизайн.
+Обе перед загрузкой собирают проект `riscv` и запускают `sw/fpgaload/fpgaload.py sram|flash`. Скрипт:
+1. Проверяет, что отладка остановлена. Если запущен `openocd.exe`, выводит «Программатор занят…» и выходит, не обращаясь к плате. Одновременная работа с программатором сбивает USB-соединение OpenOCD (консоль без конца заполняется `LIBUSB_ERROR_IO`) и срывает загрузку.
+2. Запускает `mergetool`: программа (`Debug/riscv.bin`) вливается в последний битстрим Gowin (`hw/impl/pnr/riscv.fs`). Отдельный запуск нужен потому, что сборка Eclipse вызывает `mergetool` только при изменении `riscv.elf`, и после пересборки одной ПЛИС в `Debug/riscv.fs` остался бы старый дизайн.
+3. Загружает `Debug/riscv.fs` командой `openFPGALoader -b tangnano9k [-f] riscv.fs`. OSS CAD Suite ищется в `C:\oss-cad-suite` или в переменной `OSS_CAD_SUITE`, его `bin` и `lib` скрипт сам добавляет в `PATH`.
 
 **Подключение готовых конфигураций:**
 1. Обновить проект (**F5** на `riscv`).
 2. **Run → External Tools → External Tools Configurations…**: в группе **Program** появятся `riscv FPGA SRAM` и `riscv FPGA Flash`.
 3. Они уже в избранном: запускаются из выпадающего списка кнопки **External Tools** на панели инструментов (зелёная стрелка с чемоданчиком). Если кнопки нет: **Window → Perspective → Customize Perspective… → Action Set Availability → External Tools**.
 4. Вывод `mergetool` и openFPGALoader — во вкладке *Console*. Успешная загрузка заканчивается строкой `CRC check: Success`.
-5. Чтобы полоса прогресса openFPGALoader обновлялась в одной строке, а не печаталась каждый раз новой: **Window → Preferences → Run/Debug → Console** → отметить **Interpret ASCII control characters** и **Interpret Carriage Return (\r) as control character**. openFPGALoader возвращается в начало строки символом `\r`, а без этих флажков консоль Eclipse считает его переводом строки. Кроме того, когда вывод идёт не в терминал, openFPGALoader сам добавляет перевод строки после каждого обновления. Поэтому в конфигурациях его вывод проходит через фильтр `sw/conprogress/conprogress.py`: он убирает перевод строки между обновлениями одной полосы (строки с одной подписью до двоеточия, например `write Flash:`), остальной вывод не меняет. Нужен Python (п. 2, команда `py`).
+5. Чтобы полоса прогресса openFPGALoader обновлялась в одной строке, а не печаталась каждый раз новой: **Window → Preferences → Run/Debug → Console** → отметить **Interpret ASCII control characters** и **Interpret Carriage Return (\r) as control character**. openFPGALoader возвращается в начало строки символом `\r`, а без этих флажков консоль Eclipse считает его переводом строки. Кроме того, когда вывод идёт не в терминал, openFPGALoader сам добавляет перевод строки после каждого обновления. Поэтому `fpgaload.py` пропускает его вывод через фильтр `sw/conprogress/conprogress.py`: он убирает перевод строки между обновлениями одной полосы (строки с одной подписью до двоеточия, например `write Flash:`), остальной вывод не меняет. Нужен Python (п. 2, команда `py`).
 
 **Создание вручную** (если конфигурации нет или нужна своя): **Run → External Tools → External Tools Configurations… → Program → New** (кнопка *New launch configuration*), затем:
 - вкладка **Main**:
   - *Name*: `riscv FPGA SRAM`;
   - *Location*: `${env_var:ComSpec}` (это `cmd.exe`);
   - *Working Directory*: `${project_loc:riscv}/Debug`;
-  - *Arguments* (одной строкой; для flash перед `riscv.fs` добавить `-f`):
-    ```
-    /c ..\..\sw\mergetool\mergetool.exe riscv.bin ..\..\hw\impl\pnr\riscv.posp ..\..\hw\impl\pnr\riscv.fs riscv.fs && openFPGALoader -b tangnano9k riscv.fs 2>&1 | py -u ..\..\sw\conprogress\conprogress.py
-    ```
+  - *Arguments*: `/c py -u ..\..\sw\fpgaload\fpgaload.py sram` (для flash — `flash` вместо `sram`);
 - вкладка **Build**: отметить *Build before launch*, выбрать *Specific projects* → **Projects…** → `riscv`, снять *Include referenced projects*;
-- вкладка **Environment**: **Add…** → *Name* `PATH`, *Value* `C:\oss-cad-suite\bin;C:\oss-cad-suite\lib;${env_var:PATH}`; оставить *Append environment to native environment*. Без `lib` в `PATH` openFPGALoader не запускается (не находит свои DLL, код выхода `-1073741515`);
-- вкладка **Common**: *Encoding* → *Other* `UTF-8` (`mergetool` печатает в UTF-8); *Display in favorites menu* → **External Tools**; для общего доступа — *Shared file* `\riscv` (конфигурация сохранится в `fw/` и попадёт в репозиторий);
+- вкладка **Common**: *Encoding* → *Other* `UTF-8` (`fpgaload.py` и `mergetool` печатают в UTF-8); *Display in favorites menu* → **External Tools**; для общего доступа — *Shared file* `\riscv` (конфигурация сохранится в `fw/` и попадёт в репозиторий);
 - **Apply** → **Run**.
 
 **Замечания:**
-- Во время отладки (**Debug**) программатор занят OpenOCD, и openFPGALoader его не откроет. Сначала остановить отладку (**Terminate**).
+- Во время отладки (**Debug**) программатор занят OpenOCD, и загрузка откажется начинаться (см. выше): сначала остановить отладку (**Terminate**). Если OpenOCD всё же потерял связь с программатором и засыпает консоль ошибками `LIBUSB_ERROR_IO`, нажать **Terminate** (или завершить `openocd.exe` в Диспетчере задач), при необходимости переподключить плату.
 - После загрузки ПЛИС первое чтение `dtmcs` возвращает 0. В `fw/openocd/askorv32_tangnano9k.cfg` для этого есть пустое чтение перед подключением, **Debug** сразу после загрузки работает ([debug.md](../hw/info/debug.md#вариант-а-только-winusb-плис-через-openfpgaloader)).
-- То же из командной строки (окно после `C:\oss-cad-suite\environment.bat`, из `fw/Debug`): `openFPGALoader -b tangnano9k riscv.fs` (SRAM), `-f` (flash), `openFPGALoader -b tangnano9k -r` — перезагрузить ПЛИС из flash, как при включении питания.
+- То же из командной строки: `py sw/fpgaload/fpgaload.py sram` (или `flash`) из корня репозитория. Сам openFPGALoader — из окна после `C:\oss-cad-suite\environment.bat`, из `fw/Debug`: `openFPGALoader -b tangnano9k riscv.fs` (SRAM), `-f` (flash), `openFPGALoader -b tangnano9k -r` — перезагрузить ПЛИС из flash, как при включении питания.
 
 ---
 

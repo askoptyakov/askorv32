@@ -2,21 +2,16 @@
 <launchConfiguration type="org.eclipse.ui.externaltools.ProgramLaunchConfigurationType">
     <!-- Запись ПЛИС во встроенную flash (ПЛИС стартует с неё при включении) через openFPGALoader
          на драйвере WinUSB, около 12 с; см. hw/info/debug.md, «Прошивка и отладка без смены драйвера».
-         Как и riscv FPGA SRAM: сборка проекта, mergetool на свежем битстриме Gowin, затем запись -->
+         Как и riscv FPGA SRAM: сборка проекта, затем sw/fpgaload/fpgaload.py (проверка, что отладка
+         остановлена, mergetool на свежем битстриме Gowin, запись) -->
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_LOCATION" value="${env_var:ComSpec}"/>
-    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_TOOL_ARGUMENTS" value="/c ..\..\sw\mergetool\mergetool.exe riscv.bin ..\..\hw\impl\pnr\riscv.posp ..\..\hw\impl\pnr\riscv.fs riscv.fs &amp;&amp; openFPGALoader -b tangnano9k -f riscv.fs 2&gt;&amp;1 | py -u ..\..\sw\conprogress\conprogress.py"/>
+    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_TOOL_ARGUMENTS" value="/c py -u ..\..\sw\fpgaload\fpgaload.py flash"/>
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_WORKING_DIRECTORY" value="${project_loc:riscv}/Debug"/>
-    <!-- openFPGALoader из OSS CAD Suite берёт библиотеки из lib -->
-    <mapAttribute key="org.eclipse.debug.core.environmentVariables">
-        <mapEntry key="PATH" value="C:\oss-cad-suite\bin;C:\oss-cad-suite\lib;${env_var:PATH}"/>
-    </mapAttribute>
-    <booleanAttribute key="org.eclipse.debug.core.appendEnvironmentVariables" value="true"/>
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_LAUNCH_CONFIGURATION_BUILD_SCOPE" value="${projects:riscv}"/>
     <booleanAttribute key="org.eclipse.ui.externaltools.ATTR_INCLUDE_REFERENCED_PROJECTS" value="false"/>
     <booleanAttribute key="org.eclipse.ui.externaltools.ATTR_SHOW_CONSOLE" value="true"/>
     <booleanAttribute key="org.eclipse.debug.ui.ATTR_LAUNCH_IN_BACKGROUND" value="true"/>
-    <!-- mergetool печатает в UTF-8. conprogress склеивает обновления полосы прогресса openFPGALoader
-         в одну строку (в консоли включить обработку возврата каретки, SETUP.md п. 8.5) -->
+    <!-- fpgaload и mergetool печатают в UTF-8 -->
     <stringAttribute key="org.eclipse.debug.ui.ATTR_CONSOLE_ENCODING" value="UTF-8"/>
     <listAttribute key="org.eclipse.debug.ui.favoriteGroups">
         <listEntry value="org.eclipse.ui.externaltools.launchGroup"/>
