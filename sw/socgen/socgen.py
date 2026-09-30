@@ -44,8 +44,16 @@ AUTO_FIRST, AUTO_LAST = 0x11, 0x1E
 NET_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_$]*)(?:\[(\d+)\])?$")
 SV_KEYWORDS = {"input", "output", "inout", "wire", "logic", "reg", "module", "endmodule", "assign", "always",
                "begin", "end", "if", "else", "case", "for", "generate", "parameter", "localparam", "int", "bit"}
+#Имена, уже занятые в top.sv: порт cpu, сигналы, экземпляры и модули, параметры (как RESERVED_NETS в web/app.js)
 RESERVED_NETS = {"tck_pad_i", "tms_pad_i", "tdi_pad_i", "tdo_pad_o", "per_clk", "per_rst", "per_Write",
-                 "per_Read", "per_Addr", "per_WData", "per_RData", "irq_stim", "irq_local", "irq_src"}
+                 "per_Read", "per_Addr", "per_WData", "per_RData", "irq_stim", "irq_local", "irq_src",
+                 "sRead", "top", "cpu", "permux", "memmux", "gpio", "gpio_top", "stim", "stim_top", "tm1638", "tm1638_top",
+                 "CORE_TYPE", "M_EXT", "DIV_BPC", "IMEM_TYPE", "BSRAM_IMEM_SIZE", "SYNTH_IMEM_SIZE", "IMEM_INIT_FILE",
+                 "DMEM_TYPE", "BSRAM_DMEM_SIZE", "SYNTH_DMEM_SIZE", "DMEM_INIT_FILE", "DEBUG_EN", "PLIC_SOURCES",
+                 "FCLKIN", "XTAL_KHZ", "PLL_IDIV_SEL", "PLL_FBDIV_SEL", "PLL_ODIV_SEL", "WIN_MASK", "CLK_BASE_MHZ",
+                 "CLK_DMEM_MHZ"}
+#Сигналы шины устройств (gpio_Write, tim_Addr...) и их адреса (GPIO_BASE...)
+RESERVED_RE = re.compile(r"^(gpio|tim|tm)_(Write|Addr|WriteData|ReadData)$|^(GPIO|TM1638|STIM)_BASE$")
 
 
 class ConfigError(Exception):
@@ -204,8 +212,11 @@ def validate(m, dev):
             errors.append(f"Вывод {pin}: нет имени цепи")
             continue
         mm = NET_RE.match(net)
-        if not mm or mm.group(1) in SV_KEYWORDS or mm.group(1) in RESERVED_NETS:
+        if not mm or mm.group(1) in SV_KEYWORDS:
             errors.append(f"Вывод {pin}: имя «{net}» недопустимо для порта SystemVerilog")
+            continue
+        if mm.group(1) in RESERVED_NETS or RESERVED_RE.match(mm.group(1)):
+            errors.append(f"Вывод {pin}: имя «{mm.group(1)}» уже занято в top.sv - выберите другое")
             continue
         if net in nets:
             errors.append(f"Имя «{net}» у выводов {nets[net]} и {pin}")

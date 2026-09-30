@@ -51,5 +51,5 @@
     "76": { "net": "GMB_GPIO[4]" },
     "77": { "net": "GMB_GPIO[1]" }
   },
-  "build": { "toolchain": "apicula" }
+  "build": { "toolchain": "gowin" }
 }

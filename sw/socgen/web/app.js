@@ -19,7 +19,8 @@ const PULLS = ['UP', 'DOWN', 'NONE', 'KEEPER'];
 const DRIVES = ['4', '8', '12', '16', '24'];
 const VCCIOS = ['3.3', '2.5', '1.8', '1.5', '1.2'];
 
-//Периферия на шине memmux: окно 16 МБайт (маска 0xFF000000), предпочтительный слот при "auto"
+//Пользовательская периферия: на порту per_* процессора (cpu.sv) через memmux в top.sv, окно 16 МБайт
+//(маска 0xFF000000), предпочтительный слот при "auto". Системные окна ниже - внутри cpu.sv
 const BLOCKS = {
   gpio:   { title: 'GPIO',   color: 'var(--c-gpio)',   slot: 0x11, about: 'Порты ввода-вывода' },
   tm1638: { title: 'TM1638', color: 'var(--c-tm1638)', slot: 0x12, about: 'Индикатор и кнопки TM1638' },
@@ -37,9 +38,15 @@ const AUTO_FIRST = 0x11, AUTO_LAST = 0x1E;
 const NET_RE = /^[A-Za-z_][A-Za-z0-9_$]*(\[(\d+)\])?$/;
 const SV_KEYWORDS = new Set(['input', 'output', 'inout', 'wire', 'logic', 'reg', 'module', 'endmodule', 'assign',
   'always', 'begin', 'end', 'if', 'else', 'case', 'for', 'generate', 'parameter', 'localparam', 'int', 'bit']);
-//Имена, уже занятые в top.sv
-const RESERVED_NETS = new Set(['tck_pad_i', 'tms_pad_i', 'tdi_pad_i', 'tdo_pad_o', 'clk_dmem', 'rst_sys', 'irq_ext',
-  'irq_stim', 'irq_local', 'plic_src']);
+//Имена, уже занятые в top.sv: порт cpu, сигналы, экземпляры и модули, параметры (как RESERVED_NETS в socgen.py)
+const RESERVED_NETS = new Set(['tck_pad_i', 'tms_pad_i', 'tdi_pad_i', 'tdo_pad_o',
+  'per_clk', 'per_rst', 'per_Write', 'per_Read', 'per_Addr', 'per_WData', 'per_RData', 'irq_stim', 'irq_local', 'irq_src',
+  'sRead', 'top', 'cpu', 'permux', 'memmux', 'gpio', 'gpio_top', 'stim', 'stim_top', 'tm1638', 'tm1638_top',
+  'CORE_TYPE', 'M_EXT', 'DIV_BPC', 'IMEM_TYPE', 'BSRAM_IMEM_SIZE', 'SYNTH_IMEM_SIZE', 'IMEM_INIT_FILE',
+  'DMEM_TYPE', 'BSRAM_DMEM_SIZE', 'SYNTH_DMEM_SIZE', 'DMEM_INIT_FILE', 'DEBUG_EN', 'PLIC_SOURCES',
+  'FCLKIN', 'XTAL_KHZ', 'PLL_IDIV_SEL', 'PLL_FBDIV_SEL', 'PLL_ODIV_SEL', 'WIN_MASK', 'CLK_BASE_MHZ', 'CLK_DMEM_MHZ']);
+//Сигналы шины устройств (gpio_Write, tim_Addr...) и их адреса (GPIO_BASE...)
+const RESERVED_RE = /^(gpio|tim|tm)_(Write|Addr|WriteData|ReadData)$|^(GPIO|TM1638|STIM)_BASE$/;
 
 // ============================================================================================
 // Модель
@@ -216,7 +223,10 @@ function validate(m) {
     if (!net) { out.push({ lvl: 'err', text: `Вывод ${pin}: нет имени цепи`, pin }); continue; }
     const mm = NET_RE.exec(net);
     const baseName = mm ? net.replace(/\[\d+\]$/, '') : net;
-    if (!mm || SV_KEYWORDS.has(baseName) || RESERVED_NETS.has(baseName)) {
+    if (mm && (RESERVED_NETS.has(baseName) || RESERVED_RE.test(baseName))) {
+      out.push({ lvl: 'err', text: `Вывод ${pin}: имя «${baseName}» уже занято в top.sv - выберите другое`, pin }); continue;
+    }
+    if (!mm || SV_KEYWORDS.has(baseName)) {
       out.push({ lvl: 'err', text: `Вывод ${pin}: имя «${net}» недопустимо для порта SystemVerilog`, pin }); continue;
     }
     if (nets.has(net)) out.push({ lvl: 'err', text: `Имя «${net}» у выводов ${nets.get(net)} и ${pin}`, pin });
@@ -450,11 +460,11 @@ function tileDefs() {
     { key: 'tm1638', toggle: true },
     { key: 'stim', toggle: true },
     { key: 'clint', title: 'CLINT', color: 'var(--c-core)', editable: false, on: true,
-      body: `<span class="v">0x0200_0000</span><br><span class="dim">mtime = mcycle, msip</span>` },
+      body: `<span class="v">0x0200_0000</span><br><span class="dim">mtime = mcycle, msip · в cpu.sv</span>` },
     { key: 'plic', title: 'PLIC', color: 'var(--c-core)', editable: false, on: true,
-      body: `<span class="v">0x0C00_0000</span><br><span class="dim">${core.plicSources ?? 8} источников → MEI</span>` },
-    { key: 'mem', title: 'Шина memmux', color: 'var(--c-core)', editable: false, on: true,
-      body: `DMEM <span class="v">0x1000_0000</span><br><span class="dim">окно 16 МБайт на блок</span>` },
+      body: `<span class="v">0x0C00_0000</span><br><span class="dim">${core.plicSources ?? 8} источников → MEI · в cpu.sv</span>` },
+    { key: 'mem', title: 'Шина периферии', color: 'var(--c-core)', editable: false, on: true,
+      body: `Порт <span class="v">per_*</span> процессора<br><span class="dim">адреса вне IMEM, DMEM, CLINT, PLIC; окно 16 МБайт на устройство</span>` },
   ].map(t => {
     if (!t.toggle) return t;
     const k = t.key, blk = b[k], meta = BLOCKS[k];
