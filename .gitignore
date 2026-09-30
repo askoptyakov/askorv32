@@ -18,8 +18,14 @@ hw/src/gwlib/*
 hw/src/gwlib/*_tmp.v
 hw/*.user
 hw/src/test
+hw/impl_oss/*
+!hw/impl_oss/riscv.fs
 hw/sim/build/
 __pycache__/
+
+# sw
+sw/socgen/eclipse/build/*
+!sw/socgen/eclipse/build/askorv32-gwsoc-repo.zip
 
 # sdk (установщики в репозитории не храним)
 sdk/*.exe

@@ -53,12 +53,13 @@ endmodule
 //27 МГц - IDIV 0, FBDIV 0, ODIV 32 (VCO 864); 40.5 МГц - IDIV 1, FBDIV 2, ODIV 16 (VCO 648);
 //54 МГц - IDIV 0, FBDIV 1, ODIV 16 (VCO 864).
 //При смене частоты пересчитать SYSCLK_HZ в прошивке (fw/Core/Inc/periphery.h).
-module clk_pll #(parameter int IDIV_SEL = 1, FBDIV_SEL = 0, ODIV_SEL = 64)
+module clk_pll #(parameter FCLKIN = "27",   //Частота кварца, МГц (строка; задаёт конфигуратор в top.sv)
+                 parameter int IDIV_SEL = 1, FBDIV_SEL = 0, ODIV_SEL = 64)
    (input  logic clkin,        //27 МГц с генератора платы
     output logic clkout,
     output logic lock);
     rPLL #(
-        .FCLKIN("27"), .DEVICE("GW1NR-9C"),
+        .FCLKIN(FCLKIN), .DEVICE("GW1NR-9C"),
         .DYN_IDIV_SEL("false"), .IDIV_SEL(IDIV_SEL),
         .DYN_FBDIV_SEL("false"), .FBDIV_SEL(FBDIV_SEL),
         .DYN_ODIV_SEL("false"), .ODIV_SEL(ODIV_SEL),

@@ -1,5 +1,5 @@
 // plic.S - тесты контроллера прерываний PLIC (источники 2..8 выставляет тестбенч по записи
-// в SIM_PLIC_SRC; источник 1 - таймер STIM)
+// в SIM_PLIC_SRC; источник 1 - таймер тестбенча)
 #include "riscv_test.h"
 #include "priv_test.h"
 
@@ -62,13 +62,13 @@ RVTEST_CODE_BEGIN
     TEST_CASE(18, x20, 0x8000000B, ("mei[mcause=11]"),       nop)
     TEST_CASE(19, x26, 7, ("mei[isr-claimed-id=7]"),         nop)
     TEST_CASE(20, x14, 0, ("mei[completed,no-repeat]"),      nop; nop; nop; mv x14, x23; addi x14, x14, -1)
-    //#6 Источник 1 - таймер STIM через PLIC
+    //#6 Источник 1 - таймер тестбенча через PLIC
     TEST_CASE(21, x26, 1, ("mei[stim-via-plic:id=1]"),       li x23, 0; PRIO(1, 1); li x2, PLIC_ENABLE; li x3, 1 << 1; sw x3, 0(x2); \
-                                                             li x2, STIM_BASE; sw x0, STIM_PR(x2); li x1, 20; sw x1, STIM_PER(x2); \
-                                                             li x1, STIM_CR_EN | STIM_CR_UIE; sw x1, STIM_CR(x2); \
+                                                             li x2, TBTIM_BASE; sw x0, TBTIM_PR(x2); li x1, 20; sw x1, TBTIM_PER(x2); \
+                                                             li x1, TBTIM_CR_EN | TBTIM_CR_UIE; sw x1, TBTIM_CR(x2); \
                                                              li x3, 200; 3: bnez x23, 4f; addi x3, x3, -1; bnez x3, 3b; 4:)
     csrci mstatus, 8; csrw mie, x0
-    li x2, STIM_BASE; sw x0, STIM_CR(x2)
+    li x2, TBTIM_BASE; sw x0, TBTIM_CR(x2)
     j pass
 
 //Таблица векторов: только исключения (ошибка теста) и MEI
@@ -83,12 +83,12 @@ vtable:
     j bad_isr
     .endr
 
-//Обработчик MEI: claim, сбросить источник (у тестбенча или STIM), complete
+//Обработчик MEI: claim, сбросить источник (у тестбенча или таймера), complete
 mei_isr:
     csrr x20, mcause; addi x23, x23, 1
     li x24, PLIC_CLAIM; lw x26, 0(x24)
     li x25, 1; bne x26, x25, 1f
-    li x25, STIM_BASE; sw x0, STIM_CR(x25); li x21, 1; sw x21, STIM_SR(x25)   //STIM: выключить и сбросить UIF
+    li x25, TBTIM_BASE; sw x0, TBTIM_CR(x25); li x21, 1; sw x21, TBTIM_SR(x25)   //таймер: выключить и сбросить UIF
     j 2f
 1:  li x25, SIM_PLIC_SRC; sw x0, 0(x25)
 2:  sw x26, 0(x24)

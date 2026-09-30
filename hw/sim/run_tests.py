@@ -32,9 +32,8 @@ PRIV_DIR = TESTS_DIR / "priv"          # CSR, исключения, прерыв
 PRIV_ORDER = ["csr", "trap", "irq", "plic", "dbg"]
 BUILD_DIR = SIM_DIR / "build"
 
-RTL = [HW_DIR / "src" / f for f in ("top.sv", "core.sv", "mdu.sv", "mem.sv", "clock.sv", "periph/mux.sv", "periph/gpio.sv",
-                                     "periph/tm1638.sv", "periph/simple_timer/tim.sv", "periph/clint.sv",
-                                     "periph/plic.sv", "debug/dm.sv", "debug/dtm_gowin.sv",
+RTL = [HW_DIR / "src" / f for f in ("cpu.sv", "core.sv", "mdu.sv", "mem.sv", "clock.sv", "sys/mux.sv",
+                                     "sys/clint.sv", "sys/plic.sv", "debug/dm.sv", "debug/dtm_gowin.sv",
                                      "debug/fpgacapzero/jtag_tap_gowin.v", "debug/fpgacapzero/dff_reg_sync.v",
                                      "debug/fpgacapzero/dff_sync.v")] + [SIM_DIR / "gw_jtag_model.sv"]
 TB = SIM_DIR / "tb_core.sv"

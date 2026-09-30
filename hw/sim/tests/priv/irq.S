@@ -1,4 +1,4 @@
-// irq.S - тесты прерываний: CLINT (MSI, MTI), локальное прерывание LI0 (таймер STIM),
+// irq.S - тесты прерываний: CLINT (MSI, MTI), локальное прерывание LI0 (таймер тестбенча),
 // векторный и прямой режим mtvec, маскирование, приоритеты, точность ловушек в конвейере.
 //
 // Обработчики используют только x20..x27:
@@ -46,14 +46,14 @@ RVTEST_CODE_BEGIN
     TEST_LEU(17, x25, 1000, ("mti[not-early]"))
     csrci mstatus, 8; li x1, MIP_MTIP; csrc mie, x1
 
-    //#3 LI0: событие обновления таймера STIM
+    //#3 LI0: событие обновления таймера тестбенча
     li x23, 0
-    TEST_CASE(18, x23, 1, ("li0-stim[taken]"),         li x1, MIP_LI0; csrs mie, x1; csrsi mstatus, 8; \
-                                                       li x2, STIM_BASE; sw x0, STIM_PR(x2); li x1, 5; sw x1, STIM_PER(x2); \
-                                                       li x1, STIM_CR_EN | STIM_CR_UIE; sw x1, STIM_CR(x2); WAIT_IRQ(1, 100))
-    TEST_CASE(19, x20, 0x80000010, ("li0-stim[mcause=16]"), nop)
-    TEST_CASE(20, x26, 16, ("li0-stim[vector-BASE+0x40]"), nop)
-    TEST_CASE(21, x14, 0, ("li0-stim[UIF-cleared]"),   li x2, STIM_BASE; lw x14, STIM_SR(x2))
+    TEST_CASE(18, x23, 1, ("li0-tbtim[taken]"),         li x1, MIP_LI0; csrs mie, x1; csrsi mstatus, 8; \
+                                                       li x2, TBTIM_BASE; sw x0, TBTIM_PR(x2); li x1, 5; sw x1, TBTIM_PER(x2); \
+                                                       li x1, TBTIM_CR_EN | TBTIM_CR_UIE; sw x1, TBTIM_CR(x2); WAIT_IRQ(1, 100))
+    TEST_CASE(19, x20, 0x80000010, ("li0-tbtim[mcause=16]"), nop)
+    TEST_CASE(20, x26, 16, ("li0-tbtim[vector-BASE+0x40]"), nop)
+    TEST_CASE(21, x14, 0, ("li0-tbtim[UIF-cleared]"),   li x2, TBTIM_BASE; lw x14, TBTIM_SR(x2))
     csrci mstatus, 8; li x1, MIP_LI0; csrc mie, x1
 
     //#4 Приоритет: MSI, MTI и LI0 ожидают одновременно -> порядок обработки MSI, MTI, LI0
@@ -62,7 +62,7 @@ RVTEST_CODE_BEGIN
     li x2, CLINT_MSIP; li x1, 1; sw x1, 0(x2)
     li x2, CLINT_MTIMECMP; sw x0, 0(x2); sw x0, 4(x2)
     //Период больше остатка счётчика после предыдущего теста: в режиме счёта вверх событие - при CNT == PER
-    li x2, STIM_BASE; sw x0, STIM_PR(x2); li x1, 15; sw x1, STIM_PER(x2); li x1, STIM_CR_EN | STIM_CR_UIE; sw x1, STIM_CR(x2)
+    li x2, TBTIM_BASE; sw x0, TBTIM_PR(x2); li x1, 15; sw x1, TBTIM_PER(x2); li x1, TBTIM_CR_EN | TBTIM_CR_UIE; sw x1, TBTIM_CR(x2)
     li x3, 100; li x4, MIP_MSIP | MIP_MTIP | MIP_LI0
 1:  csrr x1, mip; beq x1, x4, 2f; addi x3, x3, -1; bnez x3, 1b
 2:
@@ -95,12 +95,12 @@ RVTEST_CODE_BEGIN
     jal x17, init_buf
     li x23, 0; li x22, 71                             //Период MTI: 71..86 тактов (запас над временем обработчика)
     li x1, MIP_MTIP | MIP_LI0; csrs mie, x1
-    li x2, STIM_BASE; sw x0, STIM_PR(x2); li x1, 60; sw x1, STIM_PER(x2); li x1, STIM_CR_EN | STIM_CR_UIE; sw x1, STIM_CR(x2) //LI0: каждые 61 такт
+    li x2, TBTIM_BASE; sw x0, TBTIM_PR(x2); li x1, 60; sw x1, TBTIM_PER(x2); li x1, TBTIM_CR_EN | TBTIM_CR_UIE; sw x1, TBTIM_CR(x2) //LI0: каждые 61 такт
     li x2, CLINT_MTIME; lw x1, 0(x2); addi x1, x1, 30; li x2, CLINT_MTIMECMP; sw x1, 0(x2); sw x0, 4(x2)
     csrsi mstatus, 8
     LA_ABS(x1, tbuf); li x2, 300; jal x17, work
     csrci mstatus, 8
-    li x2, STIM_BASE; sw x0, STIM_CR(x2); li x1, 1; sw x1, STIM_SR(x2)
+    li x2, TBTIM_BASE; sw x0, TBTIM_CR(x2); li x1, 1; sw x1, TBTIM_SR(x2)
     li x2, CLINT_MTIMECMP; li x1, -1; sw x1, 4(x2)
     csrw mie, x0
     TEST_EQ_REG(31, x14, x8, ("precise[result-with-irq]"))
@@ -161,7 +161,7 @@ vtable:
     j bad_isr       //13
     j bad_isr       //14
     j bad_isr       //15
-    j li0_isr       //16 LI0 - STIM
+    j li0_isr       //16 LI0 - таймер тестбенча
     .rept 15
     j bad_isr       //17..31
     .endr
@@ -188,10 +188,10 @@ mti_isr:
 
 li0_isr:
     csrr x20, mcause; csrr x21, mepc; addi x23, x23, 1
-    li x24, STIM_BASE
+    li x24, TBTIM_BASE
     bnez x22, 1f
-    sw x0, STIM_CR(x24)                               //Однократно: таймер выключается ДО сброса UIF,
-1:  li x25, 1; sw x25, STIM_SR(x24)                   //иначе событие между записями снова выставит UIF
+    sw x0, TBTIM_CR(x24)                               //Однократно: таймер выключается ДО сброса UIF,
+1:  li x25, 1; sw x25, TBTIM_SR(x24)                   //иначе событие между записями снова выставит UIF
     bnez x22, 2f
     li x26, 16; sw x26, 0(x27); addi x27, x27, 4
 2:  mret

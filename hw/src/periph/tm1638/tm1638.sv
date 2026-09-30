@@ -11,45 +11,27 @@ module tm1638_top
     output logic                   tm_stb,
     inout  logic                   tm_dio
 );
-    //Карта регистров:
-    //>>0x00 - Установка значения на семисегментный индикатор(отображает HEX)
-    //>>0x04 - Установка значения на светодиоды
-    //<<0x08 - Состояние кнопок
-    
+    //Описание, регистры и примеры - README.md в этой папке. Тест - tb_tm1638.sv.
+    //Карта регистров (регистровая часть - по шаблону periph_regs, hw/src/periph/periph_regs.sv):
+    //>>0x00 SEGS - значение для семисегментного индикатора (8 цифр HEX, цифра 0 - младшая тетрада)
+    //>>0x04 LEDS - светодиоды платы (8 бит)
+    //<<0x08 KEYS - состояние кнопок платы (8 бит)
+    //После сброса SEGS и LEDS - 0.
+
     logic [ 7:0] tm_key, tm_led;
     logic [31:0] tm_digit;
-    
-    always_ff @(posedge clk)
-        case (Addr[3:2])
-            0 : begin
-                    if (Write[0]) tm_digit[7:0]   <= WData[7:0];
-                    if (Write[1]) tm_digit[15:8]  <= WData[15:8];
-                    if (Write[2]) tm_digit[23:16] <= WData[23:16];
-                    if (Write[3]) tm_digit[31:24] <= WData[31:24];
-                end
-            1 : begin
-                    if (Write[0]) tm_led[7:0]     <= WData[7:0];
-                end
-        endcase
 
-    generate if (MEMORY_TYPE) begin   //#1 - Память BSRAM
-        always_ff @(posedge clk)
-            case (Addr[3:2])
-                0 : RData <= tm_digit;
-                1 : RData <= {24'd0, tm_led[7:0]};
-                2 : RData <= {24'd0, tm_key[7:0]};
-          default : RData <= 32'd0;
-            endcase
-    end else begin                    //#0 - Синтезированная память
-        always_comb
-            case (Addr[3:2])
-                0 : RData = tm_digit;
-                1 : RData = {24'd0, tm_led[7:0]};
-                2 : RData = {24'd0, tm_key[7:0]};
-          default : RData = 32'd0;
-            endcase
-    end
-    endgenerate
+    logic [2:0][ 3:0] we;
+    logic      [31:0] wdata;
+    periph_regs #(.N(3), .MEMORY_TYPE(MEMORY_TYPE)) regs
+        (.clk(clk), .Write(Write), .Read(1'b0), .Addr(Addr), .WData(WData), .RData(RData),
+         .we(we), .re(), .wdata(wdata),
+         .rdata({32'(tm_key),                                    //0x08 KEYS
+                 32'(tm_led),                                    //0x04 LEDS
+                 tm_digit}));                                    //0x00 SEGS
+
+    periph_reg #(.W(32)) r_segs (.clk(clk), .rst(rst), .we(we[0]), .wdata(wdata), .q(tm_digit));
+    periph_reg #(.W(8))  r_leds (.clk(clk), .rst(rst), .we(we[1]), .wdata(wdata), .q(tm_led));
 
     tm1638_board_controller #(.clk_mhz(CLK_MHZ)) tm1638_board_controller
         (.clk(clk), .rst(rst),

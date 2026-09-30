@@ -16,6 +16,8 @@
 | 7 | Eclipse IDE + Embedded CDT | среда для прошивки `fw/` | `eclipse-inst-jre-win64.exe` | 4.41, Embedded CDT 6.8.0 | ✅ |
 | 8 | xPack OpenOCD | отладка через JTAG платы | `xpack-openocd-<версия>-win32-x64.zip` | 0.12 и новее | ⬜ |
 | 9 | Zadig | драйвер WinUSB для OpenOCD | `zadig-<версия>.exe` | 2.9 | ⬜ |
+| 10 | OSS CAD Suite (Yosys, nextpnr, apicula) | сборка ПЛИС открытым маршрутом (кнопка «Собрать» конфигуратора) | `oss-cad-suite-windows-x64-<дата>.tgz` | 2026-09-29 (Yosys 0.69, apicula 0.34) | ✅ |
+| 11 | Плагин «Конфигуратор ПЛИС» | визуальная настройка ПЛИС из проекта `fw/` в Eclipse | `sw/socgen/eclipse/build/askorv32-gwsoc-repo.zip` | 1.0.0 | ⬜ |
 
 Ставьте программы в пути **без кириллицы**, а лучше и без пробелов.
 
@@ -70,6 +72,24 @@
    1. Открыть `hw/riscv.gprj`.
    2. Запустить **Run All**: синтез и P&R должны пройти без ошибок.
    3. В Programmer должно определяться устройство **GW1NR-9C**.
+
+### 4.1. Сборка из конфигуратора и минимальный набор файлов
+
+Кнопка «Собрать» конфигуратора ПЛИС (маршрут **Gowin EDA**) вызывает командную строку IDE `IDE\bin\gw_sh.exe`; окно Gowin EDA при этом не открывается. Путь к IDE находится сам (`C:\Program Files\Gowin\*`), другой каталог задаётся переменной окружения `GOWIN_HOME`.
+
+Для одной только сборки полная установка (1,5 ГБ) не нужна. Проверено на 1.9.11.03: достаточно скопировать из установленной IDE около 310 МБ, и битовый поток получается тем же, что и у полной установки (отличается только время создания в заголовке):
+
+| Из `IDE\` | Размер | Примечание |
+|------------|-------:|------------|
+| `bin\` | 260 МБ | без `Qt5WebEngine*`, `QtWebEngineProcess.exe`, `opengl32sw.dll`, `d3dcompiler_47.dll`, `libEGL.dll`, `libGLESv2.dll`, `translations\` (−155 МБ); **`vhdl_packages\` нужен** — синтез требует его и для SystemVerilog |
+| `lib\` | 16 МБ | Tcl для `gw_sh` |
+| `plugins\` | 14 МБ | **обязателен**: без него `gw_sh` молча завершается с кодом 127 |
+| `data\` | 17 МБ | можно оставить только `data\device\GW1NR-9C` и CSV-файлы |
+| `share\config`, `share\firmcore`, `share\device\GW1NR-9C`, `share\device\*.csv` | 6 МБ | данные кристалла; остальные семейства и `share\ibis` не нужны |
+
+Не нужны для сборки: `doc`, `ipcore`, `simlib` (модели для симулятора — они нужны `hw/sim`, `prim_sim.v`), `Programmer` (прошивка платы), а также графические программы IDE.
+
+Урезанную копию можно положить в любую папку и указать её в `GOWIN_HOME`. Сначала всё равно нужна обычная установка, из которой берутся файлы. Распространять такую копию нельзя, её условия те же, что у лицензии Gowin EDA.
 
 ## 5. xPack RISC-V GCC
 
@@ -174,3 +194,22 @@ openocd -c "set JTAG_ONLY 1" -f askorv32_tangnano9k.cfg -c "init; irscan gw1nr9.
 
 - Путь к папке проекта не должен содержать пробелов: программа загружается командой GDB `restore`, которая не понимает кавычки.
 - Настройки конфигурации (вкладки *Debugger* и *Startup*) и причины такого выбора — в [debug.md, «Eclipse»](../hw/info/debug.md#eclipse).
+
+---
+
+## 10. OSS CAD Suite (открытый маршрут ПЛИС)
+
+1. Скачать `oss-cad-suite-windows-x64-<дата>.tgz` со страницы выпусков <https://github.com/YosysHQ/oss-cad-suite-build/releases> (около 600 МБ).
+2. Распаковать в `C:\` так, чтобы получилась папка `C:\oss-cad-suite` (в Git Bash: `tar -xzf oss-cad-suite-windows-x64-<дата>.tgz -C /c/`). Другой путь - через переменную окружения `OSS_CAD_SUITE`.
+3. Проверка: `C:\oss-cad-suite\environment.bat`, затем `yosys -V` и `nextpnr-himbaechel --version`.
+
+Генератор `sw/socgen/socgen.py` сам добавляет `bin` и `lib` набора в `PATH`, отдельно настраивать окружение не нужно.
+
+## 11. Плагин «Конфигуратор ПЛИС» для Eclipse
+
+1. Собрать архив (нужен только установленный Eclipse): `py sw/socgen/eclipse/build.py` → `sw/socgen/eclipse/build/askorv32-gwsoc-repo.zip`.
+2. Eclipse: **Help → Install New Software → Add… → Archive…** → выбрать этот zip → отметить **askoRV32** → **снять** флажок внизу **Contact all update sites during install to find required software** (иначе p2 заодно тянет посторонние пакеты, например `jcl.over.slf4j`, и падает с «An error occurred while collecting items to be installed») → **Next** → **Finish**. На вопрос о неподписанном содержимом ответить **Install Anyway**, затем перезапустить Eclipse.
+3. В проекте `riscv` появится файл `riscv.gwsoc` (двойной щелчок открывает конфигуратор), в контекстном меню проекта и на панели инструментов - команда **Конфигуратор ПЛИС**.
+4. Обновление: собрать архив заново и повторить установку (**Help → Install New Software** предложит новую версию).
+
+Подробнее - [sw/socgen/README.md](../sw/socgen/README.md).

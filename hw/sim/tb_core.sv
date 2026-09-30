@@ -1,10 +1,13 @@
 `timescale 1ns/1ps
 //==============================================================================================
-// tb_core - тестбенч процессора askoRV32: модуль top.sv целиком с памятью BSRAM
+// tb_core - тестбенч ядра askoRV32: процессор cpu.sv с памятью BSRAM, без периферии платы
 //==============================================================================================
-//DESCRIPTION: Моделируется вся система из top.sv: ядро, память инструкций и данных (модели
-//SP из библиотеки GOWIN prim_sim.v), мультиплексор шины memmux, GPIO, TM1638, таймер STIM,
-//CLINT, тактирование (clk_div2, для однотактного ядра - divideby3) и сброс с кнопки.
+//DESCRIPTION: Моделируется процессор cpu.sv: ядро, память инструкций и данных (модели SP из
+//библиотеки GOWIN prim_sim.v), системная шина memmux, CLINT, PLIC, отладчик, тактирование
+//(rPLL, для однотактного ядра - divideby3) и сброс с кнопки. Пользовательской периферии нет:
+//верхний уровень платы top.sv (его создаёт конфигуратор) в тесты ядра не входит, поэтому
+//конфигурация платы на них не влияет. Периферия проверяется своими тестами в папках устройств
+//(hw/src/periph/<устройство>/tb_*.sv, запуск - hw/sim/run_periph_tests.py).
 //Программа загружается в модели BSRAM до снятия сброса, затем тестбенч ждёт записи по
 //адресу TOHOST (протокол описан в tests/riscv_test.h).
 //
@@ -17,13 +20,15 @@
 //  +timeout=<N>   - предельное число тактов ядра (по умолчанию TIMEOUT)
 //  +trace=<файл>  - трасса записей в регистры и память
 //  +pctrace=<файл>- PC на каждом такте ядра (профилирование однотактного ядра)
-//  +leds=<файл>   - журнал переключений выходов GPIO (такт ядра и значение)
 //
-//Устройства моделирования (адреса вне карты памяти top.sv, запись никуда не попадает, её
-//перехватывает тестбенч):
+//Устройства тестбенча на порту пользовательской периферии cpu (per_*), по правилам шины
+//регистров (данные чтения - на следующем такте):
 //  0x1F000000..08 - TOHOST: код завершения и аргументы
 //  0x1F00000C     - консоль: младший байт записи выводится как символ
 //  0x1F000014     - уровни источников PLIC 2..8 (бит N - источник N)
+//  0x1F000100     - таймер тестбенча для тестов прерываний (модель таймера STIM без предделителя
+//                   и режимов): 0x04 CR ([3] EN, [4] UIE), 0x08 PER, 0x10 CNT, 0x14 SR ([0] UIF,
+//                   сброс записью 1). Период - PER + 1 тактов шины; запрос - LI0 и источник 1 PLIC
 //+dbgtest - сценарий отладки через JTAG (tb_debug.svh) параллельно с программой
 //
 //Результат - одна строка "RESULT PASS|FAIL|INCOMPLETE|TIMEOUT ..." для run_tests.py.
@@ -39,37 +44,77 @@ module tb_core;
     localparam int          DMEM_WORDS  = DMEM_KB * 1024 / 4;
     localparam logic [31:0] TOHOST      = 32'h1F00_0000;
 
-    //#1 Система top.sv: тактовый генератор 27 МГц и кнопка сброса
+    //#1 Процессор cpu.sv: тактовый генератор 27 МГц и кнопка сброса
     logic clk   = 1'b0;
     logic rst_n = 1'b0;
     always #18.519 clk = ~clk;
 
-    wire [5:0] led, GMB_GPIO;
-    wire [1:0] GMB_DRIVER_E, GMB_DRIVER_D;
-    wire [2:0] GPIO;
-    logic      tck = 1'b0, tms = 1'b1, tdi = 1'b0;    //JTAG: управляет сценарий отладки (tb_debug.svh)
-    wire       tdo;
+    logic        tck = 1'b0, tms = 1'b1, tdi = 1'b0;  //JTAG: управляет сценарий отладки (tb_debug.svh)
+    wire         tdo;
+    wire         per_clk, per_rst;
+    wire  [ 3:0] per_Write;
+    wire         per_Read;
+    wire  [31:0] per_Addr, per_WData;
+    logic [31:0] per_RData = 32'd0;
+    wire  [15:0] irq_local;
+    wire  [ 8:1] irq_src;
 
-    top #(.CORE_TYPE(CORE_TYPE),
+    cpu #(.CORE_TYPE(CORE_TYPE),
           .IMEM_TYPE(1'b1), .BSRAM_IMEM_SIZE(IMEM_KB),
-          .DMEM_TYPE(1'b1), .BSRAM_DMEM_SIZE(DMEM_KB))
-        dut (.clk(clk), .rst_n(rst_n), .led(led), .GMB_GPIO(GMB_GPIO),
-             .GMB_DRIVER_E(GMB_DRIVER_E), .GMB_DRIVER_D(GMB_DRIVER_D), .GPIO(GPIO),
-             .tck_pad_i(tck), .tms_pad_i(tms), .tdi_pad_i(tdi), .tdo_pad_o(tdo));
+          .DMEM_TYPE(1'b1), .BSRAM_DMEM_SIZE(DMEM_KB), .PLIC_SOURCES(8))
+        dut (.clk(clk), .rst_n(rst_n),
+             .tck_pad_i(tck), .tms_pad_i(tms), .tdi_pad_i(tdi), .tdo_pad_o(tdo),
+             .per_clk(per_clk), .per_rst(per_rst),
+             .per_Write(per_Write), .per_Read(per_Read), .per_Addr(per_Addr), .per_WData(per_WData), .per_RData(per_RData),
+             .irq_local(irq_local), .irq_src(irq_src));
 
-    //Источники PLIC 2..8 выставляет программа записью по адресу 0x1F000014 (бит N - источник N),
-    //источник 1 - таймер STIM, как в top.sv
-    logic [31:0] sim_plic_src = 32'd0;
-    wire [8:2] sim_irq_ext = sim_plic_src[8:2];      //Icarus: force от part-select переменной не отслеживается
-    initial force dut.irq_ext = sim_irq_ext;
-
-    //Внутренние сигналы top.sv, на которые опирается тестбенч
+    //Внутренние сигналы cpu.sv, на которые опирается тестбенч
     wire        clk_core = dut.clk_core;
     wire        clk_dmem = dut.clk_dmem;
     wire        rst      = dut.rst_sync;
     wire [ 3:0] dmem_Write     = dut.dmem_Write;
     wire [31:0] dmem_Addr      = dut.dmem_Addr;
     wire [31:0] dmem_WriteData = dut.dmem_WriteData;
+
+    //#1.1 Устройства тестбенча на порту per_*: источники PLIC 2..8 (запись 0x1F000014) и таймер
+    //для тестов прерываний (0x1F000100)
+    localparam logic [31:0] SIM_PLIC = 32'h1F00_0014, SIM_TIM = 32'h1F00_0100;
+    logic [31:0] sim_plic_src = 32'd0;
+    logic [ 4:0] tim_cr  = '0;
+    logic [15:0] tim_per = '0, tim_cnt = '0;
+    logic        tim_uif = 1'b0, tim_irq = 1'b0;
+    wire         tim_we_sr = (|per_Write) && per_Addr == SIM_TIM + 32'h14 && per_WData[0];
+    always @(posedge per_clk)
+        if (per_rst) begin
+            sim_plic_src <= '0; tim_cr <= '0; tim_per <= '0; tim_cnt <= '0; tim_uif <= 1'b0; tim_irq <= 1'b0;
+        end else begin
+            if (|per_Write)
+                case (per_Addr)
+                    SIM_PLIC:          sim_plic_src <= per_WData;
+                    SIM_TIM + 32'h04:  tim_cr       <= per_WData[4:0];
+                    SIM_TIM + 32'h08:  tim_per      <= per_WData[15:0];
+                    default: ;
+                endcase
+            if (tim_cr[3]) begin                                //EN: счёт вверх до PER, затем событие обновления
+                if (tim_cnt >= tim_per) begin tim_cnt <= '0; tim_uif <= 1'b1; end
+                else begin tim_cnt <= tim_cnt + 1'b1; if (tim_we_sr) tim_uif <= 1'b0; end
+            end else begin
+                tim_cnt <= '0;
+                if (tim_we_sr) tim_uif <= 1'b0;
+            end
+            tim_irq <= tim_uif & tim_cr[4];                     //Запрос через регистр, как у STIM
+        end
+    //Данные чтения - на следующем такте (правила шины регистров)
+    always @(posedge per_clk)
+        case (per_Addr)
+            SIM_TIM + 32'h04: per_RData <= 32'(tim_cr);
+            SIM_TIM + 32'h08: per_RData <= 32'(tim_per);
+            SIM_TIM + 32'h10: per_RData <= 32'(tim_cnt);
+            SIM_TIM + 32'h14: per_RData <= 32'(tim_uif);
+            default:          per_RData <= 32'd0;
+        endcase
+    assign irq_local = {15'd0, tim_irq};                          //LI0 (mcause 16)
+    assign irq_src   = {sim_plic_src[8:2], tim_irq};              //Источник 1 - таймер, 2..8 - программа
 
     //#2 Загрузка программы в модели BSRAM
     //Слово w кластера c: байт j лежит в блоке cluster[c].sector[j] по битам ram_MEM[w*8 +: 8].
@@ -163,10 +208,9 @@ module tb_core;
 
     //#5 Трассы. Трасса записей в регистры и память (+trace) одинакова для обоих ядер, поэтому
     //первое расхождение трасс однотактного и конвейерного ядра указывает на ошибку
-    int trace_fd = 0, pctrace_fd = 0, leds_fd = 0;
+    int trace_fd = 0, pctrace_fd = 0;
     initial if ($value$plusargs("trace=%s", file))   trace_fd   = $fopen(file, "w");
     initial if ($value$plusargs("pctrace=%s", file)) pctrace_fd = $fopen(file, "w");
-    initial if ($value$plusargs("leds=%s", file))    leds_fd    = $fopen(file, "w");
 
     always @(posedge clk_core)
         if (trace_fd && !rst && dut.riscv.RegWriteW && dut.riscv.RdW != 5'd0)
@@ -179,13 +223,6 @@ module tb_core;
     always @(posedge clk_core)
         if (pctrace_fd && !rst) $fdisplay(pctrace_fd, "%h", dut.riscv.PCF);
 
-    //Журнал GPIO: такт ядра и новое значение регистра выходов
-    logic [31:0] gpio_out_q = 32'd0;
-    always @(posedge clk_core)
-        if (leds_fd && !rst && dut.gpio.out_r !== gpio_out_q) begin
-            $fdisplay(leds_fd, "%0d %08h", cycles, dut.gpio.out_r);
-            gpio_out_q <= dut.gpio.out_r;
-        end
 
     //#5.1 Сценарий отладки через JTAG
     `include "tb_debug.svh"
@@ -208,8 +245,6 @@ module tb_core;
                 default: ;
             endcase
 
-    always @(posedge clk_dmem)
-        if (!rst && (|dmem_Write) && dmem_Addr == 32'h1F00_0014) sim_plic_src <= dmem_WriteData;
 
     task automatic finish_test(input logic [31:0] code);
         int n;
@@ -224,7 +259,6 @@ module tb_core;
             $display("RESULT FAIL %0s %0s test=%0d name=%0s got=0x%08h expected=0x%08h cycles=%0d",
                      prog, core_name, n, tname[n], arg_actual, arg_expected, cycles);
         end
-        if (leds_fd) $fclose(leds_fd);
         $finish;
     endtask
 
@@ -235,8 +269,7 @@ module tb_core;
                 $display("RESULT TIMEOUT %0s %0s test=%0d name=%0s pc=0x%08h cycles=%0d",
                          prog, core_name, dut.riscv.decode.rf[28], tname[dut.riscv.decode.rf[28] & 12'hFFF],
                          dut.riscv.PCF, cycles);
-                if (leds_fd) $fclose(leds_fd);
-                $finish;
+                        $finish;
             end
             if ($isunknown(dut.riscv.PCF)) begin
                 $display("RESULT FAIL %0s %0s test=%0d name=%0s got=PC=X expected=PC cycles=%0d",

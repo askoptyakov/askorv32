@@ -25,68 +25,40 @@ module stim_top
 
     logic [WIDTH-1:0] tim_presclaer, tim_counter_period, tim_pulse, tim_counter;
     logic [      4:0] tim_counter_mode;
+    logic             tim_update, tim_uif;
 
-    //Запись: байтовые стробы; в регистры WIDTH бит попадают только их байты
-    function automatic logic [WIDTH-1:0] wr(input logic [WIDTH-1:0] old, input logic [3:0] we, input logic [31:0] d);
-        logic [31:0] v;
-        v = {{(32-WIDTH){1'b0}}, old};
-        for (int b = 0; b < 4; b++) if (we[b]) v[8*b +: 8] = d[8*b +: 8];
-        return v[WIDTH-1:0];
-    endfunction
+    //Регистровый интерфейс по шаблону periph_regs (periph/periph_regs.sv): стробы по регистрам и
+    //данные чтения. Строб чтения таймеру не нужен - регистров с побочным действием при чтении нет
+    logic [5:0][ 3:0] we;
+    logic      [31:0] wdata;
+    periph_regs #(.N(6), .MEMORY_TYPE(MEMORY_TYPE)) regs
+        (.clk(clk), .Write(Write), .Read(1'b0), .Addr(Addr), .WData(WData), .RData(RData),
+         .we(we), .re(), .wdata(wdata),
+         .rdata({32'(tim_uif),                                   //0x14 SR
+                 32'(tim_counter),                               //0x10 CNT (только чтение)
+                 32'(tim_pulse),                                 //0x0C PUL
+                 32'(tim_counter_period),                        //0x08 PER
+                 32'(tim_counter_mode),                          //0x04 CR
+                 32'(tim_presclaer)}));                          //0x00 PR
 
+    //Регистры настройки - обычные регистры чтения/записи. У CR 5 бит, пишется байт 0
+    periph_reg #(.W(WIDTH)) r_pr  (.clk(clk), .rst(rst), .we(we[0]), .wdata(wdata), .q(tim_presclaer));
+    periph_reg #(.W(5))     r_cr  (.clk(clk), .rst(rst), .we(we[1]), .wdata(wdata), .q(tim_counter_mode));
+    periph_reg #(.W(WIDTH)) r_per (.clk(clk), .rst(rst), .we(we[2]), .wdata(wdata), .q(tim_counter_period));
+    periph_reg #(.W(WIDTH)) r_pul (.clk(clk), .rst(rst), .we(we[3]), .wdata(wdata), .q(tim_pulse));
+
+    //SR.UIF - флаг события обновления: ставит таймер, сбрасывает запись 1 в бит 0 (установка важнее
+    //одновременного сброса)
     always_ff @(posedge clk)
-    if(rst) begin
-        tim_presclaer      <= '0;
-        tim_counter_mode   <= '0;
-        tim_counter_period <= '0;
-        tim_pulse          <= '0;
-    end
-    else
-        case (Addr[4:2])
-            0 : tim_presclaer      <= wr(tim_presclaer, Write, WData);
-            1 : if (Write[0]) tim_counter_mode <= WData[4:0];
-            2 : tim_counter_period <= wr(tim_counter_period, Write, WData);
-            3 : tim_pulse          <= wr(tim_pulse, Write, WData);
-            default: ;
-        endcase
-
-    //Флаг события обновления: установка важнее одновременного сброса записью 1
-    logic tim_update, tim_uif;
-    always_ff @(posedge clk)
-        if (rst)                                           tim_uif <= 1'b0;
-        else if (tim_update)                               tim_uif <= 1'b1;
-        else if (Addr[4:2] == 3'd5 && Write[0] && WData[0]) tim_uif <= 1'b0;
+        if (rst)                         tim_uif <= 1'b0;
+        else if (tim_update)             tim_uif <= 1'b1;
+        else if (we[5][0] && wdata[0])   tim_uif <= 1'b0;
 
     //Ч14: запрос на ядро - через регистр (как у PLIC): иначе путь «регистры таймера -> запрос ->
     //решение о ловушке -> адрес PC» ограничивал частоту ядра. Прерывание приходит на такт позже
     always_ff @(posedge clk)
         if (rst) irq <= 1'b0;
         else     irq <= tim_uif & tim_counter_mode[4];
-
-    generate if (MEMORY_TYPE) begin   //#1 - Память BSRAM
-        always_ff @(posedge clk)
-            case (Addr[4:2])
-                0 : RData <= 32'(tim_presclaer);
-                1 : RData <= 32'(tim_counter_mode);
-                2 : RData <= 32'(tim_counter_period);
-                3 : RData <= 32'(tim_pulse);
-                4 : RData <= 32'(tim_counter);
-                5 : RData <= {31'd0, tim_uif};
-          default : RData <= 32'd0;
-            endcase
-    end else begin                    //#0 - Синтезированная память
-        always_comb
-            case (Addr[4:2])
-                0 : RData = 32'(tim_presclaer);
-                1 : RData = 32'(tim_counter_mode);
-                2 : RData = 32'(tim_counter_period);
-                3 : RData = 32'(tim_pulse);
-                4 : RData = 32'(tim_counter);
-                5 : RData = {31'd0, tim_uif};
-          default : RData = 32'd0;
-            endcase
-    end
-    endgenerate
 
     //wire auto_reload_preload = 1'b1; 
     reg out_p_1,out_n_1;

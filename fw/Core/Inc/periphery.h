@@ -91,7 +91,7 @@ typedef struct
 } PLIC_TypeDef;
 
 /* Источники PLIC (номер = бит в PENDING/ENABLE). Номер 0 зарезервирован. Новую периферию
-   подключать к свободным номерам 2..PLIC_NUM_SOURCES (hw/src/top.sv, сигнал irq_ext) */
+   подключать к свободным номерам 2..PLIC_NUM_SOURCES (hw/src/top.sv, сигнал irq_src) */
 typedef enum
 {
   PLIC_SRC_STIM = 1,		//Таймер STIM (он же - локальное прерывание LI0)
@@ -106,7 +106,7 @@ typedef enum
 #define STIM_SR_UIF					(1U << 0)
 
 /* Настройки таймера при инициализации */
-#define STIM_WIDTH					16U		//Разрядность PR, PER, PUL, CNT (параметр WIDTH в hw/src/periph/simple_timer/tim.sv)
+#define STIM_WIDTH					16U		//Разрядность PR, PER, PUL, CNT (параметр WIDTH в hw/src/periph/stim/stim.sv)
 #define STIM_PRESCALER 				(SYSCLK_HZ / 1000U - 1U)	//Тик счётчика - 1 мс (значение не больше 65535)
 #define STIM_PERIOD 				100;
 #define STIM_COUNTER_MODE 			STIM_COUNTER_MODE_DOWN;

@@ -1,4 +1,4 @@
-//Временные ограничения askoRV32 (Tang Nano 9K)
+//Временные ограничения askoRV32 (Tang Nano 9K). Пути внутри процессорной части - через экземпляр cpu (cpu.sv)
 //clk - генератор платы 27 МГц; такт ядра и памяти даёт PLL (clk_pll в clock.sv).
 //tck_pad_i - JTAG отладчика (выделенные выводы GW1NR-9, IO_LOC не нужен). Сигналы JTAG выбираются
 //тактом clk в jtag_tap_gowin, поэтому пути между доменами не анализируются.
@@ -8,7 +8,7 @@ create_clock -name clk     -period 37.037 -waveform {0 18.518} [get_ports {clk}]
 //расширением M - 47.5-48.2 МГц при настройках Gowin по умолчанию (шаг 19 журнала в hw/info/performance_roadmap.md). Чтобы
 //проверить запас к другой частоте, поменяйте период. В однотактном ядре такт ядра получается из
 //clk_base делением на 3 (clock.sv) и этим ограничением не описан.
-create_clock -name clk_core -period 22.222 -waveform {0 11.111} [get_nets {clk_base}]
+create_clock -name clk_core -period 22.222 -waveform {0 11.111} [get_pins {cpu/clk_pll/pll/CLKOUT}]
 create_clock -name clk_tck -period 400.000 -waveform {0 200.000} [get_ports {tck_pad_i}]
 //Р3/Р4: запас 0.5 нс к периоду такта ядра (джиттер PLL и резерв). Он же заставляет P&R оптимизировать
 //размещение под 21.7 нс: с мягкой целью 22.222 нс Gowin останавливается раньше и при любом place_option
@@ -24,9 +24,9 @@ set_false_path -from [get_clocks {clk_core}] -to [get_clocks {clk}]
 //выставления адреса (состояния CSR_WR, SB_WAIT, REG_WAIT2 в dm.sv). Пока ядро работает, csr_addr_q = 0, шина
 //и gpr_q отладчику не нужны. Поэтому пути от этих регистров и в gpr_q двухтактные. При DEBUG_EN = 0 строки
 //не находят регистров (предупреждение, на результат не влияет).
-set_multicycle_path -from [get_regs {g_debug.dm/csr_addr_q*}] -setup -end 2
-set_multicycle_path -from [get_regs {g_debug.dm/csr_addr_q*}] -hold -end 1
-set_multicycle_path -from [get_regs {g_debug.dm/sbaddress*}] -setup -end 2
-set_multicycle_path -from [get_regs {g_debug.dm/sbaddress*}] -hold -end 1
-set_multicycle_path -to [get_regs {g_debug.dm/gpr_q*}] -setup -end 2
-set_multicycle_path -to [get_regs {g_debug.dm/gpr_q*}] -hold -end 1
+set_multicycle_path -from [get_regs {cpu/g_debug.dm/csr_addr_q*}] -setup -end 2
+set_multicycle_path -from [get_regs {cpu/g_debug.dm/csr_addr_q*}] -hold -end 1
+set_multicycle_path -from [get_regs {cpu/g_debug.dm/sbaddress*}] -setup -end 2
+set_multicycle_path -from [get_regs {cpu/g_debug.dm/sbaddress*}] -hold -end 1
+set_multicycle_path -to [get_regs {cpu/g_debug.dm/gpr_q*}] -setup -end 2
+set_multicycle_path -to [get_regs {cpu/g_debug.dm/gpr_q*}] -hold -end 1

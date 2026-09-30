@@ -2,7 +2,8 @@ module memmux
   #(parameter                      MEMORY_TYPE = 0, 
     parameter                      SLAVES      = 2, //Количество подчинённых устройств
     parameter    [(SLAVES*32)-1:0] MATCH_ADDR  = 0,
-    parameter    [(SLAVES*32)-1:0] MATCH_MASK  = 0)
+    parameter    [(SLAVES*32)-1:0] MATCH_MASK  = 0,
+    parameter bit                  DEFAULT_LAST = 0) //1 - последний ведомый получает адреса, не попавшие в окна остальных
    (input  logic                   clk, rst,
     // Интерфейс мастера
     input  logic            [ 3:0] mWrite,
@@ -16,10 +17,18 @@ module memmux
     input  logic [(SLAVES*32)-1:0] sRData
 ); 
     
-    logic [SLAVES-1:0] match;
+    logic [SLAVES-1:0] match, hit;
     generate
         for(genvar i=0; i<SLAVES ; i=i+1) begin : addr_match
-            assign match[i] = (mAddr & MATCH_MASK[i*32+:32]) == MATCH_ADDR[i*32+:32];//rvfpga
+            assign hit[i]   = (mAddr & MATCH_MASK[i*32+:32]) == MATCH_ADDR[i*32+:32];//rvfpga
+            //Ведомый по умолчанию (порт пользовательской периферии в cpu.sv) выбран, если адрес не попал
+            //ни в одно окно остальных ведомых
+            if (DEFAULT_LAST && i == SLAVES-1) begin : g_default
+                if (SLAVES > 1) assign match[i] = ~|hit[SLAVES-2:0];
+                else            assign match[i] = 1'b1;
+            end else begin : g_window
+                assign match[i] = hit[i];
+            end
             //assign match[i] = ~|((mAddr ^ MATCH_ADDR[i*32+:32]) & MATCH_MASK[i*32+:32]);//picotiny
             assign sWrite[i*4+:4] = mWrite & {4{match[i]}}; 
             assign sRead[i]       = mRead  & match[i];
