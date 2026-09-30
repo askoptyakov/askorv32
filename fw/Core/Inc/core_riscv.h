@@ -81,9 +81,6 @@ static inline void IRQ_Enable(IRQn_Type IRQn)      { CSR_SET(mie, 1U << IRQn); }
 static inline void IRQ_Disable(IRQn_Type IRQn)     { CSR_CLEAR(mie, 1U << IRQn); }
 static inline uint32_t IRQ_IsPending(IRQn_Type IRQn) { return (CSR_READ(mip) >> IRQn) & 1U; }
 
-/* ќжидание прерывани€: в askoRV32 wfi выполн€етс€ как nop, поэтому это просто подсказка */
-static inline void __wfi(void) { __asm__ volatile ("wfi"); }
-
 /* —чЄтчик тактов €дра (mcycle, 64 бит) */
 static inline uint64_t CORE_GetCycles(void)
 {
