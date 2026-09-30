@@ -47,7 +47,13 @@ end_init_bss:
  *****************************************************************************************
  */
 	.section .text.vectors, "ax", @progbits
+	/* Выравнивание без relaxation: иначе ассемблер вставляет 124 байта nop под удаление компоновщиком,
+	   а диапазон модуля в отладочной информации (.debug_rnglists) остаётся с этой длиной и накрывает
+	   начало main - GDB теряет строки main и падает (hw/info/debug.md) */
+	.option push
+	.option norelax
 	.balign 128
+	.option pop
 	.globl __vector_table
 __vector_table:
 	j Exception_Handler		/*  0 Исключения */
