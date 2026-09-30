@@ -14,8 +14,8 @@
 | 5 | xPack RISC-V GCC | компилятор прошивки | `xpack-riscv-none-elf-gcc-15.2.0-1-win32-x64.zip` | 15.2.0-1 | ✅ |
 | 6 | xPack Windows Build Tools | `make`, `rm` для сборки в Eclipse | `xpack-windows-build-tools-4.4.1-3-win32-x64.zip` | 4.4.1-3 | ✅ |
 | 7 | Eclipse IDE + Embedded CDT | среда для прошивки `fw/` | `eclipse-inst-jre-win64.exe` | 4.41, Embedded CDT 6.8.0 | ✅ |
-| 8 | xPack OpenOCD | отладка через JTAG платы | `xpack-openocd-<версия>-win32-x64.zip` | 0.12 и новее | ⬜ |
-| 9 | Zadig | драйвер WinUSB для OpenOCD | `zadig-<версия>.exe` | 2.9 | ⬜ |
+| 8 | xPack OpenOCD | отладка через JTAG платы | `xpack-openocd-0.12.0-7-win32-x64.zip` | 0.12.0-7 | ✅ |
+| 9 | Zadig | драйвер WinUSB для OpenOCD | `zadig-2.9.exe` | 2.9.788 | ✅ |
 | 10 | OSS CAD Suite (Yosys, nextpnr, apicula) | сборка ПЛИС открытым маршрутом (кнопка «Собрать» конфигуратора) | `oss-cad-suite-windows-x64-<дата>.tgz` | 2026-09-29 (Yosys 0.69, apicula 0.34) | ✅ |
 | 11 | Плагин «Конфигуратор ПЛИС» | визуальная настройка ПЛИС из проекта `fw/` в Eclipse | `sw/socgen/eclipse/build/askorv32-gwsoc-repo.zip` | 1.0.0 | ⬜ |
 
@@ -157,8 +157,8 @@
 ### 8.1. xPack OpenOCD
 
 1. Скачать `xpack-openocd-<версия>-win32-x64.zip` со страницы <https://github.com/xpack-dev-tools/openocd-xpack/releases> (или с Яндекс Диска).
-2. Распаковать рядом с компилятором: `C:\Program Files\Eclipse\riscv-toolchain\xpack-openocd-<версия>`.
-3. Проверка: `"C:\Program Files\Eclipse\riscv-toolchain\xpack-openocd-<версия>\bin\openocd.exe" --version`.
+2. Распаковать рядом с компилятором: `C:\Program Files\Eclipse\riscv-toolchain\xpack-openocd-<версия>` (нужны права администратора: распаковать во временную папку и скопировать в Проводнике).
+3. Проверка: `"C:\Program Files\Eclipse\riscv-toolchain\xpack-openocd-<версия>\bin\openocd.exe" --version`. Разбор конфигурации проекта без платы — из папки `fw/openocd`: `openocd -f askorv32_tangnano9k.cfg -c shutdown`.
 
 ### 8.2. Драйвер WinUSB (Zadig)
 
@@ -172,8 +172,10 @@ OpenOCD работает с программатором через libusb, по
 Замена драйвера:
 1. Скачать Zadig с <https://zadig.akeo.ie>, подключить плату, запустить.
 2. **Options → List All Devices**.
-3. Выбрать в списке интерфейс программатора с USB ID **`0403 6010`** и **Interface 0** (обычно так и написано в названии). Interface 1 — это UART, его не трогать.
+3. Выбрать в списке интерфейс программатора с USB ID **`0403 6010`** и **Interface 0**: у Tang Nano 9K он называется **JTAG Debugger (Interface 0)**. Interface 1 — это UART, его не трогать.
 4. Справа выбрать **WinUSB** → **Replace Driver**.
+
+   Gowin Programmer (и Gowin IDE) перед заменой закрыть: пока он держит интерфейс, Zadig завершается ошибкой *Operation timed out*.
 
 Возврат драйвера FTDI: **Диспетчер устройств** → то же устройство (Interface 0) → **Удалить устройство** с галочкой *Удалить драйвер* → отключить и снова подключить плату. Windows поставит драйвер FTDI заново.
 
@@ -181,7 +183,7 @@ OpenOCD работает с программатором через libusb, по
 
 Из папки `fw/openocd`:
 ```
-openocd -c "set JTAG_ONLY 1" -f askorv32_tangnano9k.cfg -c "init; irscan gw1nr9.cpu 0x42; drscan gw1nr9.cpu 32 0; shutdown"
+openocd -c "set JTAG_ONLY 1" -f askorv32_tangnano9k.cfg -c "init; irscan gw1nr9.cpu 0x42; echo [drscan gw1nr9.cpu 32 0]; shutdown"
 ```
 Должно быть `tap/device found: 0x1100481b` и `00001071`. Если нет — см. [debug.md, «Первый запуск на плате»](../hw/info/debug.md#первый-запуск-на-плате).
 
