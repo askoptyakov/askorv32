@@ -56,29 +56,35 @@
 - IR — 8 бит, IDCODE GW1NR-9 — `0x1100481B`. Регистры `dtmcs` и `dmi` — пользовательские регистры ПЛИС **ER1 (IR `0x42`)** и **ER2 (IR `0x43`)**. OpenOCD узнаёт о них командами `riscv set_ir dtmcs 0x42`, `riscv set_ir dmi 0x43`.
 - JTAG подключается к выделенным выводам ПЛИС 5–8 без назначения в `.cst`. Опция *Use JTAG as regular IO* в настройках Gowin должна оставаться **выключенной** (по умолчанию так и есть).
 - Сигналы JTAG выбираются тактом 27 МГц внутри ПЛИС, поэтому **TCK — не выше ~2 МГц**. В конфигурации OpenOCD стоит 1 МГц.
-- Документации GOWIN на временные диаграммы GW_JTAG нет. Порядок битов и задержка TDO взяты у fpgacapZero, где эта обёртка работает на GW1NR-9 с OpenOCD. Модель `hw/sim/gw_jtag_model.sv` построена под то же допущение. **Если на плате что-то окажется иначе, первым это покажет чтение `dtmcs`** (см. «Первый запуск»).
+- Документации GOWIN на временные диаграммы GW_JTAG нет. Порядок битов и задержка TDO взяты у fpgacapZero, где эта обёртка работает на GW1NR-9 с OpenOCD. Модель `hw/sim/gw_jtag_model.sv` построена под то же допущение. **На плате допущение подтвердилось** (30.09.2026): `dtmcs` читается как `00001071`, без сдвига на бит. Если после правок обёртки что-то сломается, первым это покажет чтение `dtmcs` (см. «Первый запуск»).
 - Обмен DTM → DM: DTM работает на 27 МГц, DM — на такте ядра. Запрос передаётся переключением флага (toggle handshake), пока ответа нет, DMI-скан возвращает `busy`. OpenOCD при этом сам увеличивает паузу.
 - **Р4:** у `dtmcs` и `dmi` один общий сдвиговый регистр на 41 бит (выбран всегда только один из них). Обёртка выдаёт стробы по спаду TCK: `shift_out` — в Capture/Shift-DR, `shift_in` — тем же стробом тактом позже. Поэтому регистр сдвигается по любому из них, а TDI вдвигается только по `shift_in` (в бит 31 для `dtmcs`, в бит 40 для `dmi`): порядок битов на TDO и в принятом слове тот же, что у отдельных регистров выдачи и приёма fpgacapZero. Копий запроса в DM и ответа в DTM нет: DTM держит запрос неизменным до ответа, DM держит `dmi_rdata` до следующего запроса. Тест `dbg` проверяет и занятость: удерживает ответ DM, ждёт `op = 3` и залипший `dmistat`, затем сбрасывает его записью `dtmcs.dmireset`.
 
 ## Первый запуск на плате
 
-1. Собрать проект Gowin (`hw/riscv.gprj`) с `DEBUG_EN = 1` и загрузить `riscv.fs` в плату (Gowin Programmer). Программа должна работать как обычно: отладчик ей не мешает.
-2. Переключить драйвер интерфейса 0 программатора на WinUSB (Zadig, [SETUP.md](../../sdk/SETUP.md) п. 8.2).
+**Проверено 30.09.2026** на Tang Nano 9K (xPack OpenOCD 0.12.0-7, Eclipse 4.41, Embedded CDT 6.8.0, конвейерное ядро на 45 МГц): чтение `dtmcs`, подключение OpenOCD, `halt`/`resume`, чтение регистров, CSR и памяти (IMEM, DMEM, GPIO), отладка из Eclipse со сбросом, загрузкой программы и остановкой на `main`, программные точки останова.
+
+1. Собрать проект Gowin (`hw/riscv.gprj`) с `DEBUG_EN = 1`, затем собрать `fw/`: после сборки `mergetool` вливает программу в BSRAM и пишет `fw/Debug/riscv.fs`. Записать этот файл во **встроенную flash** (Gowin Programmer, *Embedded Flash Mode*), пока программатор работает на драйвере FTDI. Программа должна работать как обычно: отладчик ей не мешает. Если драйвер уже WinUSB, загрузить ПЛИС можно через openFPGALoader (см. «Прошивка и отладка без смены драйвера»).
+2. Закрыть Gowin Programmer и переключить драйвер интерфейса 0 программатора (**JTAG Debugger (Interface 0)**) на WinUSB (Zadig, [SETUP.md](../../sdk/SETUP.md) п. 8.2). Открытый Programmer держит интерфейс, и Zadig завершается ошибкой *Operation timed out*.
 3. Проверить JTAG без ядра. Из папки `fw/openocd`:
    ```
-   openocd -c "set JTAG_ONLY 1" -f askorv32_tangnano9k.cfg -c "init; irscan gw1nr9.cpu 0x42; drscan gw1nr9.cpu 32 0; shutdown"
+   openocd -c "set JTAG_ONLY 1" -f askorv32_tangnano9k.cfg -c "init; irscan gw1nr9.cpu 0x42; echo [drscan gw1nr9.cpu 32 0]; shutdown"
    ```
+   Результат `drscan` нужно выводить через `echo`: в командах `-c` OpenOCD 0.12 возвращаемые значения не печатает (то же с `reg`, `read_memory`).
    - `Info : JTAG tap: gw1nr9.cpu tap/device found: 0x1100481b` — кабель и ПЛИС на месте;
    - `drscan` должен вернуть **`00001071`**: `dtmcs` с `version = 1`, `abits = 7`, `idle = 1`.
    - `00000000` или `ffffffff` — DTM не отвечает: не та прошивка ПЛИС (`DEBUG_EN = 0`, включён GAO) или ошибка в допущениях о GW_JTAG.
    - `000020e2` или `00000838` (`0x1071`, сдвинутое на бит) — TDO выдаётся на такт позже или раньше. Нужно поправить задержку TDO в `jtag_tap_gowin` и модели. Пришлите вывод — разберём.
-4. Полное подключение: `openocd -f askorv32_tangnano9k.cfg`. Ожидается примерно такое (текст зависит от версии OpenOCD):
+4. Полное подключение: `openocd -f askorv32_tangnano9k.cfg`. Вывод xPack OpenOCD 0.12.0-7:
    ```
    Info : datacount=1 progbufsize=0
+   Warn : We won't be able to execute fence instructions on this target. Memory may not always appear consistent. (progbufsize=0, impebreak=0)
    Info : Examined RISC-V core; found 1 harts
    Info :  hart 0: XLEN=32, misa=0x40001100
-   Info : starting gdb server for gw1nr9.cpu on 3333
+   Info : [gw1nr9.cpu] Examination succeed
+   Info : [gw1nr9.cpu] starting gdb server on 3333
    ```
+   Предупреждение о `fence` ожидаемо: буфера программ нет, поэтому OpenOCD не может выполнить `fence` в ядре. Нашему ядру это не мешает: кэшей нет, память отладчик читает через System Bus.
 5. Проверка из второго окна: `telnet localhost 4444` (клиент telnet включается в *Компонентах Windows*, подойдёт и PuTTY в режиме Raw/Telnet):
    ```
    halt
@@ -86,6 +92,11 @@
    mdw 0x10000000 4
    resume
    ```
+   То же одной командой, без второго окна:
+   ```
+   openocd -f askorv32_tangnano9k.cfg -c "init; halt; echo [reg pc]; echo [reg dcsr]; echo [read_memory 0x10000000 32 4]; resume; shutdown"
+   ```
+   На плате получено `dcsr = 0x400080c3`: `xdebugver = 4`, `ebreakm = 1`, `cause = 3` (`haltreq`), `prv = 3`. PC указывает в текущий цикл программы, после `resume` программа продолжает работу.
 
 ## Eclipse
 
@@ -99,12 +110,84 @@
 
 Дальше — обычная отладка: F6/F5 — шаг, двойной щелчок на поле строки — точка останова, окна *Registers*, *Variables*, *Memory*, *Expressions*. Кнопка **Restart** заново сбрасывает систему и загружает программу.
 
-Программа, загруженная отладчиком, живёт в BSRAM до выключения питания. После выключения ПЛИС загружает свою прошивку, в которой лежит программа из `riscv.fs` на момент сборки. Поэтому **для отладки новой версии программы пересобирать ПЛИС не нужно**: достаточно собрать `fw/` и нажать Debug.
+На плате после запуска ядро стоит на первой строке `main` (после пролога функции), `dcsr.cause = 1`: сработал `ebreak` временной точки останова GDB. В `ra` адрес возврата в `start.S`.
+
+**Консоль OpenOCD.** Весь журнал OpenOCD пишет в stderr, поэтому Eclipse выводит его красным. Ошибки — только строки `Error:`. Цвет меняется в **Window → Preferences → Run/Debug → Console → Standard Error text color**. Не являются ошибками:
+- `DEPRECATED! use 'gdb port', not 'gdb_port'` (и `telnet_port`, `tcl_port`), `Prefer GDB command "target extended-remote :3333"` — так плагин Embedded CDT запускает OpenOCD и GDB, от `askorv32_tangnano9k.cfg` не зависит;
+- `Warn : We won't be able to execute fence instructions…` — см. «Первый запуск», п. 4;
+- два `JTAG tap: … found` подряд после подключения GDB — два `reset halt` (до и после загрузки);
+- `Found 0 triggers` — OpenOCD проверяет аппаратные триггеры, их нет, точки останова ставятся через `ebreak`.
+
+Пока идёт отладка, состояние ядра можно посмотреть и снаружи Eclipse, через TCL-порт 6666 работающего OpenOCD (команды завершаются байтом `0x1a`) или `telnet localhost 4444`.
+
+Программа, загруженная отладчиком, живёт в BSRAM до выключения питания. После выключения ПЛИС загружает прошивку из flash, в которой лежит программа из `fw/Debug/riscv.fs` на момент записи. Поэтому **для отладки новой версии программы пересобирать ПЛИС не нужно**: достаточно собрать `fw/` и нажать Debug.
 
 **Ограничения.**
 - Нет аппаратных точек останова и точек наблюдения (watchpoint): GDB их не предложит. Точки останова в коде — только программные, их число не ограничено.
 - Нельзя поставить точку останова в код, который программа сама меняет.
 - Во время шага прерывания не принимаются. При продолжении (`resume`) ожидающее прерывание будет принято сразу.
+
+## Прошивка и отладка без смены драйвера
+
+Gowin Programmer работает с программатором платы через драйвер FTDI (D2XX), а OpenOCD — через libusb, которому нужен WinUSB. У интерфейса USB может быть только один драйвер. Поэтому, если прошивать ПЛИС в Gowin Programmer, а отлаживать через OpenOCD, драйвер приходится менять в Zadig туда и обратно.
+
+| Вариант | Загрузка ПЛИС | Загрузка программы | Драйвер | Состояние |
+|---------|---------------|--------------------|---------|-----------|
+| **А** (рекомендуется) | openFPGALoader | OpenOCD / Eclipse | только WinUSB | проверено 30.09.2026 (SRAM и flash) |
+| Б | Gowin Programmer | OpenOCD / Eclipse | FTDI ↔ WinUSB при каждом изменении ПЛИС | работает (так настроено в SETUP.md п. 8.2) |
+| В | Gowin Programmer | OpenOCD через отдельный адаптер JTAG | FTDI у платы, WinUSB у адаптера | не сделано: нужен свой TAP в ПЛИС |
+| — | OpenOCD `pld gowin` | OpenOCD / Eclipse | только WinUSB | проверено, не работает |
+
+### Вариант А: только WinUSB, ПЛИС через openFPGALoader
+
+openFPGALoader из OSS CAD Suite ([SETUP.md](../../sdk/SETUP.md) п. 10) работает с программатором через libftdi/libusb, то есть через тот же драйвер WinUSB, что и OpenOCD. Драйвер ставится в Zadig один раз, Gowin Programmer не нужен.
+
+openFPGALoader берёт библиотеки из `C:\oss-cad-suite\lib`, поэтому запускать его нужно из окна, где предварительно выполнен `C:\oss-cad-suite\environment.bat`. Из корня репозитория:
+
+```
+openFPGALoader -b tangnano9k fw\Debug\riscv.fs
+openFPGALoader -b tangnano9k -f fw\Debug\riscv.fs
+```
+
+- Первая команда загружает ПЛИС в SRAM, до выключения питания. На плате: около 2 с, `CRC check: Success`, ядро работает, отладчик подключается.
+- Вторая (`-f`) записывает во встроенную flash, ПЛИС будет стартовать с неё при включении. На плате: около 12 с, `CRC check: Success`; ПЛИС сразу перезапускается с flash. После `openFPGALoader -b tangnano9k -r` (перезагрузка ПЛИС из flash, как при включении) программа стартует заново, и отладка работает полностью: сброс, загрузка `.text` и `.data`, остановка на `main`, шаги, точки останова, чтение переменных.
+- Загружать нужно именно `fw/Debug/riscv.fs`: в нём программа, которую `mergetool` влил в BSRAM после сборки `fw/`.
+
+**Программа без перезагрузки ПЛИС:**
+- с отладкой — Eclipse, **Debug** (раздел «Eclipse»);
+- без отладки — одной командой OpenOCD. `start.S` не копирует `.data`, поэтому секции загружаются отдельно, каждая по рабочему адресу. `load_image riscv.elf` не подходит: он, как и `load` в GDB, пишет `.data` по адресу загрузки `0x8000`. Из папки `fw/Debug`:
+  ```
+  riscv-none-elf-objcopy -O binary -j .text riscv.elf text.bin
+  riscv-none-elf-objcopy -O binary -j .data riscv.elf data.bin
+  openocd -f ../openocd/askorv32_tangnano9k.cfg -c "init; reset halt; load_image text.bin 0x0 bin; load_image data.bin 0x10000000 bin; resume; shutdown"
+  ```
+  На плате: 952 байта в IMEM и 36 байт в DMEM, `verify_image` совпал, программа работает. Сообщения `load_image` в режиме `-c` видны только через `echo [load_image …]`.
+
+Программа, загруженная через OpenOCD, живёт в BSRAM до выключения питания. Чтобы она запускалась сама, нужно записать `fw/Debug/riscv.fs` во flash (`-f`).
+
+**Рабочий цикл:**
+- изменилась программа → собрать `fw/` → **Debug** в Eclipse (или команда OpenOCD выше);
+- изменилась аппаратная часть → собрать Gowin → собрать `fw/` (новый `fw/Debug/riscv.fs`) → `openFPGALoader` в SRAM → **Debug**;
+- готовая версия → `openFPGALoader -f`.
+
+В Eclipse загрузка ПЛИС вынесена в *External Tools*: конфигурации `fw/riscv FPGA SRAM.launch` и `fw/riscv FPGA Flash.launch`. Они собирают проект, заново запускают `mergetool` на последнем битстриме Gowin и вызывают openFPGALoader. Подключение и создание вручную описаны в [SETUP.md](../../sdk/SETUP.md) п. 8.5.
+
+**Первое чтение `dtmcs` после загрузки по JTAG.** После любой перезагрузки ПЛИС по команде через JTAG (загрузка в SRAM, запись во flash, `openFPGALoader -r`) первое чтение `dtmcs` возвращает `0`, следующие — `0x1071`. После включения питания такого не было, пауза перед подключением (проверено 5 с) не помогает. Увидев первый `0`, OpenOCD принимает DTM за версию 0.11, затем читает `0x1071` и прерывает подключение: `Unsupported DTM version 1. (dtmcontrol=0x1071)`. Поэтому в `askorv32_tangnano9k.cfg` по событию `examine-start` добавлено пустое чтение `dtmcs`, и подключение проходит с первого раза. Причина в обёртке GW_JTAG / DTM (первый захват ER1 после конфигурации по JTAG) не выяснена.
+
+### Вариант Б: смена драйвера
+
+Так сейчас описано в [SETUP.md](../../sdk/SETUP.md) п. 8.2: ПЛИС прошивается во flash через Gowin Programmer на драйвере FTDI, затем драйвер меняется на WinUSB, и новые версии программы загружаются только отладчиком. Драйвер нужно менять туда и обратно при каждом изменении аппаратной части. Перед заменой Gowin Programmer надо закрыть, иначе Zadig завершается по тайм-ауту.
+
+### Вариант В: отдельный адаптер JTAG для отладчика
+
+DTM подключается не к GW_JTAG, а к собственному автомату TAP на четырёх выводах общего назначения. К ним подключается внешний адаптер (FT232H/FT2232H, CMSIS-DAP, Sipeed RV-Debugger) на WinUSB, а программатор платы остаётся на драйвере FTDI для Gowin Programmer.
+- Плюсы: драйверы не меняются никогда; GW_JTAG свободен, поэтому анализатор GAO можно использовать вместе с отладчиком.
+- Минусы: второй адаптер и 4 вывода ПЛИС; вместо обёртки fpgacapZero нужен свой автомат TAP с синхронизацией TCK с внешнего вывода; в конфигурации OpenOCD другой адаптер и TAP (свой IDCODE и IR).
+
+### Проверено и отклонено
+
+- **OpenOCD `pld gowin`** (`fpga/gowin_gw1n.cfg`, `pld load`). Файл `.fs` драйвер не принимает (`failed loading file`, код −4, с переводами строк CRLF и LF). На `.bin` загрузка зависает: `Haven't made progress in mpsse_flush()` в течение 64 с. Видимо, эмуляция FT2232 в BL702 не справляется с длинной передачей от OpenOCD, а openFPGALoader передаёт тот же объём за 2 с.
+- **Фильтр-драйвер libusb поверх FTDI** (libusb-win32 filter). Устарел и известен тем, что ломает стек USB, не пробовали.
 
 ## Проверка
 
