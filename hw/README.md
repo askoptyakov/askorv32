@@ -117,7 +117,7 @@
 | ANDI    | AND Immediate                       | &check;       |
 
 #### Расширение M (умножение и деление)
-Включается параметром `M_EXT` в `top.sv`. Умножение — блок DSP (MULT36X36) в стадии M, 1 такт. Деление — модуль `mdu_div` (`hw/src/mdu.sv`) в стадии E, 32/`DIV_BPC` + 2 такта (18 при `DIV_BPC = 2`). Подробности — в [performance_roadmap.md](info/performance_roadmap.md#журнал-оптимизации), шаг 15.
+Включается параметром `M_EXT` в `top.sv`. Умножение — блок DSP (MULT36X36) в стадии M, 1 такт. Деление — модуль `mdu_div` (`hw/src/mdu.sv`) в стадии E, 32/`DIV_BPC` + 3 такта (19 при `DIV_BPC = 2`). Подробности — в [performance_roadmap.md](info/performance_roadmap.md#журнал-оптимизации), шаг 15.
 
 | Команда | Описание                            |&check;/&cross;|
 |---------|-------------------------------------|:-------------:|

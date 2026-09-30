@@ -2,7 +2,7 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
               parameter bit IMEM_TYPE = 0, //Тип памяти инструкций: 1 - BSRAM;       0 - Синтезированная;
               parameter bit DMEM_TYPE = 0, //    Тип памяти данных: 1 - BSRAM;       0 - Синтезированная;
               parameter bit M_EXT     = 1, //         Расширение M: 1 - есть;        0 - нет (RV32I);
-              parameter int DIV_BPC   = 2) //  Бит частного за такт: 1, 2, 4 (деление 32/DIV_BPC + 2 такта)
+              parameter int DIV_BPC   = 2) //  Бит частного за такт: 1, 2, 4 (деление 32/DIV_BPC + 3 такта)
              (input  logic        clk,       //Вход тактирования
               input  logic        rst,       //Вход сброса (кнопка S2)
               //Интерфейс памяти команд
@@ -71,6 +71,8 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     logic        ValidE, CsrE, MretE, EcallE, EbreakE, IllegalE;
     logic        TrapE, KillE, RedirectE, RedirectSelE;          //Ловушка в стадии E; гашение инструкции; смена PC; её адрес
     logic        RedirectEarlyE;                                 //Смена PC ловушкой без части, зависящей от Taken (Ч15)
+    logic        BrMisD, BrMisE;                                 //Ч17: условный переход с невыровненным смещением (imm[1] = 1)
+    logic        BrMisTakenE, RedirectLateE;                     //Ч17: он выполняется; отложенная ловушка невыровненного перехода
     logic [2:0]  BrKindD, BrKindE;                               //Условие перехода, one-hot {eq, lt, ltu} (Ч15)
     logic        BrInvD, BrInvE;                                 //Инверсия условия (bne/bge/bgeu) XOR предсказание (Ч15)
     logic        StallFC, FlushEC;                               //Приостановка PC и сброс стадии E с учётом останова
@@ -190,7 +192,10 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     //cond ^ funct3[0] ^ PredD. В стадии E остаётся И-ИЛИ результатов сравнения и один XOR.
     assign BrKindD = {Funct3D[2:1] == 2'b00, Funct3D[2:1] == 2'b10, Funct3D[2:1] == 2'b11};   //{eq, lt, ltu}
     assign BrInvD  = Funct3D[0] ^ PredD;
-    regcontrol #(4, CORE_TYPE)  rb_decode (clk, FlushEC|rst, DivHold, {BrKindD, BrInvD}, {BrKindE, BrInvE});
+    //Ч17: признак «условный переход на невыровненный адрес» известен в D: у формата B бит 1 смещения - InstrD[8]
+    //(такой переход BTFN не предсказывает). Ловушка по нему в E ждёт только результата сравнения
+    assign BrMisD = BranchD & InstrD[8];
+    regcontrol #(5, CORE_TYPE)  rb_decode (clk, FlushEC|rst, DivHold, {BrKindD, BrInvD, BrMisD}, {BrKindE, BrInvE, BrMisE});
     //В: выбор результата АЛУ раскладывается в one-hot-код в стадии D (как коды байпаса в Ч7). В стадии E
     //вместо дерева выбора по ALUControl (и отдельного выбора «CSR или АЛУ») остаётся одно И-ИЛИ
     always_comb
@@ -230,6 +235,8 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     logic br_redirect;              //Условный переход требует смены PC (выполнен, но не предсказан, или наоборот)
     assign br_redirect = ((BrKindE[2] & BrFlagsE[2]) | (BrKindE[1] & BrFlagsE[1]) | (BrKindE[0] & BrFlagsE[0])) ^ BrInvE;
     assign PCSrcE = ValidX & ((JumpE & ~PredE) | (BranchE & br_redirect));
+    //Ч17: невыровненный переход выполняется - br_redirect (он не предсказан, PredE = 0), без выбора условия по funct3
+    assign BrMisTakenE = ValidX & BrMisE & br_redirect;
     ////Запросы прерываний
     //Однотактное ядро с BSRAM пишет в периферию в середине своего такта (clk_dmem), и запрос,
     //выставленный этой записью, не должен влиять на решение о ловушке в том же такте - иначе
@@ -253,6 +260,7 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
               .Valid(ValidX), .Hold(DivHold), .Csr(CsrE & ValidX), .Mret(MretE & ValidX), .Ecall(EcallE & ValidX), .Ebreak(EbreakE & ValidX), .Illegal(IllegalE & ValidX),
               .Funct3(Funct3E), .CsrSel(CsrSelE), .Zimm(Rs1E), .Rs1Data(SrcAE),
               .PC(PCE), .Jump(JumpE), .Branch(BranchE), .JalrSel(JALSrcE), .Taken(TakenE), .ImmLo(ImmExtE[1:0]),
+              .BrMisTaken(BrMisTakenE),
               .PCTarget(PCTargetE),
               .Load(ResultSrcE == 2'b01), .Store(MemWriteE), .MemAddr(AddrSumE),   //Ч8: mtval - с сумматора, без выбора операции АЛУ
               //Запросы прерываний
@@ -264,7 +272,7 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
               .Mtime(mtime), .MtimeWe(mtime_we), .MtimeWData(mtime_wdata),
               //Результат
               .CsrRData(CsrRDataE), .Trap(TrapE), .Kill(KillE), .Redirect(RedirectE), .RedirectEarly(RedirectEarlyE), .RedirectSel(RedirectSelE), .RedirectPC(RedirectPCE),
-              .RedirectAddr(RedirectAddrE));
+              .RedirectAddr(RedirectAddrE), .RedirectLate(RedirectLateE));
     assign dbg_csr_rdata = CsrRDataE;
     //Смена PC: ловушка и mret важнее перехода
     assign PCSrcF     = PCSrcE | RedirectEarlyE;   //Ч15: без части ловушки, зависящей от Taken (её покрывает PCSrcE)
@@ -290,7 +298,7 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
         logic [31:0] RedirectPC_q;
         always_ff @(posedge clk)
             if (rst) begin PCSrcM <= 1'b0; redirect_q <= 1'b0; end
-            else     begin PCSrcM <= PCSrcF | redirect_q; redirect_q <= RedirectE; end
+            else     begin PCSrcM <= PCSrcF | redirect_q; redirect_q <= RedirectEarlyE | RedirectLateE; end   //= RedirectE (Ч17)
         always_ff @(posedge clk) begin
             RedirectPC_q <= RedirectAddrE;
             PCTargetM    <= redirect_q ? RedirectPC_q : (PredE ? PCPlus4E : PCTargetE);
@@ -302,7 +310,7 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     //В: у CSR-инструкции все биты выбора АЛУ равны 0, поэтому ИЛИ вместо мультиплексора
     assign ResultE    = ALUResultE | ({32{ALUSelE[8]}} & CsrRDataE);
     ////Расширение M: деление в стадии E
-    //Деление занимает 32/DIV_BPC + 2 такта в стадии E: F, D и E стоят (DivHold), в M уходят пузыри.
+    //Деление занимает 32/DIV_BPC + 3 такта в стадии E: F, D и E стоят (DivHold), в M уходят пузыри.
     //Результат забирается в стадии M, как у умножения: делитель держит его до начала следующего деления.
     //Так в пути «байпас -> АЛУ -> регистр E/M» не появляется ещё один мультиплексор.
     //Ловушка во время деления гасит инструкцию и сбрасывает делитель, после mret деление идёт заново.
@@ -561,6 +569,7 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
     input  logic        Jump, Branch,      //jal/jalr; условный переход
     input  logic        JalrSel,           //1 - jalr (адрес = rs1 + imm)
     input  logic        Taken,             //Условный переход выполняется
+    input  logic        BrMisTaken,        //Ч17: выполняется условный переход на невыровненный адрес (конвейер)
     input  logic [ 1:0] ImmLo,             //Младшие биты непосредственного значения
     input  logic [31:0] PCTarget,          //Адрес перехода - только значение для mtval
     input  logic        Load, Store,
@@ -586,7 +595,8 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
     output logic        RedirectSel,       //Адрес смены PC берётся из RedirectPC (известно до сравнения, Ч1)
     output logic        RedirectEarly,     //Смена PC ловушкой/mret/отладкой без части, зависящей от Taken (Ч15)
     output logic [31:0] RedirectPC,
-    output logic [31:0] RedirectAddr       //П1: адрес смены PC для регистра RedirectPC_q (конвейер)
+    output logic [31:0] RedirectAddr,      //П1: адрес смены PC для регистра RedirectPC_q (конвейер)
+    output logic        RedirectLate       //Ч17: смена PC ловушкой невыровненного перехода (часть Redirect, ждущая сравнения)
 );
     //#1 Адреса CSR - в модуле csr_decode (Д: номер CSR приходит one-hot-кодом CsrSel)
 
@@ -695,7 +705,7 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
     assign trap_csr = LATE_BR_TRAP ? ((irq_take | exc_early) & ~debug_entry) : Trap;
     always_ff @(posedge clk)
         if (rst) br_trap_q <= 1'b0;
-        else     br_trap_q <= LATE_BR_TRAP & Trap & ~trap_csr;   //Ловушка только из-за Taken
+        else     br_trap_q <= RedirectLate;                      //Ловушка только из-за Taken
     always_ff @(posedge clk) begin
         br_epc_q  <= PC[31:2];
         br_tval_q <= PCTarget;
@@ -706,6 +716,10 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
     //сравнения (Taken). Выполненный переход и так даёт PCSrcE = 1, а адрес (вектор ловушки) уже выбран
     //по кандидату (RedirectSel), поэтому для решения «менять ли PC» этой части не нужно
     assign RedirectEarly = ((irq_take | exc_early) & ~debug_entry) | mret_do | debug_entry | resume_do;
+    //Ч17: оставшаяся часть Redirect в конвейере - ловушка невыровненного условного перехода. У перехода других
+    //исключений нет (exc_early = 0), поэтому Trap & ~trap_csr = BrMisTaken & ~irq_take & ~debug_entry. Сигнал
+    //BrMisTaken считается в ядре из раскладки условия (Ч15) без выбора по funct3 и без цепочки exc -> Trap
+    assign RedirectLate  = LATE_BR_TRAP & BrMisTaken & ~irq_take & ~debug_entry;
     assign RedirectSel = trap_sel | mret_do | debug_entry | resume_do;
     assign RedirectPC = resume_do ? {dpc, 2'b00} :
                         trap_sel  ? ((mtvec_mode & irq_take) ? {mtvec_base[31:7], irq_code, 2'b00} : {mtvec_base, 2'b00}) :

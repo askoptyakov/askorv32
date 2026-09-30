@@ -17,16 +17,16 @@
 //DESCRIPTION: Всё, без чего система не работает: тактирование (rPLL), сброс, ядро, отладчик JTAG,
 //память команд и данных, CLINT, PLIC и системная шина. Пользовательская периферия подключается
 //снаружи, к порту шины регистров per_* (правила - hw/info/architecture.md, «Шина данных и
-//периферии»): на него уходят все обращения вне системных окон.
+//периферии»): на него уходят обращения к окну 0x1xxx_xxxx.
 //  0x0000_0000 IMEM (своя шина команд)   0x0200_0000 CLINT   0x0C00_0000 PLIC   0x1000_0000 DMEM
-//  остальные адреса - порт per_* (пользовательская периферия; 0x1F00_0000 - устройства тестбенча)
+//  0x1100_0000..0x1FFF_FFFF - порт per_* (пользовательская периферия; 0x1F00_0000 - устройства тестбенча)
 //Верхний уровень платы top.sv создаёт конфигуратор ПЛИС (sw/socgen) из fw/riscv.gwsoc: он
 //переопределяет параметры cpu и подключает периферию. Тесты ядра (hw/sim) моделируют cpu без
 //top.sv, поэтому от конфигурации платы не зависят. Этот файл правится вручную, top.sv - нет.
 module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
                 //Расширение M (умножение и деление)
              parameter bit M_EXT           =                 1, //1 - mul/mulh*/div*/rem*; 0 - RV32I (такие инструкции недопустимы)
-             parameter int DIV_BPC         =                 2, //Бит частного за такт: 1, 2, 4 (деление 32/DIV_BPC + 2 такта)
+             parameter int DIV_BPC         =                 2, //Бит частного за такт: 1, 2, 4 (деление 32/DIV_BPC + 3 такта)
                 //Настройки памяти инструкций
              parameter bit IMEM_TYPE       =        `BSRAM_MEM,
              parameter int BSRAM_IMEM_SIZE =                 8, //кБайт (поддерживаемые значения 8/16/32)
@@ -196,12 +196,17 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     assign bus_Addr  = bus_sb ? sb_addr  : dmem_Addr;
     assign bus_WData = bus_sb ? sb_wdata : dmem_WriteData;
 
-    //#5 Системная шина: DMEM, CLINT, PLIC и порт пользовательской периферии (ведомый по умолчанию -
-    //все адреса вне окон системных устройств). Окна по 16 МБайт, приоритет у младшего номера
+    //#5 Системная шина: DMEM, CLINT, PLIC и порт пользовательской периферии. Окна по 16 МБайт, приоритет
+    //у младшего номера. Порту периферии отдано окно 0x1xxx_xxxx (проверка старших 4 бит): в него попадает
+    //и DMEM (0x1000_0000), но это безвредно - запись в DMEM видна и на порту, где в окне 0x10 нет устройств,
+    //а чтение выбирает DMEM по приоритету. Проверка «ни одно окно не совпало» (DEFAULT_LAST) стоила ~70 LUT
+    //и удлиняла пути дешифрации (журнал оптимизации, шаг 20)
     localparam logic [31:0] DMEM_BASE  = 32'h1000_0000;
     localparam logic [31:0] CLINT_BASE = 32'h0200_0000;
     localparam logic [31:0] PLIC_BASE  = 32'h0C00_0000;
     localparam logic [31:0] WIN_MASK   = 32'hFF00_0000;
+    localparam logic [31:0] PER_BASE   = 32'h1000_0000;   //Порт периферии: 0x1xxx_xxxx (устройства - с 0x1100_0000)
+    localparam logic [31:0] PER_MASK   = 32'hF000_0000;
 
     logic [ 3:0] mem_Write, clint_Write, plic_Write;
     logic [31:0] mem_Addr, clint_Addr, plic_Addr;
@@ -209,9 +214,9 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     logic [31:0] mem_ReadData, clint_ReadData, plic_ReadData;
     logic [ 3:0] sRead;
 
-    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(4), .DEFAULT_LAST(1'b1),
-              .MATCH_ADDR ({32'h0, DMEM_BASE, CLINT_BASE, PLIC_BASE}),
-              .MATCH_MASK ({32'h0, WIN_MASK,  WIN_MASK,   WIN_MASK}))
+    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(4),
+              .MATCH_ADDR ({PER_BASE, DMEM_BASE, CLINT_BASE, PLIC_BASE}),
+              .MATCH_MASK ({PER_MASK, WIN_MASK,  WIN_MASK,   WIN_MASK}))
             memmux
              (.clk(clk_dmem), .rst(rst_sys),
               .mWrite(bus_Write), .mRead(bus_Read), .mAddr(bus_Addr), .mWData(bus_WData), .mRData(dmem_ReadData),

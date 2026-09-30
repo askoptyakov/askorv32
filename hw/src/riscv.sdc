@@ -3,16 +3,17 @@
 //tck_pad_i - JTAG отладчика (выделенные выводы GW1NR-9, IO_LOC не нужен). Сигналы JTAG выбираются
 //тактом clk в jtag_tap_gowin, поэтому пути между доменами не анализируются.
 create_clock -name clk     -period 37.037 -waveform {0 18.518} [get_ports {clk}]
-//Такт конвейерного ядра и памяти (CORE_TYPE = PIPELINE_CORE): 45 МГц от PLL (параметры PLL_* в top.sv).
-//Ограничение - рабочая частота: отчёт должен быть без отрицательного запаса (TNS = 0). Fmax конвейера с
-//расширением M - 47.5-48.2 МГц при настройках Gowin по умолчанию (шаг 19 журнала в hw/info/performance_roadmap.md). Чтобы
-//проверить запас к другой частоте, поменяйте период. В однотактном ядре такт ядра получается из
+//Такт конвейерного ядра и памяти (CORE_TYPE = PIPELINE_CORE): работает на 45 МГц от PLL (параметры PLL_*
+//в top.sv), а ограничение - цель 50 МГц (20 нс). С целью выше рабочей частоты Gowin размещает и трассирует
+//лучше, чем с целью, равной ей (шаги 17 и 20 журнала в hw/info/performance_roadmap.md). Поэтому отрицательный
+//запас в отчёте - нормальное состояние; годность проверяется по Fmax clk_core (Max Frequency Summary):
+//она должна быть не ниже рабочей частоты PLL. Так же проверяет итог сборки sw/socgen/socgen.py --build.
+//Fmax конвейера с расширением M - 48.1-49.5 МГц (шаг 20). В однотактном ядре такт ядра получается из
 //clk_base делением на 3 (clock.sv) и этим ограничением не описан.
-create_clock -name clk_core -period 22.222 -waveform {0 11.111} [get_pins {cpu/clk_pll/pll/CLKOUT}]
+create_clock -name clk_core -period 20 -waveform {0 10} [get_pins {cpu/clk_pll/pll/CLKOUT}]
 create_clock -name clk_tck -period 400.000 -waveform {0 200.000} [get_ports {tck_pad_i}]
-//Р3/Р4: запас 0.5 нс к периоду такта ядра (джиттер PLL и резерв). Он же заставляет P&R оптимизировать
-//размещение под 21.7 нс: с мягкой целью 22.222 нс Gowin останавливается раньше и при любом place_option
-//получал 44.3-44.6 МГц, а с запасом 0.5 нс ограничение выполняется при всех трёх вариантах.
+//Р3/Р4: запас 0.5 нс к периоду такта ядра (джиттер PLL и резерв). Fmax в отчёте учитывает его, то есть
+//занижена на этот запас.
 set_clock_uncertainty -setup 0.5 -from [get_clocks {clk_core}] -to [get_clocks {clk_core}]
 set_clock_groups -asynchronous -group [get_clocks {clk_tck}] -group [get_clocks {clk clk_core}]
 //Ч12: clk (27 МГц) и clk_core связаны через PLL, и анализатор считал переходы между ними обычными путями.

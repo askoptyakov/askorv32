@@ -675,15 +675,22 @@ def html_text(path):
     return re.sub(r"\s+", " ", _html.unescape(re.sub(r"<[^>]+>", " ", t)))
 
 
-def check_sdc_period(hw, fout):
-    """riscv.sdc задаёт период такта ядра вручную: при другой частоте rPLL анализ таймингов не про то."""
+def sdc_target_mhz(hw):
+    """Цель такта ядра из riscv.sdc (МГц) или None."""
     sdc = hw / "src" / "riscv.sdc"
     if not sdc.exists():
-        return
+        return None
     mm = re.search(r"create_clock\s+-name\s+clk_core\s+-period\s+([\d.]+)", sdc.read_text(encoding="utf-8"))
-    if mm and abs(1000.0 / float(mm.group(1)) - fout) > 0.05 * fout:
-        print(f"Предупреждение: в riscv.sdc период clk_core {mm.group(1)} нс ({1000 / float(mm.group(1)):.1f} МГц), "
-              f"а rPLL даёт {fmt_mhz(fout)} МГц - поправьте period (={1000 / fout:.3f}) для верного анализа таймингов")
+    return 1000.0 / float(mm.group(1)) if mm else None
+
+
+def check_sdc_period(hw, fout):
+    """riscv.sdc задаёт цель такта ядра вручную, выше рабочей частоты (50 МГц при 45 МГц от rPLL): с запасом
+    по цели Gowin размещает лучше. Цель ниже рабочей частоты - ошибка настройки: анализ пропустит нарушения."""
+    tgt = sdc_target_mhz(hw)
+    if tgt is not None and tgt < fout * 0.999:
+        print(f"Предупреждение: в riscv.sdc цель clk_core {tgt:.1f} МГц ниже рабочей частоты rPLL {fmt_mhz(fout)} МГц - "
+              f"задайте period не больше {1000 / fout:.3f} нс (рекомендуется цель на ~10 % выше рабочей)")
 
 
 def build_gowin(m, hw, gowin_arg, fout):
@@ -723,11 +730,19 @@ def build_gowin(m, hw, gowin_arg, fout):
     tr = impl / "pnr" / "riscv_tr_content.html"
     if tr.exists():
         t = html_text(tr)
+        #Такт ядра проверяется по рабочей частоте rPLL: цель в riscv.sdc нарочно выше (50 МГц при 45), поэтому
+        #отрицательный запас относительно цели - нормальное состояние
+        core_ok = {}
         for name, con, ach in re.findall(r"\d+ (\S+) ([\d.]+)\(MHz\) ([\d.]+)\(MHz\) \d+ TOP", t):
-            bad = float(ach) < float(con)
-            print(f"  Fmax {name}: {float(ach):.1f} МГц (нужно {float(con):.1f}){'  <-- НЕ ДОСТИГНУТО' if bad else ''}")
+            need = fout if name == "clk_core" else float(con)
+            bad = float(ach) < need
+            core_ok[name] = not bad
+            extra = f", цель в riscv.sdc {float(con):.1f}" if name == "clk_core" else ""
+            print(f"  Fmax {name}: {float(ach):.1f} МГц (нужно {need:.1f}{extra}){'  <-- НЕ ДОСТИГНУТО' if bad else ''}")
         tns = re.findall(r"(\S+) Setup (-[\d.]+) (\d+)", t)
         for name, v, n in tns:
+            if name == "clk_core" and core_ok.get(name):
+                continue    #Нарушение только относительно цели выше рабочей частоты
             print(f"Предупреждение: отрицательный запас по {name}: TNS {v} нс, путей {n} - см. hw/impl/pnr/riscv.tr.html")
 
 
