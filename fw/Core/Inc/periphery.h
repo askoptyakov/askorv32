@@ -12,6 +12,7 @@
 
 /* Подключаемые библиотеки */
 #include <stdint.h>
+#include "soc.h"	//Создаёт конфигуратор ПЛИС: SYSCLK_HZ, адреса устройств, источники PLIC, настройки UART
 
 /* Терминология */
 #define __INLINE				__attribute__((always_inline)) inline
@@ -19,20 +20,11 @@
 #define __O                     volatile        //Только для записи
 #define __IO                    volatile        //Чтение и запись
 
-/* Частота тактирования периферии (clk_dmem), Гц: от неё считают таймер STIM и mtime в CLINT.
-   Частоту задаёт PLL (параметры PLL_* в hw/src/top.sv).
-   Конвейерное ядро (PIPELINE_CORE): 45 МГц.
-   Однотактное ядро с BSRAM (SINGLECYCLE_CORE): 45 МГц / 3 = 15 МГц. */
-#ifndef SYSCLK_HZ
-#define SYSCLK_HZ				45000000U
-#endif
+/* Частота тактирования периферии (clk_dmem) SYSCLK_HZ - в soc.h (от неё считают STIM, UART и mtime) */
 #define MTIME_HZ				SYSCLK_HZ	//mtime увеличивается на каждом такте clk_dmem
 
-/* Карта памяти периферийных устройств */
+/* Системные устройства процессора (cpu.sv); адреса пользовательской периферии - в soc.h */
 #define  CLINT_BASE		(0x02000000U)
-#define   GPIO_BASE		(0x11000000U)
-#define TM1638_BASE		(0x12000000U)
-#define   STIM_BASE		(0x13000000U)
 #define   PLIC_BASE		(0x0C000000U)
 
 /* Объявление структур регистров */
@@ -48,7 +40,23 @@ typedef struct
   __IO uint32_t SEGS;  	//0x00: Регистр данных на семисегментном индикаторе вн. платы(HEX)
   __IO uint32_t LEDS;   //0x04: Регистр данных на светодиодах вн. платы
   __IO uint32_t KEYS;  	//0x08: Регистр данных состояния кнопок вн. платы
+  __IO uint32_t CTRL;  	//0x0C: [1:0] режим (0 - HEX, 1 - текст, 2 - сегменты), [15:8] точки (бит i - позиция i слева)
+  __IO uint32_t TEXT0; 	//0x10: Символы 0..3 (байт 0 - левый символ), коды cp1251
+  __IO uint32_t TEXT1; 	//0x14: Символы 4..7
 } TM1638_TypeDef;
+
+typedef struct
+{
+  __IO uint32_t TXDATA;	//0x00: Запись - байт в FIFO передачи; чтение - бит 31: FIFO передачи полон
+  __I  uint32_t RXDATA;	//0x04: Чтение - байт из FIFO приёма (выбирается из FIFO); бит 31: FIFO был пуст
+  __IO uint32_t TXCTRL;	//0x08: [0] txen, [1] nstop (1 - два стоп-бита), [20:16] txcnt - порог txwm
+  __IO uint32_t RXCTRL;	//0x0C: [0] rxen, [20:16] rxcnt - порог rxwm
+  __IO uint32_t IE;		//0x10: Разрешение прерываний: [0] txwm, [1] rxwm, [2] err
+  __I  uint32_t IP;		//0x14: Ожидающие прерывания: [0] txwm (в FIFO tx меньше txcnt), [1] rxwm (в FIFO rx больше rxcnt), [2] err
+  __IO uint32_t DIV;		//0x18: Делитель скорости: скорость = SYSCLK_HZ / (DIV + 1)
+  __IO uint32_t CFG;		//0x1C: [0] бит чётности есть, [1] 1 - odd, 0 - even
+  __IO uint32_t ERR;		//0x20: Ошибки приёма, сброс записью 1: [0] кадр, [1] чётность, [2] переполнение FIFO приёма
+} UART_TypeDef;
 
 typedef struct
 {
@@ -88,35 +96,50 @@ typedef struct
   uint32_t      RESERVED1[522239];
   __IO uint32_t THRESHOLD;			//0x200000: Порог приоритета
   __IO uint32_t CLAIM;				//0x200004: Чтение - claim, запись - complete
+  __IO uint32_t VECTOR;			//0x200008: Бит 0 - векторный режим (расширение askoRV32)
 } PLIC_TypeDef;
 
-/* Источники PLIC (номер = бит в PENDING/ENABLE). Номер 0 зарезервирован. Новую периферию
-   подключать к свободным номерам 2..PLIC_NUM_SOURCES (hw/src/top.sv, сигнал irq_src) */
-typedef enum
-{
-  PLIC_SRC_STIM = 1,		//Таймер STIM (он же - локальное прерывание LI0)
-  PLIC_SRC_2    = 2,		//Свободны
-  PLIC_SRC_3, PLIC_SRC_4, PLIC_SRC_5, PLIC_SRC_6, PLIC_SRC_7, PLIC_SRC_8
-} PLIC_SRC_Type;
-
-#define PLIC_NUM_SOURCES			8U		//PLIC_SOURCES в top.sv
+/* Источники PLIC (PLIC_SRC_Type, PLIC_NUM_SOURCES) назначает конфигуратор ПЛИС - см. soc.h */
 #define PLIC_MAX_PRIORITY			7U		//PRIO_BITS = 3
 
 /* Биты регистров таймера STIM */
 #define STIM_SR_UIF					(1U << 0)
 
 /* Настройки таймера при инициализации */
-#define STIM_WIDTH					16U		//Разрядность PR, PER, PUL, CNT (параметр WIDTH в hw/src/periph/stim/stim.sv)
 #define STIM_PRESCALER 				(SYSCLK_HZ / 1000U - 1U)	//Тик счётчика - 1 мс (значение не больше 65535)
 #define STIM_PERIOD 				100;
 #define STIM_COUNTER_MODE 			STIM_COUNTER_MODE_DOWN;
 #define STIM_AUTO_RELOAD_PRELOAD 	1;
 
-/* Объявление указателей на структуры данных */
+/* Биты регистров UART */
+#define UART_TXDATA_FULL			(1U << 31)
+#define UART_RXDATA_EMPTY			(1U << 31)
+#define UART_CTRL_EN				(1U << 0)	//txen / rxen
+#define UART_TXCTRL_NSTOP			(1U << 1)
+#define UART_CTRL_CNT_POS			16U			//Поле txcnt / rxcnt
+#define UART_IT_TXWM				(1U << 0)
+#define UART_IT_RXWM				(1U << 1)
+#define UART_IT_ERR					(1U << 2)
+#define UART_CFG_PE					(1U << 0)
+#define UART_CFG_PO					(1U << 1)
+#define UART_ERR_FRAME				(1U << 0)
+#define UART_ERR_PARITY				(1U << 1)
+#define UART_ERR_OVERRUN			(1U << 2)
+
+/* Объявление указателей на структуры данных: пользовательская периферия - только та, что есть в ПЛИС */
 #define CLINT 	((CLINT_TypeDef*) 	CLINT_BASE)
-#define GPIO 	((GPIO_TypeDef*) 	GPIO_BASE)
-#define TM1638 	((TM1638_TypeDef*) 	TM1638_BASE)
-#define STIM 	((STIM_TypeDef*) 	STIM_BASE)
 #define PLIC 	((PLIC_TypeDef*) 	PLIC_BASE)
+#if GPIO_PRESENT
+#define GPIO 	((GPIO_TypeDef*) 	GPIO_BASE)
+#endif
+#if TM1638_PRESENT
+#define TM1638 	((TM1638_TypeDef*) 	TM1638_BASE)
+#endif
+#if STIM_PRESENT
+#define STIM 	((STIM_TypeDef*) 	STIM_BASE)
+#endif
+#if UART_PRESENT
+#define UART 	((UART_TypeDef*) 	UART_BASE)
+#endif
 
 #endif /* __PERIPHERY_H */

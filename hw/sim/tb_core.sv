@@ -223,6 +223,20 @@ module tb_core;
     always @(posedge clk_core)
         if (pctrace_fd && !rst) $fdisplay(pctrace_fd, "%h", dut.riscv.PCF);
 
+    //Трасса задержки прерываний (+irqtrace, run_irqlat.py): такт, запрос таймера тестбенча, PC выборки,
+    //PC команды, выполняемой в стадии E ("-" - пузырь, неверный путь или команда, погашенная ловушкой).
+    //Выборка бывает спекулятивной (адреса за переходом), поэтому события программы - по стадии E
+    int irqtrace_fd = 0;
+    initial if ($value$plusargs("irqtrace=%s", file)) irqtrace_fd = $fopen(file, "w");
+
+    always @(posedge clk_core)
+        if (irqtrace_fd && !rst) begin
+            if (dut.riscv.ValidX && !dut.riscv.KillE && !dut.riscv.DivHold)
+                $fdisplay(irqtrace_fd, "%0d %b %h %h", cycles, tim_irq, dut.riscv.PCF, dut.riscv.PCE);
+            else
+                $fdisplay(irqtrace_fd, "%0d %b %h -", cycles, tim_irq, dut.riscv.PCF);
+        end
+
 
     //#5.1 Сценарий отладки через JTAG
     `include "tb_debug.svh"

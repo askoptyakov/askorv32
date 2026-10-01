@@ -12,6 +12,8 @@
 
 #include "periphery.h"
 
+#if STIM_PRESENT	//Áëîê åñòü â ÏËÈÑ (soc.h)
+
 typedef enum
 {
   TIM_DISABLE = 0,
@@ -67,4 +69,6 @@ __INLINE void STIM_CLEAR_FLAG_UPDATE(void) {
 	STIM->SR = STIM_SR_UIF;
 }
 
+
+#endif /* STIM_PRESENT */
 #endif /* __TIM_H */

@@ -21,11 +21,19 @@ const VCCIOS = ['3.3', '2.5', '1.8', '1.5', '1.2'];
 
 //Пользовательская периферия: на порту per_* процессора (cpu.sv) через memmux в top.sv, окно 16 МБайт
 //(маска 0xFF000000), предпочтительный слот при "auto". Системные окна ниже - внутри cpu.sv
+//Порядок - порядок подключения к memmux и номеров источников PLIC (как BLOCKS в socgen.py)
 const BLOCKS = {
   gpio:   { title: 'GPIO',   color: 'var(--c-gpio)',   slot: 0x11, about: 'Порты ввода-вывода' },
-  tm1638: { title: 'TM1638', color: 'var(--c-tm1638)', slot: 0x12, about: 'Индикатор и кнопки TM1638' },
-  stim:   { title: 'STIM',   color: 'var(--c-stim)',   slot: 0x13, about: 'Простой таймер (ШИМ, прерывание LI0 и PLIC 1)' },
+  tm1638: { title: 'TM1638', color: 'var(--c-tm1638)', slot: 0x12, about: 'Индикатор (HEX и текст) и кнопки TM1638' },
+  stim:   { title: 'STIM',   color: 'var(--c-stim)',   slot: 0x13, about: 'Простой таймер (ШИМ, прерывание)', irq: true },
+  uart:   { title: 'UART',   color: 'var(--c-uart)',   slot: 0x14, about: 'Приёмопередатчик UART (FIFO, прерывания)', irq: true },
 };
+const UART_BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
+const UART_PARITY = { none: 'нет', even: 'чётность (even)', odd: 'нечётность (odd)' };
+const FIFO_DEPTHS = [8, 16, 32];
+const MEM_KB = [8, 16, 32];
+const BSRAM_TOTAL = 26;    //Блоков BSRAM (18 кбит, 2 кБайт данных) в GW1NR-9
+const IRQ_ROUTES = { plic: 'PLIC (по умолчанию)', local: 'локальная линия LI', none: 'не подключено' };
 const FIXED_REGIONS = [
   { name: 'IMEM',  slot: 0x00, color: 'var(--c-core)', note: 'память команд' },
   { name: 'CLINT', slot: 0x02, color: 'var(--c-core)', note: 'mtime, msip' },
@@ -40,13 +48,13 @@ const SV_KEYWORDS = new Set(['input', 'output', 'inout', 'wire', 'logic', 'reg',
   'always', 'begin', 'end', 'if', 'else', 'case', 'for', 'generate', 'parameter', 'localparam', 'int', 'bit']);
 //Имена, уже занятые в top.sv: порт cpu, сигналы, экземпляры и модули, параметры (как RESERVED_NETS в socgen.py)
 const RESERVED_NETS = new Set(['tck_pad_i', 'tms_pad_i', 'tdi_pad_i', 'tdo_pad_o',
-  'per_clk', 'per_rst', 'per_Write', 'per_Read', 'per_Addr', 'per_WData', 'per_RData', 'irq_stim', 'irq_local', 'irq_src',
-  'sRead', 'top', 'cpu', 'permux', 'memmux', 'gpio', 'gpio_top', 'stim', 'stim_top', 'tm1638', 'tm1638_top',
+  'per_clk', 'per_rst', 'per_Write', 'per_Read', 'per_Addr', 'per_WData', 'per_RData', 'irq_stim', 'irq_uart', 'irq_local', 'irq_src',
+  'sRead', 'top', 'cpu', 'permux', 'memmux', 'gpio', 'gpio_top', 'stim', 'stim_top', 'tm1638', 'tm1638_top', 'uart', 'uart_top',
   'CORE_TYPE', 'M_EXT', 'DIV_BPC', 'IMEM_TYPE', 'BSRAM_IMEM_SIZE', 'SYNTH_IMEM_SIZE', 'IMEM_INIT_FILE',
   'DMEM_TYPE', 'BSRAM_DMEM_SIZE', 'SYNTH_DMEM_SIZE', 'DMEM_INIT_FILE', 'DEBUG_EN', 'PLIC_SOURCES',
   'FCLKIN', 'XTAL_KHZ', 'PLL_IDIV_SEL', 'PLL_FBDIV_SEL', 'PLL_ODIV_SEL', 'WIN_MASK', 'CLK_BASE_MHZ', 'CLK_DMEM_MHZ']);
 //Сигналы шины устройств (gpio_Write, tim_Addr...) и их адреса (GPIO_BASE...)
-const RESERVED_RE = /^(gpio|tim|tm)_(Write|Addr|WriteData|ReadData)$|^(GPIO|TM1638|STIM)_BASE$/;
+const RESERVED_RE = /^(gpio|tim|tm|uart)_(Write|Addr|WriteData|ReadData)$|^(GPIO|TM1638|STIM|UART)_BASE$/;
 
 // ============================================================================================
 // Модель
@@ -64,14 +72,19 @@ const hexSlot = s => hex8(s * 0x01000000).replace(/^0x(....)/, '0x$1_');
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function normalize(m) {
-  m.core = m.core || {};
+  m.core = Object.assign({ coreType: 'pipeline', mExt: true, divBpc: 2, debug: true, plicSources: 8 }, m.core);
+  m.core.imem = Object.assign({ type: 'bsram', kb: 8, synthWords: 256, init: 'mem_init/i.mem' }, m.core.imem);
+  m.core.dmem = Object.assign({ type: 'bsram', kb: 8, synthWords: 256, init: 'mem_init/d.mem' }, m.core.dmem);
+  m.banks = m.banks || {};
   m.clock = m.clock || { xtalMHz: 27, xtalPin: 52, pll: {} };
   m.clock.pll = Object.assign({ mode: 'auto', targetMHz: 27, idiv: 0, fbdiv: 0, odiv: 32 }, m.clock.pll);
   m.reset = m.reset || { pin: null };
   m.blocks = m.blocks || {};
   m.blocks.gpio = Object.assign({ enabled: false, base: 'auto', lines: [] }, m.blocks.gpio);
   m.blocks.tm1638 = Object.assign({ enabled: false, base: 'auto', dio: null, clk: null, stb: null }, m.blocks.tm1638);
-  m.blocks.stim = Object.assign({ enabled: false, base: 'auto', width: 16, out: null }, m.blocks.stim);
+  m.blocks.stim = Object.assign({ enabled: false, base: 'auto', width: 16, out: null, irq: 'plic' }, m.blocks.stim);
+  m.blocks.uart = Object.assign({ enabled: false, base: 'auto', tx: null, rx: null, baud: 115200, parity: 'none',
+                                  stop: 1, fifo: 16, irq: 'plic' }, m.blocks.uart);
   m.ioDefaults = Object.assign({ ioType: 'LVCMOS18', pull: 'UP', drive: '8', vccio: '1.8' }, m.ioDefaults);
   m.pins = m.pins || {};
   m.build = Object.assign({ toolchain: 'gowin' }, m.build);
@@ -91,8 +104,57 @@ function signals(m) {
       s.push({ id: 'tm1638.' + k, block: 'tm1638', name: 'TM1638 ' + k.toUpperCase(), dir: d, pin: b.tm1638[k], def: 'tm_' + k }));
   if (b.stim.enabled && b.stim.out != null)
     s.push({ id: 'stim.out', block: 'stim', name: 'STIM выход', dir: 'output', pin: b.stim.out, def: 'stim_out' });
+  if (b.uart.enabled) {
+    s.push({ id: 'uart.tx', block: 'uart', name: 'UART TX', dir: 'output', pin: b.uart.tx, def: 'uart_tx' });
+    s.push({ id: 'uart.rx', block: 'uart', name: 'UART RX', dir: 'input', pin: b.uart.rx, def: 'uart_rx' });
+  }
   return s;
 }
+
+// --- Частота шины периферии, UART, прерывания, стандарты выводов (как в socgen.py) ---
+//Частота шины периферии, Гц: выход rPLL; однотактное ядро с BSRAM делит её на 3
+function sysclkHz(m) {
+  const bsram = m.core.imem.type === 'bsram' || m.core.dmem.type === 'bsram';
+  return Math.round(pllOf(m).fout * 1e6 / (m.core.coreType === 'singlecycle' && bsram ? 3 : 1));
+}
+function uartDiv(m) {
+  const f = sysclkHz(m), baud = Number(m.blocks.uart.baud);
+  const div = Math.max(0, Math.round(f / baud) - 1), real = f / (div + 1);
+  return { div, real, err: Math.abs(real - baud) / baud * 100 };
+}
+//Прерывания устройств: по умолчанию - источники PLIC 1, 2, ... в порядке BLOCKS; irq = 'local' - LI0, LI1...
+function irqMap(m) {
+  const res = {};
+  let nPlic = 0, nLoc = 0;
+  for (const k of Object.keys(BLOCKS)) {
+    const b = m.blocks[k];
+    if (!BLOCKS[k].irq || !b.enabled) continue;
+    const route = b.irq || 'plic';
+    if (route === 'plic') res[k] = { route, n: ++nPlic };
+    else if (route === 'local') res[k] = { route, n: nLoc++ };
+  }
+  return res;
+}
+//Блоки BSRAM: IMEM и DMEM по 2 кБайт на блок, шрифт TM1638 - один блок
+function bsramBlocks(m) {
+  let used = 0;
+  for (const k of ['imem', 'dmem']) if (m.core[k].type === 'bsram') used += Math.floor(Number(m.core[k].kb) / 2);
+  if (m.blocks.tm1638.enabled) used += 1;
+  return used;
+}
+const irqText = r => !r ? 'не подключено' : r.route === 'plic' ? `PLIC ${r.n}` : `LI${r.n}`;
+//Стандарт вывода: свои настройки вывода, иначе банка, иначе общие
+function pinAttrs(m, n) {
+  const bank = PIN[n] ? String(PIN[n].bank) : '';
+  const a = Object.assign({}, m.ioDefaults, m.banks[bank] || {});
+  const own = m.pins[n] || {};
+  for (const k of ['ioType', 'pull', 'drive', 'vccio']) if (own[k]) a[k] = own[k];
+  return a;
+}
+const bankDefault = (m, n, key) => {
+  const bank = PIN[n] ? String(PIN[n].bank) : '';
+  return (m.banks[bank] && m.banks[bank][key]) || m.ioDefaults[key];
+};
 
 function setSignalPin(m, id, pin) {
   pin = (pin === '' || pin == null) ? null : Number(pin);
@@ -249,16 +311,44 @@ function validate(m) {
   const pll = pllOf(m);
   pll.errs.forEach(e => out.push({ lvl: 'err', text: 'rPLL: ' + e, block: 'sys' }));
 
-  //Банки: одно напряжение VCCIO на банк
+  //Банки: одно напряжение VCCIO на банк (иначе Gowin EDA остановит размещение)
   const bankV = new Map();
   for (const pin of byPin.keys()) {
     const p = PIN[pin]; if (!p || p.bank == null) continue;
-    const v = (m.pins[pin] && m.pins[pin].vccio) || m.ioDefaults.vccio;
-    if (!bankV.has(p.bank)) bankV.set(p.bank, new Set());
-    bankV.get(p.bank).add(v);
+    const v = pinAttrs(m, pin).vccio;
+    if (!bankV.has(p.bank)) bankV.set(p.bank, new Map());
+    const vs = bankV.get(p.bank);
+    if (!vs.has(v)) vs.set(v, []);
+    vs.get(v).push(pin);
   }
   for (const [bank, vs] of bankV)
-    if (vs.size > 1) out.push({ lvl: 'warn', text: `Банк ${bank}: разные BANK_VCCIO (${[...vs].join(', ')} В)` });
+    if (vs.size > 1) out.push({ lvl: 'err', text: `Банк ${bank}: разные BANK_VCCIO - ` +
+      [...vs].map(([v, ps]) => `${v} В у выводов ${ps.sort((a, b) => a - b).join(', ')}`).join('; ') });
+
+  //Ядро и прерывания
+  const c = m.core;
+  if (![1, 2, 4].includes(Number(c.divBpc))) out.push({ lvl: 'err', text: 'Ядро: бит частного за такт - 1, 2 или 4', block: 'core' });
+  for (const k of ['imem', 'dmem'])
+    if (c[k].type === 'bsram' && !MEM_KB.includes(Number(c[k].kb))) out.push({ lvl: 'err', text: `Ядро: ${k.toUpperCase()} в BSRAM - 8, 16 или 32 кБайт`, block: 'core' });
+  const nsrc = Number(c.plicSources);
+  if (!(nsrc >= 1 && nsrc <= 31)) out.push({ lvl: 'err', text: 'Ядро: источников PLIC 1..31', block: 'core' });
+  const irqs = Object.values(irqMap(m));
+  const usedPlic = irqs.filter(r => r.route === 'plic').map(r => r.n);
+  if (usedPlic.length && Math.max(...usedPlic) > nsrc)
+    out.push({ lvl: 'err', text: `PLIC: устройствам нужно ${Math.max(...usedPlic)} источников, а в ядре ${nsrc} - увеличьте число источников PLIC`, block: 'core' });
+  if (irqs.filter(r => r.route === 'local').length > 16) out.push({ lvl: 'err', text: 'Локальных линий прерываний всего 16' });
+  const nbs = bsramBlocks(m);
+  if (nbs > BSRAM_TOTAL) out.push({ lvl: 'err', text: `BSRAM: нужно ${nbs} блоков, в ПЛИС ${BSRAM_TOTAL} - уменьшите IMEM/DMEM`, block: 'core' });
+  if (!c.mExt) out.push({ lvl: 'warn', text: 'Ядро без расширения M: в настройках проекта Eclipse замените -march=rv32im_zicsr на rv32i_zicsr', block: 'core' });
+
+  //UART: делитель скорости
+  if (m.blocks.uart.enabled && !pll.errs.length) {
+    const u = uartDiv(m);
+    if (u.div < 7 || u.div > 0xFFFF)
+      out.push({ lvl: 'err', text: `UART: скорость ${m.blocks.uart.baud} при частоте ${sysclkHz(m)} Гц не получить (div ${u.div}, нужно 7..65535)`, block: 'uart' });
+    else if (u.err > 2) out.push({ lvl: 'err', text: `UART: ошибка скорости ${u.err.toFixed(2)} % (фактически ${Math.round(u.real)} бит/с) - больше 2 %`, block: 'uart' });
+    else if (u.err > 1) out.push({ lvl: 'warn', text: `UART: ошибка скорости ${u.err.toFixed(2)} % (фактически ${Math.round(u.real)} бит/с)`, block: 'uart' });
+  }
 
   if (m.build.toolchain === 'apicula' && m.core.debug)
     out.push({ lvl: 'warn', text: 'apicula: отладчик JTAG в этой сборке будет выключен (GW_JTAG для GW1N-9C не поддерживается)' });
@@ -394,7 +484,7 @@ function renderLegend() {
   const banks = [...new Set(DEV.pins.filter(p => p.bank != null).map(p => p.bank))].sort();
   const items = banks.map(b => `<span><i style="background:${BANK_COLOR(b)}"></i>банк ${b}</span>`);
   items.push(`<span><i style="background:var(--pwr)"></i>питание</span>`, `<span><i style="background:var(--gnd)"></i>земля</span>`);
-  const used = [['sys', 'такт/сброс'], ['gpio', 'GPIO'], ['tm1638', 'TM1638'], ['stim', 'STIM']];
+  const used = [['sys', 'такт/сброс'], ['gpio', 'GPIO'], ['tm1638', 'TM1638'], ['stim', 'STIM'], ['uart', 'UART']];
   used.forEach(([k, t]) => items.push(`<span><i class="round" style="background:${blockColor(k)}"></i>${t}</span>`));
   if (model.core.debug) items.push(`<span><i class="round" style="background:var(--c-jtag)"></i>JTAG</span>`);
   document.getElementById('legend').innerHTML = items.join('');
@@ -415,10 +505,10 @@ function renderIoTable(v) {
       <td><span class="dot" style="background:${blockColor(s.block)}"></span>${esc(s.name)}</td>
       <td>${dirRu[s.dir]}</td>
       <td class="mono">${s.pin}</td><td class="mono">${esc(p.name || '?')}</td><td>${p.bank ?? ''}</td>
-      <td>${sel(s.pin, 'ioType', IO_TYPES, a.ioType, d.ioType)}</td>
+      <td>${sel(s.pin, 'ioType', IO_TYPES, a.ioType, bankDefault(model, s.pin, 'ioType'))}</td>
       <td>${s.dir === 'input' ? '<span class="muted">—</span>' : sel(s.pin, 'drive', DRIVES, a.drive, d.drive)}</td>
       <td>${sel(s.pin, 'pull', PULLS, a.pull, d.pull)}</td>
-      <td>${sel(s.pin, 'vccio', VCCIOS, a.vccio, d.vccio)}</td></tr>`;
+      <td>${sel(s.pin, 'vccio', VCCIOS, a.vccio, bankDefault(model, s.pin, 'vccio'))}</td></tr>`;
   }).join('');
   document.getElementById('iotab').innerHTML = `<tr><th>Порт (цепь)</th><th>Сигнал</th><th>Направление</th><th>Вывод</th>
     <th>Площадка</th><th>Банк</th><th>IO_TYPE</th><th>DRIVE</th><th>PULL_MODE</th><th>BANK_VCCIO</th></tr>` + rows;
@@ -435,7 +525,7 @@ function renderIoTable(v) {
   });
 }
 
-const blockColor = b => ({ sys: 'var(--c-sys)', gpio: 'var(--c-gpio)', tm1638: 'var(--c-tm1638)', stim: 'var(--c-stim)' }[b]);
+const blockColor = b => ({ sys: 'var(--c-sys)', gpio: 'var(--c-gpio)', tm1638: 'var(--c-tm1638)', stim: 'var(--c-stim)', uart: 'var(--c-uart)' }[b]);
 
 // --- Блоки внутри кристалла ---
 function tileDefs() {
@@ -443,6 +533,7 @@ function tileDefs() {
   const baseTxt = k => { const s = am.baseOf(k); return s == null ? '<span class="bad">—</span>' : `<span class="v">${hexSlot(s)}</span>`; };
   const pinsOf = arr => arr.filter(x => x != null);
   const core = m.core;
+  const irqs = irqMap(m);
   return [
     { key: 'clock', title: 'Такт и сброс', color: 'var(--c-sys)', editable: true, on: true,
       body: `Кварц <span class="v">${fmt(Number(m.clock.xtalMHz))} МГц</span> · вывод <span class="v">${m.clock.xtalPin ?? '—'}</span><br>
@@ -453,16 +544,19 @@ function tileDefs() {
     { key: 'core', title: 'Ядро askoRV32', color: 'var(--c-core)', editable: true, on: true,
       body: `RV32I${core.mExt ? 'M' : ''}_Zicsr · ${core.coreType === 'pipeline' ? 'конвейер' : 'однотактное'}<br>
              IMEM <span class="v">${memTxt(core.imem)}</span> · DMEM <span class="v">${memTxt(core.dmem)}</span><br>
-             <span class="dim">Настройки ядра - позже</span>` },
+             <span class="dim">шина периферии ${pll.errs.length ? '—' : fmt(sysclkHz(m) / 1e6) + ' МГц'}</span>` },
     { key: 'debug', title: 'Отладчик JTAG', color: 'var(--c-jtag)', editable: false, on: !!core.debug,
       body: core.debug ? `GW_JTAG · выводы <span class="v">5–8</span><br><span class="dim">OpenOCD, riscv-debug 0.13</span>` : 'выключен' },
     { key: 'gpio', toggle: true },
     { key: 'tm1638', toggle: true },
     { key: 'stim', toggle: true },
+    { key: 'uart', toggle: true },
     { key: 'clint', title: 'CLINT', color: 'var(--c-core)', editable: false, on: true,
       body: `<span class="v">0x0200_0000</span><br><span class="dim">mtime = mcycle, msip · в cpu.sv</span>` },
     { key: 'plic', title: 'PLIC', color: 'var(--c-core)', editable: false, on: true,
-      body: `<span class="v">0x0C00_0000</span><br><span class="dim">${core.plicSources ?? 8} источников → MEI · в cpu.sv</span>` },
+      body: `<span class="v">0x0C00_0000</span> · векторный режим<br>` +
+            (Object.entries(irqs).filter(([, r]) => r.route === 'plic').map(([k, r]) => `${r.n}: ${BLOCKS[k].title}`).join(', ') || '<span class="dim">источников нет</span>') +
+            `<br><span class="dim">${core.plicSources ?? 8} источников → MEI · в cpu.sv</span>` },
     { key: 'mem', title: 'Шина периферии', color: 'var(--c-core)', editable: false, on: true,
       body: `Порт <span class="v">per_*</span> процессора<br><span class="dim">адреса вне IMEM, DMEM, CLINT, PLIC; окно 16 МБайт на устройство</span>` },
   ].map(t => {
@@ -471,7 +565,13 @@ function tileDefs() {
     let body;
     if (k === 'gpio') body = `Линий <span class="v">${blk.lines.length}</span> · выводы ${pinList(pinsOf(blk.lines))}`;
     if (k === 'tm1638') body = `DIO <span class="v">${blk.dio ?? '—'}</span> · CLK <span class="v">${blk.clk ?? '—'}</span> · STB <span class="v">${blk.stb ?? '—'}</span>`;
-    if (k === 'stim') body = `${blk.width} бит · выход ${blk.out == null ? '<span class="dim">не выведен</span>' : `<span class="v">${blk.out}</span>`}<br><span class="dim">IRQ → LI0, PLIC 1</span>`;
+    if (k === 'stim') body = `${blk.width} бит · выход ${blk.out == null ? '<span class="dim">не выведен</span>' : `<span class="v">${blk.out}</span>`}<br>Прерывание <span class="v">${irqText(irqs[k])}</span>`;
+    if (k === 'uart') {
+      const u = uartDiv(m);
+      body = `TX <span class="v">${blk.tx ?? '—'}</span> · RX <span class="v">${blk.rx ?? '—'}</span> · <span class="v">${blk.baud}</span> ` +
+             `${{ none: 'N', even: 'E', odd: 'O' }[blk.parity]}${blk.stop}<br><span class="dim">ошибка скорости ${pll.errs.length ? '—' : u.err.toFixed(2) + ' %'} · FIFO ${blk.fifo}</span>` +
+             `<br>Прерывание <span class="v">${irqText(irqs[k])}</span>`;
+    }
     return { key: k, title: meta.title, color: meta.color, editable: true, toggle: true, on: blk.enabled,
              body: `${body}<br>Адрес ${baseTxt(k)}` };
   });
@@ -486,8 +586,9 @@ function pinList(a) {
 function drawTiles(svg) {
   const inner = G.body - 2 * (G.marg + 20);
   const x0 = G.o + G.marg + 20, y0 = G.o + G.marg + 70;
-  const gap = 12, w = (inner - 2 * gap) / 3, h = (inner - 50 - 2 * gap) / 3;
-  tileDefs().forEach((t, i) => {
+  const tiles = tileDefs(), rows = Math.ceil(tiles.length / 3);
+  const gap = 12, w = (inner - 2 * gap) / 3, h = (inner - 50 - (rows - 1) * gap) / rows;
+  tiles.forEach((t, i) => {
     const x = x0 + (i % 3) * (w + gap), y = y0 + Math.floor(i / 3) * (h + gap);
     const fo = el('foreignObject', { class: 'tile-fo', x, y, width: w, height: h }, svg);
     const div = document.createElement('div');
@@ -641,6 +742,14 @@ function readBase(body) {
   return mode === 'auto' ? 'auto' : body.querySelector('[name=base]').value.trim().replace(/_/g, '');
 }
 
+//Маршрут прерывания устройства: PLIC (по умолчанию), локальная линия ядра или без прерывания
+function irqField(k) {
+  const cur = model.blocks[k].irq || 'plic';
+  return `<label>Прерывание</label><div><select name="irq">${Object.entries(IRQ_ROUTES).map(([v, txt]) =>
+    `<option value="${v}"${v === cur ? ' selected' : ''}>${txt}</option>`).join('')}</select>
+    <span class="muted"> сейчас: ${irqText(irqMap(model)[k])}</span></div>`;
+}
+
 //Строки «сигнал - вывод - имя цепи»: применение с учётом имён
 function applySignalRows(body, rows) {
   //Сначала снимаются старые назначения, затем ставятся новые (чтобы обмен выводами работал)
@@ -721,16 +830,66 @@ function blockDialog(k) {
       `<div class="form-grid">
         <label>Разрядность</label><div><select name="width">${[16, 32].map(w => `<option${w === b.width ? ' selected' : ''}>${w}</option>`).join('')}</select>
           <span class="muted"> предделитель, период, сравнение, счётчик</span></div>
+        ${irqField(k)}
         ${baseField(k)}</div>${signalRowsHtml(rows)}
        <p class="note">«Не подключён» - таймер работает только на прерывание, выход ШИМ не выводится.</p>`,
       body => {
         b.width = Number(body.querySelector('[name=width]').value);
+        b.irq = body.querySelector('[name=irq]').value;
         const pin = body.querySelector('[name=pin_out]').value;
         b.out = pin === '' ? null : Number(pin);
         if (b.out != null) applySignalRows(body, rows);
         b.base = readBase(body);
       },
       body => { wireBaseField(body); wireSignalRows(body); });
+  }
+  if (k === 'uart') {
+    const rows = [['tx', 'TX (выход)', 'uart_tx'], ['rx', 'RX (вход)', 'uart_rx']].map(([key, label, def]) =>
+      ({ key, id: 'uart.' + key, def, label, pin: b[key] }));
+    const sel = (name, list, v) => `<select name="${name}">${list.map(([val, txt]) =>
+      `<option value="${val}"${String(val) === String(v) ? ' selected' : ''}>${txt}</option>`).join('')}</select>`;
+    openDialog(`UART - ${meta.about}`, meta.color,
+      `<div class="form-grid">
+        <label>Скорость, бит/с</label><div><input type="number" name="baud" list="uartBauds" min="300" max="3000000" value="${b.baud}" style="width:110px">
+          <datalist id="uartBauds">${UART_BAUDS.map(v => `<option value="${v}">`).join('')}</datalist></div>
+        <label>Контроль чётности</label>${sel('parity', Object.entries(UART_PARITY), b.parity)}
+        <label>Стоп-битов</label>${sel('stop', [[1, '1'], [2, '2']], b.stop)}
+        <label>Глубина FIFO</label><div>${sel('fifo', FIFO_DEPTHS.map(v => [v, v + ' байт']), b.fifo)}
+          <span class="muted"> на приём и на передачу</span></div>
+        <div class="full readout" id="uartOut"></div>
+        ${irqField(k)}
+        ${baseField(k)}</div>${signalRowsHtml(rows)}
+       <p class="note">Скорость, чётность и стоп-биты - значения после сброса (параметры uart_top в top.sv и
+       UART_BAUD, UART_PARITY_DEFAULT, UART_STOP_DEFAULT в soc.h); прошивка может сменить их регистрами DIV,
+       CFG и TXCTRL. Делитель считается от частоты шины периферии. На Tang Nano 9K к UART программатора BL702
+       идут выводы 17 (TX ПЛИС) и 18 (RX ПЛИС).</p>`,
+      body => {
+        const q = name => body.querySelector(`[name=${name}]`);
+        b.baud = Number(q('baud').value);
+        b.parity = q('parity').value;
+        b.stop = Number(q('stop').value);
+        b.fifo = Number(q('fifo').value);
+        b.irq = q('irq').value;
+        applySignalRows(body, rows);
+        b.base = readBase(body);
+      },
+      body => {
+        wireBaseField(body); wireSignalRows(body);
+        const q = name => body.querySelector(`[name=${name}]`);
+        const upd = () => {
+          const f = sysclkHz(model), baud = Number(q('baud').value);
+          const out = body.querySelector('#uartOut');
+          if (pllOf(model).errs.length || !(baud > 0)) { out.innerHTML = '<span class="bad">нет частоты или скорости</span>'; return; }
+          const div = Math.max(0, Math.round(f / baud) - 1), real = f / (div + 1), err = Math.abs(real - baud) / baud * 100;
+          const bad = div < 7 || div > 0xFFFF || err > 2, warn = !bad && err > 1;
+          out.innerHTML = `Шина ${fmt(f / 1e6)} МГц · DIV = <b class="mono">${div}</b> · фактически ` +
+            `<b class="${bad ? 'bad' : warn ? '' : 'good'}">${Math.round(real)} бит/с</b> (ошибка ${err.toFixed(2)} %)` +
+            (div < 7 || div > 0xFFFF ? '<br><span class="bad">DIV должен быть 7..65535</span>' :
+             err > 2 ? '<br><span class="bad">ошибка больше 2 % - приём будет со сбоями</span>' : '');
+        };
+        q('baud').addEventListener('input', upd);
+        upd();
+      });
   }
 }
 
@@ -797,21 +956,64 @@ function clockDialog() {
     });
 }
 
-// --- Диалог ядра (пока только просмотр) ---
+// --- Диалог ядра ---
 function coreDialog() {
   const c = model.core;
-  const row = (k, v) => `<label>${k}</label><div class="mono">${esc(v)}</div>`;
+  const sel = (name, list, v) => `<select name="${name}">${list.map(([val, txt]) =>
+    `<option value="${val}"${String(val) === String(v) ? ' selected' : ''}>${txt}</option>`).join('')}</select>`;
+  const memRow = (k, title) => `<label>${title}</label><div>
+      ${sel(k + 'Type', [['bsram', 'BSRAM'], ['synth', 'синтезированная (LUT)']], c[k].type)}
+      <span data-mem="${k}-bsram">${sel(k + 'Kb', MEM_KB.map(v => [v, v + ' кБайт']), c[k].kb)}</span>
+      <span data-mem="${k}-synth"><input type="number" name="${k}Words" min="16" max="4096" value="${c[k].synthWords}" style="width:80px"> слов по 4 Байт</span></div>`;
   openDialog('Ядро askoRV32', 'var(--c-core)', `<div class="form-grid">
-      ${row('Тип', c.coreType === 'pipeline' ? 'конвейерное (5 стадий)' : 'однотактное')}
-      ${row('Расширение M', c.mExt ? `да, деление ${c.divBpc} бит/такт` : 'нет')}
-      ${row('IMEM', `${c.imem.type === 'bsram' ? 'BSRAM' : 'синтезированная'}, ${memTxt(c.imem)}`)}
-      ${row('DMEM', `${c.dmem.type === 'bsram' ? 'BSRAM' : 'синтезированная'}, ${memTxt(c.dmem)}`)}
-      ${row('Отладчик JTAG', c.debug ? 'включён (выводы 5–8)' : 'выключен')}
-      ${row('Источники PLIC', String(c.plicSources))}
-    </div><p class="note">Параметры ядра хранятся в файле .gwsoc и попадают в top.sv. Их редактирование - следующий шаг.</p>`,
-    null);
-  document.getElementById('dlgOk').style.display = 'none';
-  document.getElementById('dlg').addEventListener('close', () => { document.getElementById('dlgOk').style.display = ''; }, { once: true });
+      <label>Тип ядра</label>${sel('coreType', [['pipeline', 'конвейерное (5 стадий)'], ['singlecycle', 'однотактное']], c.coreType)}
+      <label>Расширение M</label><div><label style="color:inherit"><input type="checkbox" name="mExt"${c.mExt ? ' checked' : ''}> умножение и деление</label>
+        &nbsp; ${sel('divBpc', [[1, '1 бит'], [2, '2 бита'], [4, '4 бита']], c.divBpc)} <span class="muted">частного за такт</span></div>
+      ${memRow('imem', 'Память команд IMEM')}
+      ${memRow('dmem', 'Память данных DMEM')}
+      <label>Отладчик JTAG</label><label style="color:inherit"><input type="checkbox" name="debug"${c.debug ? ' checked' : ''}> GW_JTAG, выводы 5–8 (TMS, TCK, TDI, TDO)</label>
+      <label>Источников PLIC</label><div><input type="number" name="plicSources" min="1" max="31" value="${c.plicSources}" style="width:80px">
+        <span class="muted"> 1..31; устройствам сейчас нужно ${Math.max(0, ...Object.values(irqMap(model)).filter(r => r.route === 'plic').map(r => r.n))}</span></div>
+      <div class="full readout" id="coreOut"></div>
+    </div>
+    <p class="note">Параметры попадают в параметры cpu в top.sv и в soc.h. Однотактное ядро с памятью в BSRAM делит
+    частоту rPLL на 3 (шина периферии, SYSCLK_HZ). Деление 4 бит/такт быстрее, но длиннее по логике - на 45 МГц
+    проверяйте Fmax. Размер IMEM/DMEM в BSRAM ограничивает и компоновщик (GW1NR9.lds, до 32 кБайт).</p>`,
+    body => {
+      const q = name => body.querySelector(`[name=${name}]`);
+      c.coreType = q('coreType').value;
+      c.mExt = q('mExt').checked;
+      c.divBpc = Number(q('divBpc').value);
+      for (const k of ['imem', 'dmem']) {
+        c[k].type = q(k + 'Type').value;
+        c[k].kb = Number(q(k + 'Kb').value);
+        c[k].synthWords = Math.max(16, Math.min(4096, Number(q(k + 'Words').value) || 256));
+      }
+      c.debug = q('debug').checked;
+      c.plicSources = Math.max(1, Math.min(31, Number(q('plicSources').value) || 8));
+    },
+    body => {
+      const q = name => body.querySelector(`[name=${name}]`);
+      const upd = () => {
+        q('divBpc').disabled = !q('mExt').checked;
+        for (const k of ['imem', 'dmem']) {
+          const bs = q(k + 'Type').value === 'bsram';
+          body.querySelector(`[data-mem=${k}-bsram]`).style.display = bs ? '' : 'none';
+          body.querySelector(`[data-mem=${k}-synth]`).style.display = bs ? 'none' : '';
+        }
+        //Пересчёт по копии модели с введёнными значениями
+        const tmp = JSON.parse(JSON.stringify(model));
+        tmp.core.coreType = q('coreType').value;
+        for (const k of ['imem', 'dmem']) { tmp.core[k].type = q(k + 'Type').value; tmp.core[k].kb = Number(q(k + 'Kb').value); }
+        const nbs = bsramBlocks(tmp), pll = pllOf(tmp);
+        body.querySelector('#coreOut').innerHTML =
+          `Шина периферии: <b>${pll.errs.length ? '—' : fmt(sysclkHz(tmp) / 1e6) + ' МГц'}</b> · ` +
+          `BSRAM: <b class="${nbs > BSRAM_TOTAL ? 'bad' : 'good'}">${nbs} из ${BSRAM_TOTAL}</b> блоков` +
+          (model.blocks.tm1638.enabled ? ' <span class="muted">(1 - шрифт TM1638)</span>' : '');
+      };
+      body.querySelectorAll('input, select').forEach(i => { i.addEventListener('input', upd); i.addEventListener('change', upd); });
+      upd();
+    });
 }
 
 // --- Диалог вывода ---
@@ -828,7 +1030,8 @@ function pinDialog(n) {
   if (p.cfg) info.push(`<span>${esc(p.cfg)}</span>`);
   if (p.diff) info.push(`<span>${p.diff === 'P' ? 'плюс' : 'минус'} пары с ${p.pair}</span>`);
   if (p.lvds) info.push('<span>True LVDS</span>');
-  const d = model.ioDefaults;
+  const d = { ioType: bankDefault(model, n, 'ioType'), pull: bankDefault(model, n, 'pull'),
+              drive: bankDefault(model, n, 'drive'), vccio: bankDefault(model, n, 'vccio') };
   openDialog(`Вывод ${n}`, cur.length ? blockColor(cur[0].block) : null, `
     <div class="pininfo">${info.join('')}</div>
     <div class="form-grid">
@@ -857,14 +1060,29 @@ function pinDialog(n) {
 
 function ioDefaultsDialog() {
   const d = model.ioDefaults;
-  const sel = (name, list, v) => `<select name="${name}">${list.map(x => `<option${x === v ? ' selected' : ''}>${x}</option>`).join('')}</select>`;
-  openDialog('Стандарты I/O по умолчанию', null, `<div class="form-grid">
-      <label>IO_TYPE</label>${sel('ioType', IO_TYPES, d.ioType)}
-      <label>PULL_MODE</label>${sel('pull', PULLS, d.pull)}
-      <label>DRIVE, мА</label>${sel('drive', DRIVES, d.drive)}
-      <label>BANK_VCCIO, В</label>${sel('vccio', VCCIOS, d.vccio)}
-    </div><p class="note">Действуют для выводов без собственных настроек. DRIVE пишется только для выходов.</p>`,
-    body => { for (const k of ['ioType', 'pull', 'drive', 'vccio']) d[k] = body.querySelector(`[name=${k}]`).value; });
+  const KEYS = [['ioType', IO_TYPES], ['pull', PULLS], ['drive', DRIVES], ['vccio', VCCIOS]];
+  const banks = [...new Set(DEV.pins.filter(p => p.type === 'io').map(p => String(p.bank)))].sort();
+  const sel = (name, list, v, inherit) => `<select name="${name}">` +
+    (inherit ? `<option value=""${!v ? ' selected' : ''}>общие</option>` : '') +
+    list.map(x => `<option${x === v ? ' selected' : ''}>${x}</option>`).join('') + `</select>`;
+  const row = (title, pre, src, inherit, color) => `<tr><td>${color ? `<span class="dot" style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${color}"></span> ` : ''}${title}</td>` +
+    KEYS.map(([k, list]) => `<td>${sel(pre + k, list, src[k], inherit)}</td>`).join('') + '</tr>';
+  openDialog('Стандарты I/O по умолчанию', null, `
+    <table class="sig-table"><tr><th></th><th>IO_TYPE</th><th>PULL_MODE</th><th>DRIVE, мА</th><th>BANK_VCCIO, В</th></tr>
+      ${row('Общие', 'd_', d, false, null)}
+      ${banks.map(bk => row('Банк ' + bk, `b${bk}_`, model.banks[bk] || {}, true, BANK_COLOR(bk))).join('')}
+    </table>
+    <p class="note">Порядок: собственные настройки вывода → настройки банка → общие. Напряжение VCCIO банка задаёт
+    плата (на Tang Nano 9K банки 0–2 - 3,3 В, банк 3 - 1,8 В): IO_TYPE выводов банка должен ему соответствовать,
+    иначе Gowin EDA остановит размещение. DRIVE пишется только для выходов.</p>`,
+    body => {
+      for (const [k] of KEYS) d[k] = body.querySelector(`[name=d_${k}]`).value;
+      for (const bk of banks) {
+        const bset = {};
+        for (const [k] of KEYS) { const v = body.querySelector(`[name=b${bk}_${k}]`).value; if (v) bset[k] = v; }
+        if (Object.keys(bset).length) model.banks[bk] = bset; else delete model.banks[bk];
+      }
+    });
 }
 
 // ============================================================================================

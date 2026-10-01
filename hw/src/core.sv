@@ -17,8 +17,12 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
               //Запросы прерываний (уровень, активная 1; источник держит запрос, пока программа не сбросит флаг)
               input  logic        irq_msi,   //Программное прерывание машинного режима (CLINT msip)
               input  logic        irq_mti,   //Прерывание машинного таймера (CLINT mtime >= mtimecmp)
-              input  logic        irq_mei,   //Внешнее прерывание (резерв под контроллер PLIC)
+              input  logic        irq_mei,   //Внешнее прерывание (контроллер PLIC)
               input  logic [15:0] irq_local, //Локальные прерывания LI0..LI15 (коды mcause 16..31)
+              input  logic [ 4:0] irq_mei_id,   //Номер источника PLIC (с регистра, вместе с irq_mei)
+              input  logic        irq_mei_vec,  //Векторный режим PLIC: MEI - на вход 32 + номер источника
+              output logic        mei_claim,    //MEI принято по вектору источника: PLIC захватывает mei_claim_id
+              output logic [ 4:0] mei_claim_id,
               //Отладка: модуль DM (Debug Module). Доступ к регистрам - только в режиме останова
               input  logic        dbg_haltreq,   //Запрос останова (уровень)
               input  logic        dbg_resumereq, //Запрос продолжения (импульс)
@@ -243,16 +247,22 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     //ловушка примется на уже выполненной записи. Поэтому запросы защёлкиваются по фронту ядра.
     //В конвейерном ядре всё меняется по одному фронту, и регистр только добавил бы такт задержки:
     //после снятия запроса обработчиком и mret прерывание приходило бы повторно.
-    logic        irq_msi_c, irq_mti_c, irq_mei_c;
+    //Номер источника и векторный режим PLIC защёлкиваются вместе с запросом: номер должен соответствовать
+    //запросу, а бит режима программа пишет по шине в середине такта однотактного ядра
+    logic        irq_msi_c, irq_mti_c, irq_mei_c, irq_mei_vec_c;
     logic [15:0] irq_local_c;
+    logic [ 4:0] irq_mei_id_c;
     generate if (CORE_TYPE) begin   //#1 - Однотактное ядро
         always_ff @(posedge clk)
-            if (rst) {irq_msi_c, irq_mti_c, irq_mei_c, irq_local_c} <= '0;
-            else     {irq_msi_c, irq_mti_c, irq_mei_c, irq_local_c} <= {irq_msi, irq_mti, irq_mei, irq_local};
+            if (rst) {irq_msi_c, irq_mti_c, irq_mei_c, irq_local_c, irq_mei_id_c, irq_mei_vec_c} <= '0;
+            else     {irq_msi_c, irq_mti_c, irq_mei_c, irq_local_c, irq_mei_id_c, irq_mei_vec_c} <=
+                     {irq_msi,   irq_mti,   irq_mei,   irq_local,   irq_mei_id,   irq_mei_vec};
     end else begin                  //#0 - Конвеерное ядро
-        assign {irq_msi_c, irq_mti_c, irq_mei_c, irq_local_c} = {irq_msi, irq_mti, irq_mei, irq_local};
+        assign {irq_msi_c, irq_mti_c, irq_mei_c, irq_local_c, irq_mei_id_c, irq_mei_vec_c} =
+               {irq_msi,   irq_mti,   irq_mei,   irq_local,   irq_mei_id,   irq_mei_vec};
     end
     endgenerate
+    assign mei_claim_id = irq_mei_id_c;   //Захватывается номер, по которому ядро ушло на вектор
     ////Регистры CSR, прерывания и исключения
     trap_unit #(.LATE_BR_TRAP(!CORE_TYPE), .M_EXT(M_EXT)) trap_unit
              (.clk(clk), .rst(rst),
@@ -265,6 +275,7 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
               .Load(ResultSrcE == 2'b01), .Store(MemWriteE), .MemAddr(AddrSumE),   //Ч8: mtval - с сумматора, без выбора операции АЛУ
               //Запросы прерываний
               .irq_msi(irq_msi_c), .irq_mti(irq_mti_c), .irq_mei(irq_mei_c), .irq_local(irq_local_c),
+              .irq_mei_id(irq_mei_id_c), .mei_vec(irq_mei_vec_c), .MeiClaim(mei_claim),
               //Отладка
               .haltreq(dbg_haltreq), .resumereq(dbg_resumereq), .Halted(dbg_halted),
               .DbgCsrAddr(dbg_csr_addr), .DbgCsrWe(dbg_csr_we), .DbgWData(dbg_wdata),
@@ -548,6 +559,9 @@ endmodule
 //2) mtvec.MODE = 0 - все ловушки на BASE; MODE = 1 (векторный режим) - прерывание
 //с кодом N на BASE | (N << 2), исключения на BASE. Адрес собирается без сумматора,
 //поэтому в векторном режиме BASE выравнивается на 128 байт (32 входа по 4 байта).
+//2.1) Векторный режим PLIC (бит vector PLIC, только при mtvec.MODE = 1): MEI от источника S -
+//на BASE | ((32 + S) << 2), вторая половина таблицы из 64 входов, BASE выравнивается на 256 байт.
+//Ядро сообщает PLIC о захвате источника (MeiClaim). mcause = 11, как у обычного MEI.
 //3) Приоритет прерываний фиксированный (как в CLINT): MEI > MSI > MTI > LI0 > ... > LI15.
 //4) Для подключения отладчика: ebreak - исключение 3 (Breakpoint); CSR триггеров
 //(tselect, tdata1-3) и отладки (dcsr, dpc, dscratch) не реализованы и читаются как 0 -
@@ -577,6 +591,9 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
     //Запросы прерываний
     input  logic        irq_msi, irq_mti, irq_mei,
     input  logic [15:0] irq_local,
+    input  logic [ 4:0] irq_mei_id,        //Номер источника PLIC
+    input  logic        mei_vec,           //Векторный режим PLIC
+    output logic        MeiClaim,          //MEI принято по вектору источника irq_mei_id
     //Отладка
     input  logic        haltreq, resumereq,
     output logic        Halted,
@@ -650,6 +667,15 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
     assign irq_pre  = mstatus_mie & (|pending) & Valid & ~step_active;
     assign irq_take = irq_pre & ~debug_entry;
 
+    //#3.2 Векторный режим PLIC. MEI - самое важное прерывание, поэтому при pending[11] код всегда 11,
+    //и вход таблицы выбирается без шифратора приоритета. Номер источника приходит с регистра PLIC.
+    //Биты [7:2] адреса вектора: 1 и номер источника - или, как раньше, BASE[7] и код прерывания
+    logic       mei_vec_sel;
+    logic [5:0] vec_code;
+    assign mei_vec_sel = mtvec_mode & mei_vec & pending[11];
+    assign vec_code    = mei_vec_sel ? {1'b1, irq_mei_id} : {mtvec_base[7], irq_code};
+    assign MeiClaim    = irq_take & mei_vec_sel;
+
     //#4 Исключения
     //Выравнивание проверяется по младшим битам операндов, а не по результату АЛУ и сумматора
     //адреса перехода: так решение о ловушке не ждёт 32-битного переноса (критический путь, Ч2).
@@ -722,14 +748,14 @@ module trap_unit #(parameter bit LATE_BR_TRAP = 0,    //1 - конвейер: CS
     assign RedirectLate  = LATE_BR_TRAP & BrMisTaken & ~irq_take & ~debug_entry;
     assign RedirectSel = trap_sel | mret_do | debug_entry | resume_do;
     assign RedirectPC = resume_do ? {dpc, 2'b00} :
-                        trap_sel  ? ((mtvec_mode & irq_take) ? {mtvec_base[31:7], irq_code, 2'b00} : {mtvec_base, 2'b00}) :
+                        trap_sel  ? ((mtvec_mode & irq_take) ? {mtvec_base[31:8], vec_code, 2'b00} : {mtvec_base, 2'b00}) :
                         mret_do   ? {mepc, 2'b00} : PC;      //При входе в отладку PC не важен: он замораживается
     //П1: в конвейере адрес смены PC защёлкивается в регистре и применяется тактом позже, только если смена
     //PC случилась (Redirect). Поэтому выбор адреса не ждёт решения «ловушка или нет»: ни исключений (у них
     //тот же вектор, что и без них), ни входа в отладку (тогда адрес не важен - PC замораживается)
     assign RedirectAddr = resume_do            ? {dpc, 2'b00} :
                           (Mret & ~irq_pre)    ? {mepc, 2'b00} :
-                          (mtvec_mode & irq_pre) ? {mtvec_base[31:7], irq_code, 2'b00} : {mtvec_base, 2'b00};
+                          (mtvec_mode & irq_pre) ? {mtvec_base[31:8], vec_code, 2'b00} : {mtvec_base, 2'b00};
 
     //#6 Чтение CSR. В режиме останова адрес CSR задаёт модуль отладки (конвейер пуст)
     //Д: номер CSR приходит one-hot-кодом из стадии D; номер от модуля отладки дешифруется здесь (он

@@ -42,8 +42,9 @@ end_init_bss:
 
 /*
  *****************************************************************************************
- * Таблица векторов: 32 входа по 4 байта (инструкция перехода), выравнивание 128 байт.
- * Вход 0 - все исключения, вход N - прерывание с кодом mcause N.
+ * Таблица векторов: 64 входа по 4 байта (инструкция перехода), выравнивание 256 байт.
+ * Вход 0 - все исключения, вход N (1..31) - прерывание с кодом mcause N,
+ * вход 32 + S - источник S контроллера PLIC в векторном режиме (mcause 11, см. plic.h).
  *****************************************************************************************
  */
 	.section .text.vectors, "ax", @progbits
@@ -52,7 +53,7 @@ end_init_bss:
 	   начало main - GDB теряет строки main и падает (hw/info/debug.md) */
 	.option push
 	.option norelax
-	.balign 128
+	.balign 256
 	.option pop
 	.globl __vector_table
 __vector_table:
@@ -67,13 +68,13 @@ __vector_table:
 	j Default_Handler		/*  8 */
 	j Default_Handler		/*  9 */
 	j Default_Handler		/* 10 */
-	j MEI_IRQHandler		/* 11 Внешнее прерывание: PLIC (диспетчер в plic.c) */
+	j MEI_IRQHandler		/* 11 Внешнее прерывание PLIC - только без векторного режима PLIC */
 	j Default_Handler		/* 12 */
 	j Default_Handler		/* 13 */
 	j Default_Handler		/* 14 */
 	j Default_Handler		/* 15 */
-	j STIM_IRQHandler		/* 16 LI0: простой таймер STIM */
-	j LI1_IRQHandler		/* 17 LI1..LI15 - для новой периферии */
+	j LI0_IRQHandler		/* 16..31 LI0..LI15 - локальные линии (какое устройство на какой - soc.h) */
+	j LI1_IRQHandler
 	j LI2_IRQHandler
 	j LI3_IRQHandler
 	j LI4_IRQHandler
@@ -88,6 +89,11 @@ __vector_table:
 	j LI13_IRQHandler
 	j LI14_IRQHandler
 	j LI15_IRQHandler		/* 31 */
+	/* 32..63 - источники PLIC в векторном режиме (PLIC_Init): MEI от источника S -> вход 32 + S */
+	j Default_Handler		/* 32 Источник 0 не существует */
+	.irp n, 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
+	j PLIC_SRC\n\()_IRQHandler	/* 33..63 Источники 1..31 (какое устройство на каком - soc.h) */
+	.endr
 
 /*
  * Обработчики по умолчанию. Имена - слабые ссылки: чтобы подключить свой обработчик,
@@ -113,7 +119,7 @@ Default_Exception_Handler:
 	WEAK_IRQ MSI_IRQHandler
 	WEAK_IRQ MTI_IRQHandler
 	WEAK_IRQ MEI_IRQHandler
-	WEAK_IRQ STIM_IRQHandler
+	WEAK_IRQ LI0_IRQHandler
 	WEAK_IRQ LI1_IRQHandler
 	WEAK_IRQ LI2_IRQHandler
 	WEAK_IRQ LI3_IRQHandler
@@ -129,5 +135,8 @@ Default_Exception_Handler:
 	WEAK_IRQ LI13_IRQHandler
 	WEAK_IRQ LI14_IRQHandler
 	WEAK_IRQ LI15_IRQHandler
+	.irp n, 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
+	WEAK_IRQ PLIC_SRC\n\()_IRQHandler
+	.endr
 
 .end

@@ -12,6 +12,8 @@
 
 #include "periphery.h"
 
+#if GPIO_PRESENT	//Áëîê åñòü â ÏËÈÑ (soc.h)
+
 typedef enum
 {
   GPIO_MODE_INPUT = 0,
@@ -70,4 +72,6 @@ __INLINE uint32_t GPIO_ReadPins(void) {
 	return GPIO->IN;
 }
 
+
+#endif /* GPIO_PRESENT */
 #endif /* __GPIO_H */

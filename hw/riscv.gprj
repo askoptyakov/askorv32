@@ -23,6 +23,8 @@
         <File path="src/sys/plic.sv" type="file.verilog" enable="1"/>
         <File path="src/periph/stim/stim.sv" type="file.verilog" enable="1"/>
         <File path="src/periph/tm1638/tm1638.sv" type="file.verilog" enable="1"/>
+        <File path="src/periph/tm1638/tm1638_font.sv" type="file.verilog" enable="1"/>
+        <File path="src/periph/uart/uart.sv" type="file.verilog" enable="1"/>
         <File path="src/top.sv" type="file.verilog" enable="1"/>
         <File path="src/riscv.cst" type="file.cst" enable="1"/>
         <File path="src/riscv.sdc" type="file.sdc" enable="1"/>

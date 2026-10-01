@@ -9,6 +9,8 @@
 
 #include "tim.h"
 
+#if STIM_PRESENT
+
 void STIM_Init(void) {
 
 	STIM->CR_EN = 0;
@@ -38,3 +40,5 @@ void STIM_InitPeriodic(uint32_t Prescaler, uint32_t Period) {
 	STIM_CLEAR_FLAG_UPDATE();
 
 }
+
+#endif /* STIM_PRESENT */

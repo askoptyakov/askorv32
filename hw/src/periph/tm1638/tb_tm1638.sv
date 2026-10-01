@@ -12,7 +12,7 @@ module tb_tm1638;
     localparam string DEV = "tm1638";
     `include "periph_tb.svh"
 
-    localparam logic [31:0] SEGS = 32'h00, LEDS = 32'h04, KEYS = 32'h08;
+    localparam logic [31:0] SEGS = 32'h00, LEDS = 32'h04, KEYS = 32'h08, CTRL = 32'h0C, TEXT0 = 32'h10, TEXT1 = 32'h14;
 
     wire  tm_clk, tm_stb, tm_dio;
     tm1638_top #(.MEMORY_TYPE(1'b1), .CLK_MHZ(50)) dut
@@ -82,6 +82,18 @@ module tb_tm1638;
         endcase
     endfunction
 
+    //Кадр, начатый после текущего такта: 8 цифр слева направо
+    task automatic check_frame(input logic [63:0] exp_d, input string what);    //Позиция 0 (левая) - старший байт
+        int n;
+        longint t;
+        t = cycles;
+        wait_tr(8'h40, t, n);
+        wait_tr(8'hC0, tr_time[n], n);
+        for (int k = 0; k < 8; k++)
+            check(tr_byte[n][1 + 2*k] == exp_d[63 - 8*k -: 8], $sformatf("%0s: позиция %0d", what, k),
+                  tr_byte[n][1 + 2*k], exp_d[63 - 8*k -: 8]);
+    endtask
+
     int i, k;
     longint t0;
     logic [31:0] v;
@@ -125,6 +137,30 @@ module tb_tm1638;
         wait_tr(8'h42, t0, i);
         tick(20);
         check_rd(KEYS, 32'h0000_003C, "KEYS: другая комбинация");
+
+        //#5 Текст «ПРИВЕТ-1» (cp1251: П CF, Р D0, И C8, В C2, Е C5, Т D2) через знакогенератор, точка после Р
+        check_rd(CTRL, 0, "сброс: CTRL (режим HEX)");
+        bus_wr(TEXT0, 32'hC2C8_D0CF);
+        bus_wr(TEXT1, 32'h312D_D2C5);
+        bus_wr(CTRL,  32'h0000_0201);
+        check_rd(TEXT0, 32'hC2C8_D0CF, "TEXT0");
+        check_rd(TEXT1, 32'h312D_D2C5, "TEXT1");
+        tick(20);
+        check_frame({8'h37, 8'hF3, 8'h3E, 8'h7F, 8'h79, 8'h78, 8'h40, 8'h06}, "текст");
+
+        //#6 RAW: байты TEXT - сегменты как есть
+        bus_wr(TEXT0, 32'h0804_0201);
+        bus_wr(TEXT1, 32'h8040_2010);
+        bus_wr(CTRL,  32'h0000_0002);
+        tick(20);
+        check_frame({8'h01, 8'h02, 8'h04, 8'h08, 8'h10, 8'h20, 8'h40, 8'h80}, "RAW");
+
+        //#7 HEX с точкой у правой цифры; в CTRL пишутся только MODE и DOTS
+        bus_wr(CTRL, 32'h0000_8000);
+        tick(20);
+        check_frame({seg(4'h1), seg(4'h2), seg(4'h3), seg(4'h4), seg(4'h5), seg(4'h6), seg(4'h7), seg(4'h8) | 8'h80}, "HEX с точкой");
+        bus_wr(CTRL, 32'hFFFF_FFFF);
+        check_rd(CTRL, 32'h0000_FF03, "CTRL: только MODE и DOTS");
 
         finish_tests();
     end

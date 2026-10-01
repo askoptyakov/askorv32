@@ -4,7 +4,9 @@
 По файлу fw/riscv.gwsoc (его редактирует визуальный конфигуратор в Eclipse) создаёт:
   hw/src/top.sv     - верхний уровень платы: выводы, параметры процессора cpu.sv, карта адресов
                     и шина пользовательской периферии, сами устройства и их прерывания;
-  hw/src/riscv.cst  - назначение выводов (IO_LOC/IO_PORT) для Gowin EDA и nextpnr.
+  hw/src/riscv.cst  - назначение выводов (IO_LOC/IO_PORT) для Gowin EDA и nextpnr;
+  fw/Core/Inc/soc.h - для прошивки: частота, адреса устройств, номера источников PLIC и имена
+                    обработчиков, настройки UART.
 С ключом --build собирает проект ПЛИС: в Gowin EDA (gw_sh, проект hw/riscv.gprj) или открытым
 маршрутом Yosys + nextpnr-himbaechel + apicula - по build.toolchain в .gwsoc или ключу --toolchain.
 
@@ -33,11 +35,18 @@ JTAG_PINS = {5: "TMS", 6: "TCK", 7: "TDI", 8: "TDO"}
 ODIV_SET = [2, 4, 8, 16, 32, 48, 64, 80, 96, 112, 128]
 PLL = dict(inMin=3, inMax=400, pfdMin=3, pfdMax=400, vcoMin=400, vcoMax=1200, outMin=3.125, outMax=600)
 
-BLOCKS = {  # порядок = порядок подключения к memmux и портов top
+BLOCKS = {  # порядок = порядок подключения к memmux, портов top и номеров источников PLIC
     "gpio":   dict(title="GPIO",   slot=0x11),
     "tm1638": dict(title="TM1638", slot=0x12),
-    "stim":   dict(title="STIM",   slot=0x13),
+    "stim":   dict(title="STIM",   slot=0x13, irq="irq_stim"),
+    "uart":   dict(title="UART",   slot=0x14, irq="irq_uart"),
 }
+PREFIX = {"gpio": "gpio", "tm1638": "tm", "stim": "tim", "uart": "uart"}   #Префикс сигналов шины устройства в top.sv
+UART_BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600]
+UART_PARITY = {"none": 0, "even": 1, "odd": 2}
+FIFO_DEPTHS = [8, 16, 32]
+MEM_KB = [8, 16, 32]
+BSRAM_TOTAL = 26           #Блоков BSRAM (18 кбит, 2 кБайт данных) в GW1NR-9
 FIXED_REGIONS = {"IMEM": 0x00, "CLINT": 0x02, "PLIC": 0x0C, "DMEM": 0x10, "SIM": 0x1F}
 AUTO_FIRST, AUTO_LAST = 0x11, 0x1E
 
@@ -46,14 +55,15 @@ SV_KEYWORDS = {"input", "output", "inout", "wire", "logic", "reg", "module", "en
                "begin", "end", "if", "else", "case", "for", "generate", "parameter", "localparam", "int", "bit"}
 #Имена, уже занятые в top.sv: порт cpu, сигналы, экземпляры и модули, параметры (как RESERVED_NETS в web/app.js)
 RESERVED_NETS = {"tck_pad_i", "tms_pad_i", "tdi_pad_i", "tdo_pad_o", "per_clk", "per_rst", "per_Write",
-                 "per_Read", "per_Addr", "per_WData", "per_RData", "irq_stim", "irq_local", "irq_src",
+                 "per_Read", "per_Addr", "per_WData", "per_RData", "irq_stim", "irq_uart", "irq_local", "irq_src",
                  "sRead", "top", "cpu", "permux", "memmux", "gpio", "gpio_top", "stim", "stim_top", "tm1638", "tm1638_top",
+                 "uart", "uart_top",
                  "CORE_TYPE", "M_EXT", "DIV_BPC", "IMEM_TYPE", "BSRAM_IMEM_SIZE", "SYNTH_IMEM_SIZE", "IMEM_INIT_FILE",
                  "DMEM_TYPE", "BSRAM_DMEM_SIZE", "SYNTH_DMEM_SIZE", "DMEM_INIT_FILE", "DEBUG_EN", "PLIC_SOURCES",
                  "FCLKIN", "XTAL_KHZ", "PLL_IDIV_SEL", "PLL_FBDIV_SEL", "PLL_ODIV_SEL", "WIN_MASK", "CLK_BASE_MHZ",
                  "CLK_DMEM_MHZ"}
 #Сигналы шины устройств (gpio_Write, tim_Addr...) и их адреса (GPIO_BASE...)
-RESERVED_RE = re.compile(r"^(gpio|tim|tm)_(Write|Addr|WriteData|ReadData)$|^(GPIO|TM1638|STIM)_BASE$")
+RESERVED_RE = re.compile(r"^(gpio|tim|tm|uart)_(Write|Addr|WriteData|ReadData)$|^(GPIO|TM1638|STIM|UART)_BASE$")
 
 
 class ConfigError(Exception):
@@ -86,6 +96,9 @@ def signals(m):
             s.append(dict(id=f"tm1638.{k}", block="tm1638", name=f"TM1638 {k.upper()}", dir=d, pin=b["tm1638"].get(k)))
     if b["stim"].get("enabled") and b["stim"].get("out") is not None:
         s.append(dict(id="stim.out", block="stim", name="STIM выход", dir="output", pin=b["stim"]["out"]))
+    if b["uart"].get("enabled"):
+        s.append(dict(id="uart.tx", block="uart", name="UART TX", dir="output", pin=b["uart"].get("tx")))
+        s.append(dict(id="uart.rx", block="uart", name="UART RX", dir="input", pin=b["uart"].get("rx")))
     return s
 
 
@@ -184,6 +197,64 @@ def resolve_pll(m):
     return pll_eval(float(c["xtalMHz"]), int(p["idiv"]), int(p["fbdiv"]), int(p["odiv"]))
 
 
+# --- Частота шины периферии, UART, прерывания, стандарты выводов ---
+def sysclk_hz(m):
+    """Частота шины периферии (clk_dmem), Гц: выход rPLL; однотактное ядро с BSRAM делит её на 3.
+    Та же формула, что CLK_DMEM_MHZ в top.sv, но без округления до МГц (для делителей UART)."""
+    fout = resolve_pll(m)[1]
+    core = m["core"]
+    bsram = any((core.get(k) or {}).get("type", "bsram") == "bsram" for k in ("imem", "dmem"))
+    div3 = core.get("coreType") == "singlecycle" and bsram
+    return round(fout * 1e6 / (3 if div3 else 1))
+
+
+def uart_div(m):
+    """Делитель UART для скорости из конфигурации: div, фактическая скорость, ошибка в %."""
+    u = m["blocks"]["uart"]
+    f, baud = sysclk_hz(m), int(u.get("baud", 115200))
+    div = max(0, round(f / baud) - 1)
+    real = f / (div + 1)
+    return div, real, abs(real - baud) / baud * 100
+
+
+def bsram_blocks(m):
+    """Блоки BSRAM: IMEM и DMEM по 2 кБайт на блок, шрифт TM1638 - один блок. Возвращает (занято, всего)."""
+    core = m["core"]
+    used = sum(int((core.get(k) or {}).get("kb", 8)) // 2 for k in ("imem", "dmem")
+               if (core.get(k) or {}).get("type", "bsram") == "bsram")
+    if m["blocks"]["tm1638"].get("enabled"):
+        used += 1
+    return used, BSRAM_TOTAL
+
+
+def irq_map(m):
+    """Прерывания устройств: по умолчанию - источники PLIC 1, 2, ... в порядке BLOCKS; по выбору
+    (irq = "local") - локальные линии LI0, LI1, ...; irq = "none" - не подключено.
+    Возвращает {блок: ("plic", номер) | ("local", номер)}."""
+    res, n_plic, n_loc = {}, 0, 0
+    for k, meta in BLOCKS.items():
+        b = m["blocks"][k]
+        if "irq" not in meta or not b.get("enabled"):
+            continue
+        route = b.get("irq", "plic")
+        if route == "plic":
+            n_plic += 1
+            res[k] = ("plic", n_plic)
+        elif route == "local":
+            res[k] = ("local", n_loc)
+            n_loc += 1
+    return res
+
+
+def pin_attrs(m, dev, pin):
+    """Стандарт вывода: собственные настройки вывода, иначе настройки его банка, иначе общие."""
+    bank = str((dev["byNum"].get(pin) or {}).get("bank"))
+    a = dict(m.get("ioDefaults", {}))
+    a.update((m.get("banks") or {}).get(bank, {}))
+    a.update({k: v for k, v in (m["pins"].get(str(pin)) or {}).items() if k != "net"})
+    return a
+
+
 # --- Проверка ---
 def validate(m, dev):
     errors, warns = [], []
@@ -233,6 +304,61 @@ def validate(m, dev):
             miss = [i for i in range(max(b["idx"]) + 1) if i not in b["idx"]]
             if miss:
                 errors.append(f"Шина «{name}[{max(b['idx'])}:0]»: нет разрядов {', '.join(map(str, miss))}")
+
+    #Банк: одно напряжение VCCIO на все выводы (иначе Gowin EDA остановит размещение)
+    bank_v = {}
+    for pin in by_pin:
+        p = dev["byNum"].get(pin)
+        if p and p.get("bank") is not None:
+            bank_v.setdefault(p["bank"], {}).setdefault(pin_attrs(m, dev, pin).get("vccio", "1.8"), []).append(pin)
+    for bank, vs in sorted(bank_v.items()):
+        if len(vs) > 1:
+            errors.append(f"Банк {bank}: разные BANK_VCCIO - " +
+                          "; ".join(f"{v} В у выводов {', '.join(map(str, sorted(ps)))}" for v, ps in vs.items()))
+
+    #Ядро
+    core = m["core"]
+    if core.get("coreType", "pipeline") not in ("pipeline", "singlecycle"):
+        errors.append("Ядро: тип pipeline или singlecycle")
+    if int(core.get("divBpc", 2)) not in (1, 2, 4):
+        errors.append("Ядро: бит частного за такт (divBpc) - 1, 2 или 4")
+    for k in ("imem", "dmem"):
+        mm_ = core.get(k) or {}
+        if mm_.get("type", "bsram") == "bsram" and int(mm_.get("kb", 8)) not in MEM_KB:
+            errors.append(f"Ядро: {k.upper()} в BSRAM - 8, 16 или 32 кБайт")
+    nsrc = int(core.get("plicSources", 8))
+    if not 1 <= nsrc <= 31:
+        errors.append("Ядро: источников PLIC 1..31")
+    used, total = bsram_blocks(m)
+    if used > total:
+        errors.append(f"BSRAM: нужно {used} блоков, в ПЛИС {total} - уменьшите IMEM/DMEM")
+    if not core.get("mExt", True):
+        warns.append("Ядро без расширения M: в настройках проекта Eclipse замените -march=rv32im_zicsr на rv32i_zicsr")
+
+    #Прерывания устройств
+    irqs = irq_map(m)
+    used_plic = [n for r, n in irqs.values() if r == "plic"]
+    if used_plic and max(used_plic) > nsrc:
+        errors.append(f"PLIC: устройствам нужно {max(used_plic)} источников, а в ядре {nsrc} - увеличьте число источников PLIC")
+    if sum(1 for r, _ in irqs.values() if r == "local") > 16:
+        errors.append("Локальных линий прерываний всего 16")
+
+    #UART: делитель скорости
+    u = m["blocks"]["uart"]
+    if u.get("enabled"):
+        if u.get("parity", "none") not in UART_PARITY:
+            errors.append("UART: чётность none, even или odd")
+        if int(u.get("stop", 1)) not in (1, 2):
+            errors.append("UART: стоп-битов 1 или 2")
+        if int(u.get("fifo", 16)) not in FIFO_DEPTHS:
+            errors.append("UART: глубина FIFO 8, 16 или 32")
+        div, real, err = uart_div(m)
+        if div < 7 or div > 0xFFFF:
+            errors.append(f"UART: скорость {u.get('baud')} при частоте {sysclk_hz(m)} Гц не получить (div = {div}, нужно 7..65535)")
+        elif err > 2.0:
+            errors.append(f"UART: ошибка скорости {err:.2f} % (фактически {real:.0f} бит/с) - больше 2 %")
+        elif err > 1.0:
+            warns.append(f"UART: ошибка скорости {err:.2f} % (фактически {real:.0f} бит/с)")
 
     xp = m["clock"].get("xtalPin")
     if xp in dev["byNum"] and not re.search(r"GCLK|PLL_T_IN", dev["byNum"][xp].get("cfg", "")):
@@ -345,7 +471,7 @@ def gen_top(m, bases, cfg_rel):
 
     # --- Порты ---
     w("   (")
-    groups = [("Такт и сброс", "sys"), ("GPIO", "gpio"), ("TM1638", "tm1638"), ("STIM", "stim")]
+    groups = [("Такт и сброс", "sys"), ("GPIO", "gpio"), ("TM1638", "tm1638"), ("STIM", "stim"), ("UART", "uart")]
     block_of_port = {}
     for s in sigs:
         if s["pin"] is None:
@@ -390,7 +516,7 @@ def gen_top(m, bases, cfg_rel):
 
     # --- Карта адресов пользовательской периферии ---
     order = [k for k in BLOCKS if k in bases]
-    names = {"gpio": "GPIO", "tm1638": "TM1638", "stim": "STIM"}
+    names = {"gpio": "GPIO", "tm1638": "TM1638", "stim": "STIM", "uart": "UART"}
     w("    //#1 Карта адресов пользовательской периферии: у каждого устройства окно 16 МБайт (маска 0xFF00_0000).")
     w("    //Системные окна - в cpu.sv: IMEM 0x0000_0000, CLINT 0x0200_0000, PLIC 0x0C00_0000, DMEM 0x1000_0000;")
     w("    //0x1F00_0000 - устройства тестбенча. Всё вне системных окон cpu отдаёт на порт per_*")
@@ -427,7 +553,7 @@ def gen_top(m, bases, cfg_rel):
     w("")
 
     # --- Шина пользовательской периферии ---
-    pre = {"gpio": "gpio", "tm1638": "tm", "stim": "tim"}
+    pre = PREFIX
     n = len(order)
     if n:
         cat = lambda suf: "{" + ", ".join(f"{pre[k]}_{suf}" for k in order) + "}"
@@ -483,14 +609,40 @@ def gen_top(m, bases, cfg_rel):
         w(f"                 .tim_out({out}), .irq(irq_stim));" + ("" if out else "   //выход ШИМ не выведен"))
         w("")
         num += 1
-    else:
-        w("    logic irq_stim;")
-        w("    assign irq_stim = 1'b0;   //таймер STIM выключен")
+    if "uart" in bases:
+        u = b["uart"]
+        div, real, err = uart_div(m)
+        par = UART_PARITY[u.get("parity", "none")]
+        rd = n - 1 - order.index("uart")          #Строб чтения: rxdata забирает байт из FIFO
+        w(f"    //-{num}- UART: {u.get('baud', 115200)} бит/с (div {div}, фактически {real:.0f}, ошибка {err:.2f} %), "
+          f"чётность {u.get('parity', 'none')}, стоп-битов {u.get('stop', 1)}, FIFO {u.get('fifo', 16)}")
+        w(f"    //    регистры с {slot_hex(bases['uart'])}")
+        w("    logic irq_uart;")
+        w(f"    uart_top #(.MEMORY_TYPE(DMEM_TYPE), .DEPTH({u.get('fifo', 16)}), .DIV_INIT({div}), "
+          f".STOP_INIT({u.get('stop', 1)}), .PARITY_INIT({par})) uart")
+        w("                (.clk(per_clk), .rst(per_rst),")
+        w(f"                 .Write(uart_Write), .Read(sRead[{rd}]), .Addr(uart_Addr), .WData(uart_WriteData), .RData(uart_ReadData),")
+        w(f"                 .tx({net['uart.tx']}), .rx({net['uart.rx']}), .irq(irq_uart));")
         w("")
-    w(f"    //-{num}- Прерывания периферии: LI0 (mcause 16) и источник 1 PLIC - таймер STIM (в программе")
-    w("    //разрешают один путь). Источники PLIC 2..PLIC_SOURCES свободны")
-    w("    assign irq_local = {15'd0, irq_stim};")
-    w("    assign irq_src   = PLIC_SOURCES'(irq_stim);   //источник 1 - младший разряд")
+        num += 1
+
+    # --- Прерывания: по умолчанию - в PLIC, по выбору - на локальную линию ---
+    irqs = irq_map(m)
+    nsrc = int(core.get("plicSources", 8))
+    plic = {n_: BLOCKS[k]["irq"] for k, (r, n_) in irqs.items() if r == "plic"}
+    loc = {n_: BLOCKS[k]["irq"] for k, (r, n_) in irqs.items() if r == "local"}
+    w(f"    //-{num}- Прерывания периферии: источники PLIC (MEI, векторный режим) и локальные линии LI0..LI15")
+    for k, (r, n_) in irqs.items():
+        w(f"    //    {BLOCKS[k]['title']}: " + (f"источник PLIC {n_}" if r == "plic" else f"LI{n_} (mcause {16 + n_})"))
+    if not irqs:
+        w("    //    устройств с прерываниями нет")
+    src_bits = ", ".join(plic.get(i, "1'b0") for i in range(nsrc, 0, -1))
+    w(f"    assign irq_src   = {{{src_bits}}};   //старший разряд - источник {nsrc}, младший - источник 1")
+    if loc:
+        loc_bits = ", ".join(loc.get(i, "1'b0") for i in range(15, -1, -1))
+        w(f"    assign irq_local = {{{loc_bits}}};   //старший разряд - LI15")
+    else:
+        w("    assign irq_local = 16'd0;")
     w("endmodule")
     return "\n".join(L) + "\n"
 
@@ -508,7 +660,7 @@ def gen_cst(m, dev, cfg_rel):
     ]
     for s in sigs:
         net = net_of(m, s["pin"])
-        a = dict(d, **{k: v for k, v in (m["pins"].get(str(s["pin"])) or {}).items() if k != "net"})
+        a = pin_attrs(m, dev, s["pin"])
         attrs = [f"IO_TYPE={a.get('ioType', 'LVCMOS18')}", f"PULL_MODE={a.get('pull', 'UP')}"]
         if s["dir"] != "input":
             attrs.append(f"DRIVE={a.get('drive', '8')}")
@@ -518,12 +670,87 @@ def gen_cst(m, dev, cfg_rel):
     return "\n".join(L) + "\n"
 
 
-def write_if_changed(path, text):
-    """Запись без смены времени файла, если содержимое то же (Gowin EDA и make не пересобирают зря)."""
-    old = path.read_text(encoding="utf-8") if path.exists() else None
-    if old == text:
+def gen_soc_h(m, bases, cfg_rel):
+    """fw/Core/Inc/soc.h - что прошивке нужно знать о собранной ПЛИС."""
+    core, b = m["core"], m["blocks"]
+    im, dm = core.get("imem", {}), core.get("dmem", {})
+    memb = lambda x: int(x.get("kb", 8)) * 1024 if x.get("type", "bsram") == "bsram" else int(x.get("synthWords", 256)) * 4
+    L = []
+    w = L.append
+    w("/*")
+    w(" *****************************************************************************************")
+    w(" * @file        soc.h")
+    w(" * @device      AskoRV32")
+    w(f" * @brief       ФАЙЛ СОЗДАН КОНФИГУРАТОРОМ ПЛИС (sw/socgen/socgen.py) из {cfg_rel} - не редактируйте вручную.")
+    w(" *              Частота, адреса устройств, прерывания периферии и настройки UART собранной ПЛИС.")
+    w(" *****************************************************************************************")
+    w(" */")
+    w("#ifndef __SOC_H")
+    w("#define __SOC_H")
+    w("")
+    w("/* Ядро и память */")
+    w(f"#define SOC_CORE_PIPELINE\t\t{0 if core.get('coreType') == 'singlecycle' else 1}\t\t\t//1 - конвейерное, 0 - однотактное")
+    w(f"#define SOC_M_EXT\t\t\t\t{1 if core.get('mExt', True) else 0}\t\t\t//Расширение M (mul/div)")
+    w(f"#define SOC_DEBUG\t\t\t\t{1 if core.get('debug', True) else 0}\t\t\t//Отладчик JTAG")
+    w(f"#define SOC_IMEM_BYTES\t\t\t{memb(im)}U")
+    w(f"#define SOC_DMEM_BYTES\t\t\t{memb(dm)}U")
+    w("")
+    w("/* Частота шины периферии (clk_dmem), Гц: от неё считают таймер STIM, UART и mtime в CLINT */")
+    w(f"#define SYSCLK_HZ\t\t\t\t{sysclk_hz(m)}U")
+    w("")
+    w("/* Устройства: XXX_PRESENT - блок есть в ПЛИС, XXX_BASE - адрес регистров */")
+    for k, meta in BLOCKS.items():
+        name = meta["title"]
+        if k in bases:
+            w(f"#define {name}_PRESENT\t\t\t1")
+            w(f"#define {name}_BASE\t\t\t\t(0x{bases[k] * 0x01000000:08X}U)")
+        else:
+            w(f"#define {name}_PRESENT\t\t\t0")
+    if "gpio" in bases:
+        w(f"#define GPIO_WIDTH\t\t\t\t{len(b['gpio'].get('lines', []))}U\t\t\t//Число линий")
+    if "stim" in bases:
+        w(f"#define STIM_WIDTH\t\t\t\t{b['stim'].get('width', 16)}U\t\t\t//Разрядность PR, PER, PUL, CNT")
+    if "uart" in bases:
+        u = b["uart"]
+        div, real, err = uart_div(m)
+        w(f"#define UART_BAUD\t\t\t\t{int(u.get('baud', 115200))}U\t\t//Скорость по умолчанию, бит/с (div {div}, ошибка {err:.2f} %)")
+        w(f"#define UART_PARITY_DEFAULT\t\t{UART_PARITY[u.get('parity', 'none')]}\t\t\t//0 - нет, 1 - even, 2 - odd")
+        w(f"#define UART_STOP_DEFAULT\t\t{int(u.get('stop', 1))}\t\t\t//Стоп-битов")
+        w(f"#define UART_FIFO_DEPTH\t\t\t{int(u.get('fifo', 16))}U\t\t\t//Глубина FIFO приёма и передачи")
+    w("")
+    irqs = irq_map(m)
+    w("/* Прерывания периферии. Источники PLIC (векторный режим, start.S): обработчик источника S -")
+    w("   PLIC_SRCS_IRQHandler; ниже - понятные имена. Локальные линии: LIn_IRQHandler, номер LIn_IRQn */")
+    w(f"#define PLIC_NUM_SOURCES\t\t{int(core.get('plicSources', 8))}U")
+    plic = [(n_, k) for k, (r, n_) in irqs.items() if r == "plic"]
+    w("typedef enum")
+    w("{")
+    if plic:
+        for i, (n_, k) in enumerate(plic):
+            w(f"  PLIC_SRC_{BLOCKS[k]['title']} = {n_}{',' if i < len(plic) - 1 else ''}\t\t//{BLOCKS[k]['title']}")
+    else:
+        w("  PLIC_SRC_NONE = 0")
+    w("} PLIC_SRC_Type;")
+    for n_, k in plic:
+        w(f"#define PLIC_{BLOCKS[k]['title']}_IRQHandler\tPLIC_SRC{n_}_IRQHandler")
+    for k, (r, n_) in irqs.items():
+        if r == "local":
+            t = BLOCKS[k]["title"]
+            w(f"#define {t}_IRQn\t\t\t\tLI{n_}_IRQn\t\t//{t} - локальная линия LI{n_}")
+            w(f"#define {t}_IRQHandler\t\t\tLI{n_}_IRQHandler")
+    w("")
+    w("#endif /* __SOC_H */")
+    return "\n".join(L) + "\n"
+
+
+def write_if_changed(path, text, enc="utf-8"):
+    """Запись без смены времени файла, если содержимое то же (Gowin EDA и make не пересобирают зря).
+    Файлы прошивки (cp1251) пишутся с CRLF, как весь проект Eclipse."""
+    newline = "\r\n" if enc == "cp1251" else "\n"
+    data = text.replace("\n", newline).encode(enc)
+    if path.exists() and path.read_bytes() == data:
         return False
-    path.write_text(text, encoding="utf-8", newline="\n")
+    path.write_bytes(data)
     return True
 
 
@@ -785,14 +1012,21 @@ def main():
     print(f"Конфигурация: {cfg_rel}")
     print(f"  rPLL: {fmt_mhz(float(m['clock']['xtalMHz']))} МГц -> {fmt_mhz(fout)} МГц "
           f"(IDIV {m['clock']['pll']['idiv']}, FBDIV {m['clock']['pll']['fbdiv']}, ODIV {m['clock']['pll']['odiv']}, VCO {fmt_mhz(vco)})")
+    irqs = irq_map(m)
     for k, s in bases.items():
-        print(f"  {BLOCKS[k]['title']:<7} {slot_hex(s)}")
+        r = irqs.get(k)
+        irq = "" if not r else ("  прерывание: источник PLIC " + str(r[1]) if r[0] == "plic" else f"  прерывание: LI{r[1]}")
+        print(f"  {BLOCKS[k]['title']:<7} {slot_hex(s)}{irq}")
+    print(f"  Частота шины периферии: {sysclk_hz(m)} Гц")
     if a.check:
         print("Проверка пройдена")
         return 0
 
-    for path, text in ((top, gen_top(m, bases, cfg_rel)), (cst, gen_cst(m, dev, cfg_rel))):
-        changed = write_if_changed(path, text)
+    soc = (cfg.parent / m["paths"].get("soc", "Core/Inc/soc.h")).resolve()
+    #Файлы - в кодировке соседних: top.sv и riscv.cst - UTF-8, soc.h (проект Eclipse) - cp1251 с CRLF
+    for path, text, enc in ((top, gen_top(m, bases, cfg_rel), "utf-8"), (cst, gen_cst(m, dev, cfg_rel), "utf-8"),
+                            (soc, gen_soc_h(m, bases, cfg_rel), "cp1251")):
+        changed = write_if_changed(path, text, enc)
         print(f"  {os.path.relpath(path, hw.parent)}: {'обновлён' if changed else 'без изменений'}")
 
     if a.build:

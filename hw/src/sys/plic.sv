@@ -14,9 +14,18 @@
 //                                   (при равенстве - с меньшим номером) или 0; чтение снимает pending;
 //                                   запись номера - обработка источника завершена
 //
+//  0x200008       - vector        : бит 0 - векторный режим (расширение askoRV32, в PLIC SiFive этого
+//                                   адреса нет - он зарезервирован в области контекста)
+//
 //Шлюзы (gateway) по уровню: запрос источника ставит pending, после claim новый запрос этого
 //источника не принимается до complete. Если источник всё ещё активен после complete, pending
 //ставится снова. Поэтому обработчик: claim -> сбросить флаг в периферии -> complete.
+//
+//Векторный режим: вместе с irq ядру выдаётся номер лучшего источника irq_id. Ядро в векторном режиме
+//mtvec переходит сразу на вход 32 + irq_id таблицы векторов и сообщает об этом (vec_claim, vec_claim_id) -
+//PLIC захватывает этот источник, как при чтении claim. Обработчику источника claim не нужен: он сбрасывает
+//флаг в периферии и пишет complete. Захватывается номер, по которому ушло ядро, а не лучший на момент
+//захвата: если в этот такт появился более важный источник, он дождётся своей очереди.
 module plic_top
   #(parameter                      MEMORY_TYPE = 0,
     parameter int                  NSRC        = 8,  //Число источников (1..31)
@@ -29,10 +38,14 @@ module plic_top
     output logic            [31:0] RData,
     // Запросы источников (уровень, активная 1) и выход на ядро
     input  logic         [NSRC:1]  src,
-    output logic                   irq           //MEI
+    output logic                   irq,          //MEI
+    output logic            [ 4:0] irq_id,       //Номер лучшего источника (с регистра, вместе с irq)
+    output logic                   vec_en,       //Векторный режим
+    input  logic                   vec_claim,    //Ядро приняло MEI по вектору источника vec_claim_id
+    input  logic            [ 4:0] vec_claim_id
 );
     localparam logic [21:0] PENDING = 22'h001000, ENABLE = 22'h002000,
-                            THRESHOLD = 22'h200000, CLAIM = 22'h200004;
+                            THRESHOLD = 22'h200000, CLAIM = 22'h200004, VECTOR = 22'h200008;
 
     logic [PRIO_BITS-1:0] prio [1:NSRC];
     logic [NSRC:1]        pending, enable, busy;
@@ -53,8 +66,8 @@ module plic_top
     //Ч11: запрос на ядро - через регистр. Поиск лучшего источника (цепочка сравнений приоритетов) иначе
     //шёл прямо в решение о ловушке ядра. Прерывание приходит на такт позже - для периферии это неважно
     always_ff @(posedge clk)
-        if (rst) irq <= 1'b0;
-        else     irq <= (best_id != 5'd0);
+        if (rst) begin irq <= 1'b0; irq_id <= 5'd0; end
+        else     begin irq <= (best_id != 5'd0); irq_id <= best_id; end
 
     //#2 Регистры
     logic we, claim_rd, complete_wr;
@@ -68,6 +81,7 @@ module plic_top
             busy      <= '0;
             enable    <= '0;
             threshold <= '0;
+            vec_en    <= 1'b0;
             for (int i = 1; i <= NSRC; i++) prio[i] <= '0;
         end else begin
             //Шлюзы: запрос принимается, пока источник не захвачен (claim)
@@ -76,6 +90,10 @@ module plic_top
                 pending[best_id] <= 1'b0;
                 busy[best_id]    <= 1'b1;
             end
+            if (vec_claim && vec_claim_id >= 5'd1 && vec_claim_id <= NSRC) begin
+                pending[vec_claim_id] <= 1'b0;
+                busy[vec_claim_id]    <= 1'b1;
+            end
             if (complete_wr && WData[4:0] >= 5'd1 && WData[4:0] <= NSRC)
                 busy[WData[4:0]] <= 1'b0;
             if (we) begin
@@ -83,6 +101,7 @@ module plic_top
                     prio[Addr[11:2]] <= WData[PRIO_BITS-1:0];
                 if (Addr[21:0] == ENABLE)    enable    <= WData[NSRC:1];
                 if (Addr[21:0] == THRESHOLD) threshold <= WData[PRIO_BITS-1:0];
+                if (Addr[21:0] == VECTOR)    vec_en    <= WData[0];
             end
         end
 
@@ -96,6 +115,7 @@ module plic_top
         else if (Addr[21:0] == ENABLE)    rdata[NSRC:1] = enable;
         else if (Addr[21:0] == THRESHOLD) rdata = {{(32-PRIO_BITS){1'b0}}, threshold};
         else if (Addr[21:0] == CLAIM)     rdata = {27'd0, best_id};
+        else if (Addr[21:0] == VECTOR)    rdata = {31'd0, vec_en};
     end
 
     generate if (MEMORY_TYPE) begin   //#1 - Память BSRAM: чтение с задержкой на такт

@@ -13,29 +13,42 @@ module tm1638_top
 );
     //Описание, регистры и примеры - README.md в этой папке. Тест - tb_tm1638.sv.
     //Карта регистров (регистровая часть - по шаблону periph_regs, hw/src/periph/periph_regs.sv):
-    //>>0x00 SEGS - значение для семисегментного индикатора (8 цифр HEX, цифра 0 - младшая тетрада)
-    //>>0x04 LEDS - светодиоды платы (8 бит)
-    //<<0x08 KEYS - состояние кнопок платы (8 бит)
-    //После сброса SEGS и LEDS - 0.
+    //>>0x00 SEGS  - значение для семисегментного индикатора (8 цифр HEX, цифра 0 - младшая тетрада)
+    //>>0x04 LEDS  - светодиоды платы (8 бит)
+    //<<0x08 KEYS  - состояние кнопок платы (8 бит)
+    //>>0x0C CTRL  - [1:0] MODE: 0 - HEX (SEGS), 1 - TEXT (коды символов cp1251 из TEXT0/TEXT1 через
+    //               знакогенератор tm1638_font), 2 - RAW (байты TEXT0/TEXT1 - сегменты как есть);
+    //               [15:8] DOTS - точка (сегмент h) после символа: бит i - позиция i слева
+    //>>0x10 TEXT0 - символы 0..3 (байт 0 - левый символ)
+    //>>0x14 TEXT1 - символы 4..7 (байт 3 - правый символ)
+    //После сброса все регистры записи - 0 (режим HEX, индикатор показывает 00000000).
 
     logic [ 7:0] tm_key, tm_led;
-    logic [31:0] tm_digit;
+    logic [31:0] tm_digit, tm_text0, tm_text1;
+    logic [15:0] tm_ctrl;
 
-    logic [2:0][ 3:0] we;
+    logic [5:0][ 3:0] we;
     logic      [31:0] wdata;
-    periph_regs #(.N(3), .MEMORY_TYPE(MEMORY_TYPE)) regs
+    periph_regs #(.N(6), .MEMORY_TYPE(MEMORY_TYPE)) regs
         (.clk(clk), .Write(Write), .Read(1'b0), .Addr(Addr), .WData(WData), .RData(RData),
          .we(we), .re(), .wdata(wdata),
-         .rdata({32'(tm_key),                                    //0x08 KEYS
+         .rdata({tm_text1,                                       //0x14 TEXT1
+                 tm_text0,                                       //0x10 TEXT0
+                 32'(tm_ctrl),                                   //0x0C CTRL
+                 32'(tm_key),                                    //0x08 KEYS
                  32'(tm_led),                                    //0x04 LEDS
                  tm_digit}));                                    //0x00 SEGS
 
-    periph_reg #(.W(32)) r_segs (.clk(clk), .rst(rst), .we(we[0]), .wdata(wdata), .q(tm_digit));
-    periph_reg #(.W(8))  r_leds (.clk(clk), .rst(rst), .we(we[1]), .wdata(wdata), .q(tm_led));
+    periph_reg #(.W(32)) r_segs  (.clk(clk), .rst(rst), .we(we[0]), .wdata(wdata), .q(tm_digit));
+    periph_reg #(.W(8))  r_leds  (.clk(clk), .rst(rst), .we(we[1]), .wdata(wdata), .q(tm_led));
+    periph_reg #(.W(16)) r_ctrl  (.clk(clk), .rst(rst), .we(we[3]), .wdata(wdata & 32'h0000_FF03), .q(tm_ctrl));
+    periph_reg #(.W(32)) r_text0 (.clk(clk), .rst(rst), .we(we[4]), .wdata(wdata), .q(tm_text0));
+    periph_reg #(.W(32)) r_text1 (.clk(clk), .rst(rst), .we(we[5]), .wdata(wdata), .q(tm_text1));
 
     tm1638_board_controller #(.clk_mhz(CLK_MHZ)) tm1638_board_controller
         (.clk(clk), .rst(rst),
-         .digit_in(tm_digit), .ledr(tm_led), .keys(tm_key),
+         .digit_in(tm_digit), .text_in({tm_text1, tm_text0}), .mode(tm_ctrl[1:0]), .dots(tm_ctrl[15:8]),
+         .ledr(tm_led), .keys(tm_key),
          .sio_dio(tm_dio), .sio_clk(tm_clk), .sio_stb(tm_stb));
 
 endmodule
@@ -60,6 +73,9 @@ module tm1638_board_controller
     input  logic        clk,
     input  logic        rst,
     input  logic [31:0] digit_in,
+    input  logic [63:0] text_in,     //Символы: байт i - позиция i слева
+    input  logic [ 1:0] mode,        //0 - HEX, 1 - TEXT, 2 - RAW
+    input  logic [ 7:0] dots,        //Точка после символа: бит i - позиция i слева
     input  logic [ 7:0] ledr,
     output logic [ 7:0] keys,
     //Внешний интерфейс
@@ -98,6 +114,24 @@ module tm1638_board_controller
             8'hf: digit_seg = 8'b01110001;//8'b10001110;
         endcase
 
+    //Текст: digits[k] - k-я позиция справа, ей соответствует символ 7 - k слева. Знакогенератор
+    //(ПЗУ в BSRAM) читается синхронно, поэтому номер позиции и остальные варианты задерживаются на такт
+    logic [7:0] char_code, font_seg, hex_q, raw_q, seg_sel;
+    logic [2:0] count_q;
+    assign char_code = text_in[8 * (7 - count) +: 8];
+    tm1638_font font (.clk(clk), .code(char_code), .seg(font_seg));
+    always_ff @(posedge clk) begin
+        count_q <= count;
+        hex_q   <= digit_seg;
+        raw_q   <= char_code;
+    end
+    always_comb
+        case (mode)
+            2'd1:    seg_sel = font_seg;
+            2'd2:    seg_sel = raw_q;
+            default: seg_sel = hex_q;
+        endcase
+
     logic [7:0] digits [0:7];
     always @(posedge clk, posedge rst)
         if (rst) begin
@@ -111,7 +145,7 @@ module tm1638_board_controller
             digits[7] <= 8'd0;
         end
         else
-            digits[count] <= digit_seg;
+            digits[count_q] <= seg_sel | {dots[3'd7 - count_q], 7'd0};
     
     //#2 Controller
     localparam

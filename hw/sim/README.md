@@ -57,6 +57,7 @@ jalr   [pipeline] тест 14: jalr[target&~1,rs1+1,imm=0]  получено 0x0
 | `tests/link.ld` | IMEM с `0x00000000` и DMEM с `0x10000000`; по адресу 0 переход на `_start`, код с `TEXT_BASE` |
 | `run_tests.py` | Сборка программ, компиляция тестбенча, параллельный прогон, отчёт |
 | `run_bench.py`, `bench/coremark/` | Бенчмарк CoreMark, см. [bench/README.md](bench/README.md) |
+| `run_irqlat.py`, `bench/irqlat/` | Задержка прерывания: LI0, PLIC с программным диспетчером и векторный PLIC на коде прошивки (трасса `+irqtrace`), см. [info/interrupts.md](../info/interrupts.md#задержка-измерение-3009-и-01102026) |
 
 Программа загружается прямо в модели блоков BSRAM (`ram_MEM`) перед снятием сброса. На ПЛИС то же содержимое записывает в файл прошивки утилита `mergetool`.
 

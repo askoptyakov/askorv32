@@ -114,6 +114,8 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     logic [31:0] dmem_Addr, dmem_WriteData;
         //Прерывания и счётчик mcycle = mtime (Р3)
     logic        irq_msi, irq_mti, irq_mei;
+    logic [ 4:0] irq_mei_id, mei_claim_id;     //Векторный режим PLIC: номер источника, захват ядром
+    logic        irq_mei_vec, mei_claim;
     logic [63:0] mtime;
     logic [ 1:0] mtime_we;
     logic [31:0] mtime_wdata;
@@ -136,6 +138,7 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
            .dmem_ReadData(dmem_ReadData), .dmem_Write(dmem_Write), .dmem_Read(dmem_Read),        //Интерфейс памяти данных
            .dmem_Addr(dmem_Addr), .dmem_WriteData(dmem_WriteData),
            .irq_msi(irq_msi), .irq_mti(irq_mti), .irq_mei(irq_mei), .irq_local(irq_local),      //Прерывания
+           .irq_mei_id(irq_mei_id), .irq_mei_vec(irq_mei_vec), .mei_claim(mei_claim), .mei_claim_id(mei_claim_id),
            .dbg_haltreq(dbg_haltreq), .dbg_resumereq(dbg_resumereq), .dbg_halted(dbg_halted),   //Отладка
            .dbg_gpr_addr(dbg_gpr_addr), .dbg_gpr_we(dbg_gpr_we), .dbg_gpr_rdata(dbg_gpr_rdata),
            .dbg_csr_addr(dbg_csr_addr), .dbg_csr_we(dbg_csr_we), .dbg_csr_rdata(dbg_csr_rdata),
@@ -244,5 +247,6 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     plic_top #(.MEMORY_TYPE(DMEM_TYPE), .NSRC(PLIC_SOURCES)) plic
                 (.clk(clk_dmem), .rst(rst_sys),
                  .Write(plic_Write), .Read(sRead[0]), .Addr(plic_Addr), .WData(plic_WriteData), .RData(plic_ReadData),
-                 .src(irq_src), .irq(irq_mei));
+                 .src(irq_src), .irq(irq_mei),
+                 .irq_id(irq_mei_id), .vec_en(irq_mei_vec), .vec_claim(mei_claim), .vec_claim_id(mei_claim_id));
 endmodule

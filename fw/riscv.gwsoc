@@ -7,10 +7,10 @@
     "coreType": "pipeline",
     "mExt": true,
     "divBpc": 2,
-    "imem": { "type": "bsram", "kb": 8, "synthWords": 256, "init": "mem_init/i.mem" },
-    "dmem": { "type": "bsram", "kb": 8, "synthWords": 256, "init": "mem_init/d.mem" },
     "debug": true,
-    "plicSources": 8
+    "plicSources": 8,
+    "imem": { "type": "bsram", "kb": 16, "synthWords": 256, "init": "mem_init/i.mem" },
+    "dmem": { "type": "bsram", "kb": 8, "synthWords": 256, "init": "mem_init/d.mem" }
   },
   "clock": {
     "xtalMHz": 27,
@@ -22,12 +22,29 @@
     "gpio": {
       "enabled": true,
       "base": "auto",
-      "lines": [10, 11, 13, 14, 15, 16, 75, 77, 36, 74, 76, 39, 56, 57]
+      "lines": [10, 11, 13, 14, 15, 16]
     },
-    "tm1638": { "enabled": false, "base": "auto", "dio": 25, "clk": 26, "stb": 27 },
-    "stim": { "enabled": true, "base": "auto", "width": 16, "out": 68 }
+    "tm1638": { "enabled": true, "base": "auto", "dio": 25, "clk": 26, "stb": 27 },
+    "stim": { "enabled": true, "base": "auto", "width": 16, "out": 68, "irq": "plic" },
+    "uart": {
+      "enabled": true,
+      "base": "auto",
+      "tx": 17,
+      "rx": 18,
+      "baud": 115200,
+      "parity": "none",
+      "stop": 1,
+      "fifo": 16,
+      "irq": "plic"
+    }
   },
   "ioDefaults": { "ioType": "LVCMOS18", "pull": "UP", "drive": "8", "vccio": "1.8" },
+  "banks": {
+    "0": { "ioType": "LVCMOS33", "vccio": "3.3" },
+    "1": { "ioType": "LVCMOS33", "vccio": "3.3" },
+    "2": { "ioType": "LVCMOS33", "vccio": "3.3" },
+    "3": { "ioType": "LVCMOS18", "vccio": "1.8" }
+  },
   "pins": {
     "3": { "net": "rst_n" },
     "10": { "net": "led[0]" },
@@ -36,20 +53,13 @@
     "14": { "net": "led[3]" },
     "15": { "net": "led[4]" },
     "16": { "net": "led[5]" },
+    "17": { "net": "uart_tx" },
+    "18": { "net": "uart_rx" },
     "25": { "net": "GPIO[0]" },
     "26": { "net": "GPIO[1]" },
     "27": { "net": "GPIO[2]" },
-    "36": { "net": "GMB_GPIO[2]" },
-    "39": { "net": "GMB_GPIO[5]" },
     "52": { "net": "clk" },
-    "56": { "net": "GMB_DRIVER_E[0]" },
-    "57": { "net": "GMB_DRIVER_E[1]" },
-    "68": { "net": "GMB_DRIVER_D[0]" },
-    "69": { "net": "GMB_DRIVER_D[1]" },
-    "74": { "net": "GMB_GPIO[3]" },
-    "75": { "net": "GMB_GPIO[0]" },
-    "76": { "net": "GMB_GPIO[4]" },
-    "77": { "net": "GMB_GPIO[1]" }
+    "68": { "net": "stim_out" }
   },
   "build": { "toolchain": "gowin" }
 }
