@@ -21,7 +21,7 @@
 //  +trace=<файл>  - трасса записей в регистры и память
 //  +pctrace=<файл>- PC на каждом такте ядра (профилирование однотактного ядра)
 //
-//Устройства тестбенча на порту пользовательской периферии cpu (per_*), по правилам шины
+//Устройства тестбенча на порту пользовательской периферии cpu (bus_per), по правилам шины
 //регистров (данные чтения - на следующем такте):
 //  0x1F000000..08 - TOHOST: код завершения и аргументы
 //  0x1F00000C     - консоль: младший байт записи выводится как символ
@@ -51,11 +51,11 @@ module tb_core;
 
     logic        tck = 1'b0, tms = 1'b1, tdi = 1'b0;  //JTAG: управляет сценарий отладки (tb_debug.svh)
     wire         tdo;
-    wire         per_clk, per_rst;
-    wire  [ 3:0] per_Write;
-    wire         per_Read;
-    wire  [31:0] per_Addr, per_WData;
-    logic [31:0] per_RData = 32'd0;
+    wire         clk_per, rst_per;
+    wire  [ 3:0] bus_per_Write;
+    wire         bus_per_Read;
+    wire  [31:0] bus_per_Addr, bus_per_WData;
+    logic [31:0] bus_per_RData = 32'd0;
     wire  [15:0] irq_local;
     wire  [ 8:1] irq_src;
 
@@ -64,8 +64,8 @@ module tb_core;
           .DMEM_TYPE(1'b1), .BSRAM_DMEM_SIZE(DMEM_KB), .PLIC_SOURCES(8))
         dut (.clk(clk), .rst_n(rst_n),
              .tck_pad_i(tck), .tms_pad_i(tms), .tdi_pad_i(tdi), .tdo_pad_o(tdo),
-             .per_clk(per_clk), .per_rst(per_rst),
-             .per_Write(per_Write), .per_Read(per_Read), .per_Addr(per_Addr), .per_WData(per_WData), .per_RData(per_RData),
+             .clk_per(clk_per), .rst_per(rst_per),
+             .bus_per_Write(bus_per_Write), .bus_per_Read(bus_per_Read), .bus_per_Addr(bus_per_Addr), .bus_per_WData(bus_per_WData), .bus_per_RData(bus_per_RData),
              .irq_local(irq_local), .irq_src(irq_src));
 
     //Внутренние сигналы cpu.sv, на которые опирается тестбенч
@@ -76,23 +76,23 @@ module tb_core;
     wire [31:0] dmem_Addr      = dut.dmem_Addr;
     wire [31:0] dmem_WriteData = dut.dmem_WriteData;
 
-    //#1.1 Устройства тестбенча на порту per_*: источники PLIC 2..8 (запись 0x1F000014) и таймер
+    //#1.1 Устройства тестбенча на порту bus_per: источники PLIC 2..8 (запись 0x1F000014) и таймер
     //для тестов прерываний (0x1F000100)
     localparam logic [31:0] SIM_PLIC = 32'h1F00_0014, SIM_TIM = 32'h1F00_0100;
     logic [31:0] sim_plic_src = 32'd0;
     logic [ 4:0] tim_cr  = '0;
     logic [15:0] tim_per = '0, tim_cnt = '0;
     logic        tim_uif = 1'b0, tim_irq = 1'b0;
-    wire         tim_we_sr = (|per_Write) && per_Addr == SIM_TIM + 32'h14 && per_WData[0];
-    always @(posedge per_clk)
-        if (per_rst) begin
+    wire         tim_we_sr = (|bus_per_Write) && bus_per_Addr == SIM_TIM + 32'h14 && bus_per_WData[0];
+    always @(posedge clk_per)
+        if (rst_per) begin
             sim_plic_src <= '0; tim_cr <= '0; tim_per <= '0; tim_cnt <= '0; tim_uif <= 1'b0; tim_irq <= 1'b0;
         end else begin
-            if (|per_Write)
-                case (per_Addr)
-                    SIM_PLIC:          sim_plic_src <= per_WData;
-                    SIM_TIM + 32'h04:  tim_cr       <= per_WData[4:0];
-                    SIM_TIM + 32'h08:  tim_per      <= per_WData[15:0];
+            if (|bus_per_Write)
+                case (bus_per_Addr)
+                    SIM_PLIC:          sim_plic_src <= bus_per_WData;
+                    SIM_TIM + 32'h04:  tim_cr       <= bus_per_WData[4:0];
+                    SIM_TIM + 32'h08:  tim_per      <= bus_per_WData[15:0];
                     default: ;
                 endcase
             if (tim_cr[3]) begin                                //EN: счёт вверх до PER, затем событие обновления
@@ -105,13 +105,13 @@ module tb_core;
             tim_irq <= tim_uif & tim_cr[4];                     //Запрос через регистр, как у STIM
         end
     //Данные чтения - на следующем такте (правила шины регистров)
-    always @(posedge per_clk)
-        case (per_Addr)
-            SIM_TIM + 32'h04: per_RData <= 32'(tim_cr);
-            SIM_TIM + 32'h08: per_RData <= 32'(tim_per);
-            SIM_TIM + 32'h10: per_RData <= 32'(tim_cnt);
-            SIM_TIM + 32'h14: per_RData <= 32'(tim_uif);
-            default:          per_RData <= 32'd0;
+    always @(posedge clk_per)
+        case (bus_per_Addr)
+            SIM_TIM + 32'h04: bus_per_RData <= 32'(tim_cr);
+            SIM_TIM + 32'h08: bus_per_RData <= 32'(tim_per);
+            SIM_TIM + 32'h10: bus_per_RData <= 32'(tim_cnt);
+            SIM_TIM + 32'h14: bus_per_RData <= 32'(tim_uif);
+            default:          bus_per_RData <= 32'd0;
         endcase
     assign irq_local = {15'd0, tim_irq};                          //LI0 (mcause 16)
     assign irq_src   = {sim_plic_src[8:2], tim_irq};              //Источник 1 - таймер, 2..8 - программа

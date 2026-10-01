@@ -20,7 +20,7 @@
 
 | Порт | Смысл |
 |---|---|
-| `clk`, `rst` | такт и сброс шины периферии (`per_clk`, `per_rst` процессора) |
+| `clk`, `rst` | такт и сброс шины периферии (`clk_per`, `rst_per` процессора) |
 | `Write`, `Addr`, `WData`, `RData` | шина регистров |
 | `tim_out` | выход сравнения: 1, пока `CNT < PUL` |
 | `irq` | запрос прерывания: `SR.UIF & CR.UIE`, через регистр (на такт позже флага) |
@@ -63,14 +63,14 @@
 | Функция | Действие |
 |---|---|
 | `STIM_InitPeriodic(Prescaler, Period)` | счёт вверх, событие каждые `(Prescaler + 1) · (Period + 1)` тактов; таймер не запускается, флаг сброшен |
-| `STIM_Init()` | настройка по умолчанию из `periphery.h`: тик 1 мс (`STIM_PRESCALER`), `STIM_PERIOD`, `STIM_COUNTER_MODE` |
+| `STIM_Init()` | настройка по умолчанию из `tim.h`: тик 1 мс (`STIM_PRESCALER`), `STIM_PERIOD`, `STIM_COUNTER_MODE` |
 | `STIM_STATE(TIM_ENABLE / TIM_DISABLE)` | запуск и остановка (`CR.EN`) |
 | `STIM_SET_PRESCALER`, `STIM_SET_PERIOD`, `STIM_SET_PULSE`, `STIM_SET_COUNTER_MODE` | запись `PR`, `PER`, `PUL`, `CR.CM` |
 | `STIM_GET_COUNT()` | чтение `CNT` |
 | `STIM_IT_STATE(TIM_ENABLE / TIM_DISABLE)` | разрешение прерывания (`CR.UIE`) |
 | `STIM_GET_FLAG_UPDATE()`, `STIM_CLEAR_FLAG_UPDATE()` | чтение и сброс `SR.UIF` |
 
-`STIM_WIDTH` в `periphery.h` должен совпадать с параметром `WIDTH`. `STIM_PRESCALER` считается от `SYSCLK_HZ`.
+`STIM_WIDTH` в `soc.h` (создаёт конфигуратор) совпадает с параметром `WIDTH`. `STIM_PRESCALER` считается от `SYSCLK_HZ`.
 
 ## Примеры
 

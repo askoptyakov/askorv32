@@ -36,6 +36,22 @@
 #include "core_riscv.h"
 #include "periphery.h"
 
+/* Регистры PLIC; адрес и указатель PLIC - в soc.h */
+typedef struct
+{
+  __IO uint32_t PRIORITY[1024];		//0x000000 + 4*N: Приоритет источника N (0 - запрещён)
+  __I  uint32_t PENDING;			//0x001000: Бит N - источник N ожидает обработки
+  uint32_t      RESERVED0[1023];
+  __IO uint32_t ENABLE;				//0x002000: Бит N - разрешение источника N
+  uint32_t      RESERVED1[522239];
+  __IO uint32_t THRESHOLD;			//0x200000: Порог приоритета
+  __IO uint32_t CLAIM;				//0x200004: Чтение - claim, запись - complete
+  __IO uint32_t VECTOR;			//0x200008: Бит 0 - векторный режим (расширение askoRV32)
+} PLIC_TypeDef;
+
+/* Источники PLIC (PLIC_SRC_Type, PLIC_NUM_SOURCES) назначает конфигуратор ПЛИС - см. soc.h */
+#define PLIC_MAX_PRIORITY			7U		//PRIO_BITS = 3
+
 /* Функции встраиваются и при -O0: вызов функции из обработчика __IRQ заставил бы его сохранять
    все регистры, которые может испортить вызов (при -O0 вдвое дольше вход в обработчик) */
 #define __PLIC_INLINE		static inline __attribute__((always_inline))

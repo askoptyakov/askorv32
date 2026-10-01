@@ -13,13 +13,14 @@
   --error: #d23c3c;
   --warn: #b7791f;
   --accent: #2f6fdb;
-  --c-sys: #3b78e7;
-  --c-core: #7b8494;
+  /* Группы на схемах: системное - серое, периферия - по назначению */
+  --c-sys: #7b8494;
+  --c-iface: #2f7de1;
   --c-gpio: #0e9f8e;
-  --c-tm1638: #8a55d6;
-  --c-stim: #d9467c;
-  --c-uart: #e07b1f;
+  --c-custom: #8a55d6;
   --c-jtag: #a0a6b0;
+  --c-bus: #3a3f47;
+  --c-clock: #d9467c;
   --bank0: #f3c6e0;
   --bank1: #bfe6c5;
   --bank2: #bcd3f7;
@@ -70,7 +71,7 @@ code { font-family: Consolas, monospace; font-size: 12px; background: var(--surf
 .bar-title strong { font-size: 15px; }
 .bar-tools { display: flex; gap: 6px; align-items: center; }
 .bar-tools .sep { width: 1px; height: 20px; background: var(--line); margin: 0 6px; }
-.bar-status { margin-left: auto; color: var(--muted); max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-status { margin-left: 8px; color: var(--muted); max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar-status.ok { color: var(--c-gpio); }
 .bar-status.err { color: var(--error); }
 
@@ -97,7 +98,7 @@ main { flex: 1; display: flex; min-height: 0; }
 #iotab select { padding: 1px 4px; font-size: 12px; }
 #iotab .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 .side {
-  width: 320px; flex: none; overflow: auto; padding: 8px 16px 16px;
+  width: 360px; flex: none; overflow: auto; padding: 8px 16px 16px;
   background: var(--surface); border-left: 1px solid var(--line);
 }
 .side h2 { font-size: 13px; margin: 14px 0 6px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
@@ -201,3 +202,169 @@ input.bad { border-color: var(--error); }
 .note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
 .pininfo { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .pininfo span { background: var(--surface-2); border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+
+/* --- Вид: переключатель, таблица выводов только в виде «Выводы» --- */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; padding: 4px 12px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--accent); color: #fff; }
+#placeOpt:disabled { opacity: .5; }
+.legend i.line { width: 22px; height: 0; border: 0; border-top: 3px solid var(--c-bus); border-radius: 0; }
+.legend i.line.clk { border-top: 2px dashed var(--c-clock); }
+
+/* --- Блоки внутри микросхемы --- */
+.tile.selected { border: 2px solid var(--accent); }
+.tile.add { align-items: center; justify-content: center; flex-direction: row; gap: 6px; border-style: dashed; color: #6b7280; cursor: pointer; font-weight: 600; }
+.tile.add:hover { border-color: var(--accent); color: var(--accent); }
+.tile .plus { font-size: 18px; }
+
+/* --- Структурная схема --- */
+.blk { cursor: pointer; }
+.blk-body { fill: #ffffff; stroke-width: 1.5; }
+.blk:hover .blk-body { filter: drop-shadow(0 2px 6px rgba(0,0,0,.18)); }
+.blk.selected .blk-body { stroke-width: 3; }
+.blk.bad .blk-body { stroke: var(--error) !important; stroke-dasharray: 5 3; }
+.blk-title { fill: #ffffff; font-size: 13px; font-weight: 600; }
+.blk-sub { fill: rgba(255,255,255,.85); font-size: 11px; }
+.blk-text { fill: #4b5563; font-size: 11.5px; }
+.sub { fill: #f3f4f6; stroke: #d1d5db; }
+.sub-t { fill: #1d2330; font-size: 11.5px; font-weight: 600; }
+.sub-d { fill: #6b7280; font-size: 10.5px; }
+.sig-l { fill: #6b7280; font-size: 11px; }
+.bus-line { fill: none; stroke: var(--c-bus); stroke-width: 3; }
+.clk-line { fill: none; stroke: var(--c-clock); stroke-width: 1.6; stroke-dasharray: 6 4; }
+.bus-label { fill: var(--c-bus); font-size: 11px; font-family: Consolas, monospace; }
+.bus-label.clk { fill: var(--c-clock); }
+.stub { stroke: #6b7280; stroke-width: 1.4; fill: none; }
+.stub.dashed { stroke-dasharray: 3 3; stroke: #9aa1ab; }
+.pcell { stroke: rgba(0,0,0,.3); }
+.pnum { fill: #1d2330; font-size: 11px; font-weight: 700; font-family: Consolas, monospace; }
+.pnet { fill: #1d2330; font-size: 11.5px; font-family: Consolas, monospace; }
+.pnet.add { fill: #6b7280; font-family: inherit; }
+.pcname { fill: #9aa1ab; font-size: 10.5px; font-family: Consolas, monospace; }
+.prow, .xpin.click { cursor: pointer; }
+.prow:hover .pcell, .xpin.click:hover .pcell { stroke: var(--accent); stroke-width: 2; }
+.prow.missing .stub, .xpin.missing .stub { stroke: var(--error); stroke-dasharray: 4 3; }
+.prow.missing .pcell, .xpin.missing .pcell { stroke: var(--error); stroke-width: 1.5; }
+.prow.missing .pnet { fill: var(--error); }
+.xpin.small .pnum { font-size: 10px; }
+.xpin.small .pnet { font-size: 10.5px; fill: #6b7280; }
+.plus-c { fill: #ffffff; stroke: #9aa1ab; stroke-dasharray: 3 2; }
+.plus-t { fill: #6b7280; font-size: 14px; font-weight: 700; }
+.prow.add:hover .plus-c { stroke: var(--accent); stroke-dasharray: none; }
+.prow.add:hover .plus-t, .prow.add:hover .pnet.add { fill: var(--accent); }
+.add-block { cursor: pointer; }
+.add-block rect { fill: #fafbfc; stroke: #9aa1ab; stroke-dasharray: 6 4; stroke-width: 1.5; }
+.add-block text { fill: #4b5563; font-size: 13px; font-weight: 600; }
+.add-block:hover rect { stroke: var(--accent); }
+.add-block:hover text { fill: var(--accent); }
+
+/* --- Панель настроек справа --- */
+.pane-head { display: flex; align-items: center; gap: 10px; margin: 10px 0 8px; }
+.pane-head .dot { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+.pane-head b { font-size: 15px; }
+.pane-head > div { flex: 1; }
+.pane-head .close { padding: 2px 8px; }
+.form-grid.pane { grid-template-columns: 112px 1fr; gap: 6px 8px; }
+.form-grid.pane select, .form-grid.pane input[type=text] { max-width: 100%; }
+.pane-sub { font-size: 12px; margin: 12px 0 0; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.side .sig-table td { padding: 2px 2px; }
+.side .sig-table select { font-size: 12px; padding: 2px 3px; }
+.side .sig-table input { font-size: 12px; }
+.side button.mini { padding: 1px 6px; }
+.side > #settings > button { margin-top: 6px; }
+.pane-actions { display: flex; gap: 8px; margin-top: 14px; }
+button.danger { color: var(--error); }
+button.danger:hover { border-color: var(--error); }
+.chk { color: inherit !important; }
+.amap tr.click { cursor: pointer; }
+.amap tr.click:hover td { background: var(--surface-2); }
+
+/* --- Библиотека и описание модуля --- */
+dialog.wide { width: min(860px, calc(100vw - 32px)); }
+#libBody { padding: 8px 16px 12px; overflow: auto; }
+#libBody h4 { display: flex; align-items: center; gap: 8px; margin: 12px 0 6px; font-size: 13px; }
+#libBody h4 .dot { width: 12px; height: 12px; border-radius: 3px; }
+.lib-card { display: flex; gap: 12px; align-items: center; border: 1px solid var(--line); border-left-width: 4px; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; }
+.lib-main { flex: 1; }
+.lib-btns { display: flex; gap: 6px; flex: none; }
+.lib-nav { display: flex; justify-content: space-between; margin-bottom: 8px; position: sticky; top: 0; background: var(--surface); padding: 4px 0; }
+.md { line-height: 1.5; }
+.md h3, .md h4, .md h5, .md h6 { margin: 14px 0 6px; }
+.md pre { background: var(--surface-2); padding: 8px 10px; border-radius: 6px; overflow: auto; font: 12px Consolas, monospace; }
+.md table { border-collapse: collapse; margin: 6px 0; font-size: 12px; }
+.md th, .md td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; vertical-align: top; }
+.md th { background: var(--surface-2); }
+.md .lnk { color: var(--accent); }
+
+/* --- Шапка: ход сборки и свободные ресурсы ПЛИС --- */
+.prog { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 12px; color: var(--muted); }
+.prog[hidden] { display: none; }
+.prog-track { width: 140px; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--line); }
+.prog-bar { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.prog[hidden] + .bar-status { margin-left: auto; }
+.res { display: flex; gap: 10px; align-items: center; margin-left: auto; }
+.prog:not([hidden]) ~ .res { margin-left: 12px; }
+.res-item { position: relative; display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 5px; font-size: 12px; color: var(--text); cursor: help; }
+.res-item svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; color: var(--muted); }
+.res-item b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.res-item i { position: absolute; left: 4px; bottom: 1px; height: 2px; max-width: calc(100% - 8px); background: var(--c-gpio); border-radius: 1px; }
+.res-item.warn i { background: var(--warn); }
+.res-item.warn b { color: var(--warn); }
+.res-item.bad i { background: var(--error); }
+.res-item.bad b { color: var(--error); }
+.res-item.na b { color: var(--muted); font-weight: 400; }
+
+/* --- Правая панель: настройки и проверка сверху, карта адресов внизу --- */
+.side { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.side-top { flex: 1; overflow: auto; padding: 8px 16px 12px; }
+.side-bottom { flex: none; max-height: 40%; overflow: auto; padding: 0 16px 12px; border-top: 1px solid var(--line); }
+.amap tr.sel td { background: var(--surface-2); font-weight: 600; }
+
+/* --- Совмещённая схема: подсветка выводов блока --- */
+#chip.hl .pin:not(.on) { opacity: .18; }
+#chip.hl .pin.on .mark { stroke: #1d2330; stroke-width: 2; }
+#chip.hl .pin.on .label { font-weight: 700; }
+.blk.hover .blk-body { stroke-width: 2.5; filter: drop-shadow(0 2px 6px rgba(0,0,0,.18)); }
+.blk-ru { fill: #1d2330; font-size: 11.5px; }
+.blk-irq { fill: #6b7280; font-size: 10.5px; font-family: Consolas, monospace; }
+.blk-title { font-size: 12.5px; }
+.sub-t { font-size: 10.5px; font-family: Consolas, monospace; }
+.sub-d { font-size: 10.5px; }
+.pcell.click, .pnet.click { cursor: pointer; }
+.pcell.click:hover { stroke: var(--accent); stroke-width: 2; }
+.pnet.click:hover { fill: var(--accent); text-decoration: underline; }
+.pnum { font-size: 10.5px; }
+.pnet { font-size: 11px; }
+.prow.add { cursor: pointer; }
+select.inline-edit { font: 12px "Segoe UI", sans-serif; min-width: 240px; }
+input.net, .inline-edit.net { text-transform: uppercase; }
+
+/* --- Шапка: слева инструменты поля, справа сборка и под ней ресурсы (на время сборки - шкала) --- */
+.bar { justify-content: space-between; align-items: flex-start; gap: 12px; padding: 6px 12px; }
+.bar-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; flex: 1; }
+.bar-left .bar-status { margin-left: 4px; max-width: 520px; }
+.bar-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.bar-build { display: flex; align-items: center; gap: 6px; }
+.res, .prog:not([hidden]) ~ .res { margin-left: 0; }
+.prog { margin-left: 0; min-width: 300px; justify-content: flex-end; }
+.prog-track { width: 200px; }
+button.icon { padding: 3px 6px; display: inline-flex; align-items: center; justify-content: center; }
+button.icon svg, button.build svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+button.icon svg .accent { stroke: var(--accent); stroke-width: 2; }
+button.build { display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px 3px 8px; }
+button.build svg { width: 24px; }
+button.build .head { fill: rgba(255,255,255,.35); }
+button.build:disabled { opacity: .55; cursor: default; filter: none; }
+button.build.busy svg .hammer { animation: hammer .55s ease-in-out infinite; transform-origin: 22px 1.5px; }
+@keyframes hammer { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-30deg); } }
+.res-item b { white-space: nowrap; }
+
+/* --- Перетаскивание вывода на микросхеме --- */
+.pin.used .hit, .pin.labeled .hit { cursor: grab; }
+.drag-line { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 4; fill: none; pointer-events: none; }
+.drag-label { fill: var(--accent); font: 600 12px Consolas, monospace; pointer-events: none; }
+.pin.drop .cell { stroke: var(--accent); stroke-width: 3; }
+.pin.drop-bad .cell { stroke: var(--error); stroke-width: 3; }
+body.dragging, body.dragging * { cursor: grabbing !important; }
+.body-rect { cursor: default; }

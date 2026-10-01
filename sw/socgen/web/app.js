@@ -1,5 +1,6 @@
-// Конфигуратор ПЛИС askoRV32 (GW1NR-LV9QN88P): модель .gwsoc, изображение корпуса, диалоги настроек.
-// Правила (адреса, rPLL, проверки) продублированы в socgen.py - при изменении править оба места.
+// Конфигуратор ПЛИС askoRV32 (GW1NR-LV9QN88P): модель .gwsoc, структурная схема, изображение корпуса,
+// настройки блоков справа, библиотека периферии.
+// Правила (адреса, rPLL, проверки, имена) продублированы в socgen.py - при изменении править оба места.
 'use strict';
 
 // ============================================================================================
@@ -19,14 +20,27 @@ const PULLS = ['UP', 'DOWN', 'NONE', 'KEEPER'];
 const DRIVES = ['4', '8', '12', '16', '24'];
 const VCCIOS = ['3.3', '2.5', '1.8', '1.5', '1.2'];
 
-//Пользовательская периферия: на порту per_* процессора (cpu.sv) через memmux в top.sv, окно 16 МБайт
-//(маска 0xFF000000), предпочтительный слот при "auto". Системные окна ниже - внутри cpu.sv
-//Порядок - порядок подключения к memmux и номеров источников PLIC (как BLOCKS в socgen.py)
-const BLOCKS = {
-  gpio:   { title: 'GPIO',   color: 'var(--c-gpio)',   slot: 0x11, about: 'Порты ввода-вывода' },
-  tm1638: { title: 'TM1638', color: 'var(--c-tm1638)', slot: 0x12, about: 'Индикатор (HEX и текст) и кнопки TM1638' },
-  stim:   { title: 'STIM',   color: 'var(--c-stim)',   slot: 0x13, about: 'Простой таймер (ШИМ, прерывание)', irq: true },
-  uart:   { title: 'UART',   color: 'var(--c-uart)',   slot: 0x14, about: 'Приёмопередатчик UART (FIFO, прерывания)', irq: true },
+//Группы периферии и их цвета на схемах. Системное (процессор, такт, отладчик) - серое
+const CATS = {
+  iface:  { title: 'Интерфейсы',     color: 'var(--c-iface)' },
+  gpio:   { title: 'GPIO',           color: 'var(--c-gpio)' },
+  custom: { title: 'Своя периферия', color: 'var(--c-custom)' },
+};
+//Библиотека устройств (как TYPES в socgen.py). Описание подробнее - README.md в hw/src/periph/<тип>/.
+//slot - окно адресов первого экземпляра при "auto" (окно 16 МБайт, маска 0xFF000000)
+const TYPES = {
+  gpio: { title: 'GPIO', ru: 'Входы/выходы', cat: 'gpio', slot: 0x11, irq: false,
+    about: 'Дискретные входы/выходы: до 32 линий, направление каждой линии задаёт программа (регистры MODE, OUT, IN).',
+    defaults: () => ({ lines: [] }) },
+  tm1638: { title: 'TM1638', ru: 'Индикатор и кнопки', cat: 'custom', slot: 0x12, irq: false,
+    about: 'Плата индикации LED&KEY на TM1638: 8 разрядов (HEX и текст cp1251 с кириллицей), 8 светодиодов, 8 кнопок. Знакогенератор занимает 1 блок BSRAM.',
+    defaults: () => ({ dio: null, clk: null, stb: null }) },
+  stim: { title: 'STIM', ru: 'Таймер, ШИМ', cat: 'custom', slot: 0x13, irq: true,
+    about: 'Простой таймер: предделитель, счёт вверх или вниз, выход ШИМ, прерывание по переполнению.',
+    defaults: () => ({ width: 16, out: null, irq: 'plic' }) },
+  uart: { title: 'UART', ru: 'Приёмопередатчик', cat: 'iface', slot: 0x14, irq: true,
+    about: 'Приёмопередатчик UART: FIFO 8–32 байта, чётность, 1–2 стоп-бита, прерывания по заполнению FIFO и по ошибке приёма.',
+    defaults: () => ({ tx: null, rx: null, baud: 115200, parity: 'none', stop: 1, fifo: 16, irq: 'plic' }) },
 };
 const UART_BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
 const UART_PARITY = { none: 'нет', even: 'чётность (even)', odd: 'нечётность (odd)' };
@@ -34,27 +48,30 @@ const FIFO_DEPTHS = [8, 16, 32];
 const MEM_KB = [8, 16, 32];
 const BSRAM_TOTAL = 26;    //Блоков BSRAM (18 кбит, 2 кБайт данных) в GW1NR-9
 const IRQ_ROUTES = { plic: 'PLIC (по умолчанию)', local: 'локальная линия LI', none: 'не подключено' };
+//Place_Option Gowin EDA (build.placeOption; пусто - как записано в hw/impl/riscv_process_config.json)
+const PLACE_OPTIONS = [['', 'Place: как в проекте'], ['0', 'Place 0 - быстрее компиляция'], ['1', 'Place 1 - трассируемость'], ['2', 'Place 2 - тайминги']];
 const FIXED_REGIONS = [
-  { name: 'IMEM',  slot: 0x00, color: 'var(--c-core)', note: 'память команд' },
-  { name: 'CLINT', slot: 0x02, color: 'var(--c-core)', note: 'mtime, msip' },
-  { name: 'PLIC',  slot: 0x0C, color: 'var(--c-core)', note: 'прерывания периферии' },
-  { name: 'DMEM',  slot: 0x10, color: 'var(--c-core)', note: 'память данных' },
-  { name: 'SIM',   slot: 0x1F, color: 'var(--c-jtag)', note: 'tohost симулятора' },
+  { name: 'IMEM',  slot: 0x00, note: 'память команд' },
+  { name: 'CLINT', slot: 0x02, note: 'mtime, msip' },
+  { name: 'PLIC',  slot: 0x0C, note: 'прерывания периферии' },
+  { name: 'DMEM',  slot: 0x10, note: 'память данных' },
+  { name: 'SIM',   slot: 0x1F, note: 'tohost симулятора' },
 ];
 const AUTO_FIRST = 0x11, AUTO_LAST = 0x1E;
 
 const NET_RE = /^[A-Za-z_][A-Za-z0-9_$]*(\[(\d+)\])?$/;
+const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,23}$/;
 const SV_KEYWORDS = new Set(['input', 'output', 'inout', 'wire', 'logic', 'reg', 'module', 'endmodule', 'assign',
   'always', 'begin', 'end', 'if', 'else', 'case', 'for', 'generate', 'parameter', 'localparam', 'int', 'bit']);
-//Имена, уже занятые в top.sv: порт cpu, сигналы, экземпляры и модули, параметры (как RESERVED_NETS в socgen.py)
+//Имена, занятые в top.sv независимо от состава периферии (как RESERVED_NETS в socgen.py)
 const RESERVED_NETS = new Set(['tck_pad_i', 'tms_pad_i', 'tdi_pad_i', 'tdo_pad_o',
-  'per_clk', 'per_rst', 'per_Write', 'per_Read', 'per_Addr', 'per_WData', 'per_RData', 'irq_stim', 'irq_uart', 'irq_local', 'irq_src',
-  'sRead', 'top', 'cpu', 'permux', 'memmux', 'gpio', 'gpio_top', 'stim', 'stim_top', 'tm1638', 'tm1638_top', 'uart', 'uart_top',
+  'clk_per', 'rst_per', 'bus_per_Write', 'bus_per_Read', 'bus_per_Addr', 'bus_per_WData', 'bus_per_RData', 'irq_local', 'irq_src',
+  'sRead', 'top', 'cpu', 'permux', 'memmux', 'gpio_top', 'stim_top', 'tm1638_top', 'uart_top',
   'CORE_TYPE', 'M_EXT', 'DIV_BPC', 'IMEM_TYPE', 'BSRAM_IMEM_SIZE', 'SYNTH_IMEM_SIZE', 'IMEM_INIT_FILE',
   'DMEM_TYPE', 'BSRAM_DMEM_SIZE', 'SYNTH_DMEM_SIZE', 'DMEM_INIT_FILE', 'DEBUG_EN', 'PLIC_SOURCES',
   'FCLKIN', 'XTAL_KHZ', 'PLL_IDIV_SEL', 'PLL_FBDIV_SEL', 'PLL_ODIV_SEL', 'WIN_MASK', 'CLK_BASE_MHZ', 'CLK_DMEM_MHZ']);
-//Сигналы шины устройств (gpio_Write, tim_Addr...) и их адреса (GPIO_BASE...)
-const RESERVED_RE = /^(gpio|tim|tm|uart)_(Write|Addr|WriteData|ReadData)$|^(GPIO|TM1638|STIM|UART)_BASE$/;
+//Имена устройств, занятые в прошивке (как RESERVED_C в socgen.py)
+const RESERVED_C = new Set(['CLINT', 'PLIC', 'SOC', 'SYSCLK_HZ', 'MTIME_HZ', 'LI', 'IRQ', 'NULL', 'MODE', 'OUT', 'IN']);
 
 // ============================================================================================
 // Модель
@@ -62,6 +79,8 @@ const RESERVED_RE = /^(gpio|tim|tm|uart)_(Write|Addr|WriteData|ReadData)$|^(GPIO
 let model = null;
 let dirty = false;
 let zoom = 0;             //0 - по размеру окна
+let sel = null;           //Выбранный блок: { kind: 'clock' | 'core' | 'inst', name }
+let svgW = 0, svgH = 0;   //Размер текущей схемы (viewBox)
 
 const host = (cmd, arg) => (typeof window.gwsocHost === 'function')
   ? window.gwsocHost(cmd, arg === undefined ? null : arg) : undefined;
@@ -70,8 +89,27 @@ const inHost = () => typeof window.gwsocHost === 'function';
 const hex8 = v => '0x' + (v >>> 0).toString(16).toUpperCase().padStart(8, '0');
 const hexSlot = s => hex8(s * 0x01000000).replace(/^0x(....)/, '0x$1_');
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = x => (Math.round(x * 1000) / 1000).toString().replace('.', ',');
+
+//Формат 1 ("blocks": фиксированные блоки с enabled) -> формат 2 ("periph": список экземпляров), как migrate в socgen.py
+function migrate(m) {
+  if (Array.isArray(m.periph)) return m;
+  const periph = [];
+  for (const t of Object.keys(TYPES)) {
+    const b = (m.blocks || {})[t];
+    if (!b || !b.enabled) continue;
+    const inst = { type: t, name: TYPES[t].title };
+    for (const k of Object.keys(b)) if (k !== 'enabled') inst[k] = b[k];
+    periph.push(inst);
+  }
+  delete m.blocks;
+  m.periph = periph;
+  m.version = 2;
+  return m;
+}
 
 function normalize(m) {
+  migrate(m);
   m.core = Object.assign({ coreType: 'pipeline', mExt: true, divBpc: 2, debug: true, plicSources: 8 }, m.core);
   m.core.imem = Object.assign({ type: 'bsram', kb: 8, synthWords: 256, init: 'mem_init/i.mem' }, m.core.imem);
   m.core.dmem = Object.assign({ type: 'bsram', kb: 8, synthWords: 256, init: 'mem_init/d.mem' }, m.core.dmem);
@@ -79,68 +117,148 @@ function normalize(m) {
   m.clock = m.clock || { xtalMHz: 27, xtalPin: 52, pll: {} };
   m.clock.pll = Object.assign({ mode: 'auto', targetMHz: 27, idiv: 0, fbdiv: 0, odiv: 32 }, m.clock.pll);
   m.reset = m.reset || { pin: null };
-  m.blocks = m.blocks || {};
-  m.blocks.gpio = Object.assign({ enabled: false, base: 'auto', lines: [] }, m.blocks.gpio);
-  m.blocks.tm1638 = Object.assign({ enabled: false, base: 'auto', dio: null, clk: null, stb: null }, m.blocks.tm1638);
-  m.blocks.stim = Object.assign({ enabled: false, base: 'auto', width: 16, out: null, irq: 'plic' }, m.blocks.stim);
-  m.blocks.uart = Object.assign({ enabled: false, base: 'auto', tx: null, rx: null, baud: 115200, parity: 'none',
-                                  stop: 1, fifo: 16, irq: 'plic' }, m.blocks.uart);
+  //Ключи экземпляра в файле: тип, имя, адрес, затем настройки
+  m.periph = m.periph.filter(i => TYPES[i.type]).map(i => {
+    const full = Object.assign(TYPES[i.type].defaults(), { base: 'auto' }, i);
+    const o = { type: full.type, name: full.name, base: full.base };
+    for (const k of Object.keys(full)) if (!(k in o)) o[k] = full[k];
+    return o;
+  });
   m.ioDefaults = Object.assign({ ioType: 'LVCMOS18', pull: 'UP', drive: '8', vccio: '1.8' }, m.ioDefaults);
   m.pins = m.pins || {};
   m.build = Object.assign({ toolchain: 'gowin' }, m.build);
   return m;
 }
 
-//Все сигналы, которым нужен вывод (система + включённые блоки)
+const insts = (m, type) => m.periph.filter(i => !type || i.type === type);
+const instByName = name => model.periph.find(i => i.name === name);
+const hdl = inst => inst.name.toLowerCase();                 //Имя экземпляра в top.sv и префикс его сигналов шины
+const firstOfType = (m, inst) => insts(m, inst.type)[0] === inst;
+const instColor = inst => CATS[TYPES[inst.type].cat].color;
+const instTitle = inst => inst.name === TYPES[inst.type].title ? inst.name : `${inst.name} (${TYPES[inst.type].title})`;
+
+//Сигналы устройства, которым нужен вывод (как inst_signals в socgen.py)
+function instSignals(inst) {
+  switch (inst.type) {
+    case 'gpio': return inst.lines.map((p, i) => ({ key: 'line' + i, label: 'IO' + i, dir: 'inout' }));
+    case 'tm1638': return [{ key: 'dio', label: 'DIO', dir: 'inout' }, { key: 'clk', label: 'CLK', dir: 'output' },
+                           { key: 'stb', label: 'STB', dir: 'output' }];
+    case 'stim': return inst.out != null ? [{ key: 'out', label: 'PWM', dir: 'output' }] : [];
+    case 'uart': return [{ key: 'tx', label: 'TX', dir: 'output' }, { key: 'rx', label: 'RX', dir: 'input' }];
+  }
+  return [];
+}
+const instPin = (inst, key) => key.startsWith('line') ? inst.lines[Number(key.slice(4))] : inst[key];
+//Имя цепи по умолчанию для нового вывода (заглавными: имя цепи - и порт top.sv, и define в Си)
+const defNet = (inst, key) => (key.startsWith('line') ? `${inst.name}_IO${key.slice(4)}` : `${inst.name}_${key === 'out' ? 'PWM' : key}`).toUpperCase();
+
+//Все сигналы, которым нужен вывод (система + периферия)
 function signals(m) {
   const s = [];
-  s.push({ id: 'clk', block: 'sys', name: 'Кварц', dir: 'input', pin: m.clock.xtalPin, def: 'clk' });
-  s.push({ id: 'rst', block: 'sys', name: 'Сброс (актив. 0)', dir: 'input', pin: m.reset.pin, def: 'rst_n' });
-  const b = m.blocks;
-  if (b.gpio.enabled)
-    b.gpio.lines.forEach((p, i) => s.push({ id: 'gpio.' + i, block: 'gpio', name: 'GPIO ' + i, dir: 'inout', pin: p, def: 'gpio' + i }));
-  if (b.tm1638.enabled)
-    [['dio', 'inout'], ['clk', 'output'], ['stb', 'output']].forEach(([k, d]) =>
-      s.push({ id: 'tm1638.' + k, block: 'tm1638', name: 'TM1638 ' + k.toUpperCase(), dir: d, pin: b.tm1638[k], def: 'tm_' + k }));
-  if (b.stim.enabled && b.stim.out != null)
-    s.push({ id: 'stim.out', block: 'stim', name: 'STIM выход', dir: 'output', pin: b.stim.out, def: 'stim_out' });
-  if (b.uart.enabled) {
-    s.push({ id: 'uart.tx', block: 'uart', name: 'UART TX', dir: 'output', pin: b.uart.tx, def: 'uart_tx' });
-    s.push({ id: 'uart.rx', block: 'uart', name: 'UART RX', dir: 'input', pin: b.uart.rx, def: 'uart_rx' });
-  }
+  s.push({ id: 'clk', inst: null, key: 'clk', name: 'Кварц', dir: 'input', pin: m.clock.xtalPin, def: 'CLK' });
+  s.push({ id: 'rst', inst: null, key: 'rst', name: 'Сброс (актив. 0)', dir: 'input', pin: m.reset.pin, def: 'RST_N' });
+  for (const inst of m.periph)
+    for (const g of instSignals(inst))
+      s.push({ id: `${inst.name}.${g.key}`, inst, key: g.key, name: `${inst.name} ${g.label}`, dir: g.dir,
+               pin: instPin(inst, g.key), def: defNet(inst, g.key) });
   return s;
+}
+const sigColor = s => s.inst ? instColor(s.inst) : 'var(--c-sys)';
+
+function setSignalPin(m, sig, pin) {
+  pin = (pin === '' || pin == null) ? null : Number(pin);
+  if (sig.id === 'clk') m.clock.xtalPin = pin;
+  else if (sig.id === 'rst') m.reset.pin = pin;
+  else if (sig.key.startsWith('line')) sig.inst.lines[Number(sig.key.slice(4))] = pin;
+  else sig.inst[sig.key] = pin;
+}
+const findSig = id => signals(model).find(s => s.id === id);
+//Перенос сигнала на другой вывод: имя цепи переходит вместе с сигналом, если у нового вывода его нет
+function movePin(sig, pin) {
+  const old = sig.pin, oldNet = old != null ? netOf(model, old) : '';
+  setSignalPin(model, sig, pin);
+  if (pin === '' || pin == null) return;
+  const n = Number(pin);
+  if (oldNet && !netOf(model, n) && old !== n) { setNet(model, old, ''); setNet(model, n, oldNet); }
+  else ensureNet(model, { pin: n, def: sig.def });
+}
+
+const netOf = (m, n) => (m.pins[n] && m.pins[n].net) || '';
+function setNet(m, n, net) {
+  net = (net || '').trim().toUpperCase();
+  const p = m.pins[n] || {};
+  if (net) p.net = net; else delete p.net;
+  if (Object.keys(p).length) m.pins[n] = p; else delete m.pins[n];
+}
+//Назначенному выводу без имени цепи даётся имя по умолчанию
+function ensureNet(m, sig) {
+  if (sig.pin == null || netOf(m, sig.pin)) return;
+  const used = new Set(Object.values(m.pins).map(p => p.net).filter(Boolean));
+  let net = sig.def, k = 1;
+  while (used.has(net)) net = sig.def.replace(/(\[\d+\])?$/, '_' + (k++) + '$1');
+  setNet(m, sig.pin, net);
+}
+//Имя цепи -> имя в Си: LED[3] -> LED3, заглавными (как c_name в socgen.py)
+const cName = net => net.replace(/\[(\d+)\]$/, '$1').replace(/\$/g, '_').toUpperCase();
+
+//Все имена, занятые в top.sv при текущем составе периферии
+function reservedNets(m) {
+  const r = new Set(RESERVED_NETS);
+  for (const inst of m.periph) {
+    const h = hdl(inst);
+    [h, `${h}_Write`, `${h}_Addr`, `${h}_WriteData`, `${h}_ReadData`, `irq_${h}`, `${inst.name.toUpperCase()}_BASE`].forEach(x => r.add(x));
+  }
+  return r;
+}
+
+//Единственный блок типа - без номера: UART0 -> UART. Возвращает список переименований
+function unnumberSingles(m) {
+  const done = [];
+  for (const [type, t] of Object.entries(TYPES)) {
+    const same = insts(m, type);
+    if (same.length === 1 && new RegExp(`^${t.title}\\d+$`, 'i').test(same[0].name) &&
+        !m.periph.some(i => i.name.toLowerCase() === t.title.toLowerCase())) {
+      done.push(`${same[0].name} → ${t.title}`);
+      same[0].name = t.title;
+    }
+  }
+  return done;
+}
+
+//Имя нового экземпляра: имя типа, если свободно, иначе ИМЯ1, ИМЯ2...
+function defaultName(m, type) {
+  const t = TYPES[type].title, used = new Set(m.periph.map(i => i.name.toLowerCase()));
+  if (!insts(m, type).length && !used.has(t.toLowerCase())) return t;
+  for (let k = 1; ; k++) if (!used.has((t + k).toLowerCase())) return t + k;
 }
 
 // --- Частота шины периферии, UART, прерывания, стандарты выводов (как в socgen.py) ---
-//Частота шины периферии, Гц: выход rPLL; однотактное ядро с BSRAM делит её на 3
 function sysclkHz(m) {
   const bsram = m.core.imem.type === 'bsram' || m.core.dmem.type === 'bsram';
   return Math.round(pllOf(m).fout * 1e6 / (m.core.coreType === 'singlecycle' && bsram ? 3 : 1));
 }
-function uartDiv(m) {
-  const f = sysclkHz(m), baud = Number(m.blocks.uart.baud);
+function uartDiv(m, u) {
+  const f = sysclkHz(m), baud = Number(u.baud);
   const div = Math.max(0, Math.round(f / baud) - 1), real = f / (div + 1);
   return { div, real, err: Math.abs(real - baud) / baud * 100 };
 }
-//Прерывания устройств: по умолчанию - источники PLIC 1, 2, ... в порядке BLOCKS; irq = 'local' - LI0, LI1...
+//Прерывания: по умолчанию - источники PLIC 1, 2, ... в порядке списка; irq = 'local' - LI0, LI1...
 function irqMap(m) {
   const res = {};
   let nPlic = 0, nLoc = 0;
-  for (const k of Object.keys(BLOCKS)) {
-    const b = m.blocks[k];
-    if (!BLOCKS[k].irq || !b.enabled) continue;
-    const route = b.irq || 'plic';
-    if (route === 'plic') res[k] = { route, n: ++nPlic };
-    else if (route === 'local') res[k] = { route, n: nLoc++ };
+  for (const inst of m.periph) {
+    if (!TYPES[inst.type].irq) continue;
+    const route = inst.irq || 'plic';
+    if (route === 'plic') res[inst.name] = { route, n: ++nPlic };
+    else if (route === 'local') res[inst.name] = { route, n: nLoc++ };
   }
   return res;
 }
-//Блоки BSRAM: IMEM и DMEM по 2 кБайт на блок, шрифт TM1638 - один блок
+//Блоки BSRAM: IMEM и DMEM по 2 кБайт на блок, шрифт каждого TM1638 - один блок
 function bsramBlocks(m) {
   let used = 0;
   for (const k of ['imem', 'dmem']) if (m.core[k].type === 'bsram') used += Math.floor(Number(m.core[k].kb) / 2);
-  if (m.blocks.tm1638.enabled) used += 1;
-  return used;
+  return used + insts(m, 'tm1638').length;
 }
 const irqText = r => !r ? 'не подключено' : r.route === 'plic' ? `PLIC ${r.n}` : `LI${r.n}`;
 //Стандарт вывода: свои настройки вывода, иначе банка, иначе общие
@@ -156,33 +274,6 @@ const bankDefault = (m, n, key) => {
   return (m.banks[bank] && m.banks[bank][key]) || m.ioDefaults[key];
 };
 
-function setSignalPin(m, id, pin) {
-  pin = (pin === '' || pin == null) ? null : Number(pin);
-  if (id === 'clk') m.clock.xtalPin = pin;
-  else if (id === 'rst') m.reset.pin = pin;
-  else {
-    const [blk, key] = id.split('.');
-    if (blk === 'gpio') m.blocks.gpio.lines[Number(key)] = pin;
-    else m.blocks[blk][key] = pin;
-  }
-}
-
-const netOf = (m, n) => (m.pins[n] && m.pins[n].net) || '';
-function setNet(m, n, net) {
-  net = (net || '').trim();
-  const p = m.pins[n] || {};
-  if (net) p.net = net; else delete p.net;
-  if (Object.keys(p).length) m.pins[n] = p; else delete m.pins[n];
-}
-//Назначенному выводу без имени цепи даётся имя по умолчанию
-function ensureNet(m, sig) {
-  if (sig.pin == null || netOf(m, sig.pin)) return;
-  const used = new Set(Object.values(m.pins).map(p => p.net).filter(Boolean));
-  let net = sig.def, k = 1;
-  while (used.has(net)) net = sig.def.replace(/(\[\d+\])?$/, '_' + (k++) + '$1');
-  setNet(m, sig.pin, net);
-}
-
 // --- Адреса периферии ---
 function parseBase(v) {
   if (v === 'auto' || v == null || v === '') return null;
@@ -190,36 +281,33 @@ function parseBase(v) {
   return Number.isFinite(x) ? x : NaN;
 }
 function addressMap(m) {
-  const rows = FIXED_REGIONS.map(r => ({ name: r.name, slot: r.slot, color: r.color, note: r.note, fixed: true, on: true }));
+  const rows = FIXED_REGIONS.map(r => ({ name: r.name, slot: r.slot, color: 'var(--c-sys)', note: r.note, fixed: true }));
   const taken = new Map(rows.map(r => [r.slot, r.name]));
   const issues = [];
-  const order = Object.keys(BLOCKS);
   //Сначала ручные адреса, затем автоматические - чтобы ручной не был отнят автоматическим
   for (const pass of ['manual', 'auto']) {
-    for (const k of order) {
-      const b = m.blocks[k], meta = BLOCKS[k];
-      const base = parseBase(b.base);
+    for (const inst of m.periph) {
+      const base = parseBase(inst.base);
       if ((base === null) !== (pass === 'auto')) continue;
-      const row = { name: meta.title, key: k, color: meta.color, note: meta.about, on: b.enabled, auto: base === null };
-      if (!b.enabled) { row.slot = base === null ? meta.slot : (base >>> 24); rows.push(row); continue; }
+      const row = { name: inst.name, inst, color: instColor(inst), note: TYPES[inst.type].title, auto: base === null };
       if (base === null) {
-        let s = meta.slot;
+        let s = firstOfType(m, inst) ? TYPES[inst.type].slot : AUTO_FIRST;
         if (taken.has(s)) { s = AUTO_FIRST; while (s <= AUTO_LAST && taken.has(s)) s++; }
-        if (s > AUTO_LAST) { issues.push({ lvl: 'err', text: `${meta.title}: нет свободного окна адресов` }); continue; }
+        if (s > AUTO_LAST) { issues.push({ lvl: 'err', text: `${inst.name}: нет свободного окна адресов`, inst: inst.name }); continue; }
         row.slot = s;
       } else if (Number.isNaN(base) || base < 0 || base > 0xFFFFFFFF || (base & 0x00FFFFFF) !== 0) {
-        issues.push({ lvl: 'err', text: `${meta.title}: адрес должен быть кратен 0x0100_0000 (окно 16 МБайт)` });
+        issues.push({ lvl: 'err', text: `${inst.name}: адрес должен быть кратен 0x0100_0000 (окно 16 МБайт)`, inst: inst.name });
         row.slot = null;
       } else {
         row.slot = base >>> 24;
-        if (taken.has(row.slot)) issues.push({ lvl: 'err', text: `${meta.title}: адрес ${hexSlot(row.slot)} уже занят (${taken.get(row.slot)})` });
+        if (taken.has(row.slot)) issues.push({ lvl: 'err', text: `${inst.name}: адрес ${hexSlot(row.slot)} уже занят (${taken.get(row.slot)})`, inst: inst.name });
       }
-      if (row.slot != null) taken.set(row.slot, meta.title);
+      if (row.slot != null) taken.set(row.slot, inst.name);
       rows.push(row);
     }
   }
   rows.sort((a, b) => (a.slot ?? 999) - (b.slot ?? 999));
-  return { rows, issues, baseOf: k => { const r = rows.find(x => x.key === k); return r ? r.slot : null; } };
+  return { rows, issues, baseOf: name => { const r = rows.find(x => x.inst && x.inst.name === name); return r ? r.slot : null; } };
 }
 
 // --- rPLL ---
@@ -258,18 +346,31 @@ function applyPllAuto(m) {
   const r = pllSolve(Number(m.clock.xtalMHz), Number(p.targetMHz));
   if (r) Object.assign(p, { idiv: r.idiv, fbdiv: r.fbdiv, odiv: r.odiv });
 }
-const fmt = x => (Math.round(x * 1000) / 1000).toString().replace('.', ',');
 const pllOf = m => pllEval(Number(m.clock.xtalMHz), m.clock.pll.idiv, m.clock.pll.fbdiv, m.clock.pll.odiv);
-
 const clockCapable = n => { const c = PIN[n] && PIN[n].cfg || ''; return /GCLK|PLL_T_IN/.test(c); };
 
 // --- Проверка ---
 function validate(m) {
   const out = [];
+  //Имена устройств
+  const seen = new Map();
+  for (const inst of m.periph) {
+    const n = inst.name || '';
+    if (!NAME_RE.test(n)) { out.push({ lvl: 'err', text: `Имя «${n}»: латиница, цифры и _, не с цифры, до 24 символов`, inst: n }); continue; }
+    if (seen.has(n.toLowerCase())) out.push({ lvl: 'err', text: `Имя устройства «${n}» повторяется`, inst: n });
+    seen.set(n.toLowerCase(), n);
+    if (RESERVED_C.has(n.toUpperCase()) || RESERVED_NETS.has(n.toLowerCase()) || SV_KEYWORDS.has(n.toLowerCase()))
+      out.push({ lvl: 'err', text: `Имя устройства «${n}» занято в прошивке или в top.sv`, inst: n });
+    const own = Object.keys(TYPES).find(t => TYPES[t].title === n);
+    if (own && (own !== inst.type || !firstOfType(m, inst)))
+      out.push({ lvl: 'err', text: `Имя «${n}» - имя типа ${n}: его может носить только первый блок этого типа`, inst: n });
+  }
+
   const sigs = signals(m);
   const byPin = new Map();
   for (const s of sigs) {
-    if (s.pin == null) { out.push({ lvl: 'err', text: `${s.name}: вывод не назначен`, block: s.block }); continue; }
+    const instName = s.inst ? s.inst.name : (s.id === 'clk' || s.id === 'rst' ? 'clock' : null);
+    if (s.pin == null) { out.push({ lvl: 'err', text: `${s.name}: вывод не назначен`, inst: instName }); continue; }
     if (!PIN[s.pin] || PIN[s.pin].type !== 'io') { out.push({ lvl: 'err', text: `${s.name}: вывод ${s.pin} не является I/O`, pin: s.pin }); continue; }
     if (m.core.debug && JTAG_PINS[s.pin]) out.push({ lvl: 'err', text: `${s.name}: вывод ${s.pin} занят JTAG (${JTAG_PINS[s.pin]})`, pin: s.pin });
     if (!byPin.has(s.pin)) byPin.set(s.pin, []);
@@ -279,19 +380,17 @@ function validate(m) {
     if (list.length > 1) out.push({ lvl: 'err', text: `Вывод ${pin}: ${list.map(s => s.name).join(', ')} - конфликт`, pin, conflict: true });
 
   //Имена цепей назначенных выводов: допустимость, уникальность, непрерывность шин
+  const reserved = reservedNets(m);
   const nets = new Map(), buses = new Map();
-  for (const [pin, list] of byPin) {
+  for (const [pin] of byPin) {
     const net = netOf(m, pin);
     if (!net) { out.push({ lvl: 'err', text: `Вывод ${pin}: нет имени цепи`, pin }); continue; }
     const mm = NET_RE.exec(net);
     const baseName = mm ? net.replace(/\[\d+\]$/, '') : net;
-    if (mm && (RESERVED_NETS.has(baseName) || RESERVED_RE.test(baseName))) {
-      out.push({ lvl: 'err', text: `Вывод ${pin}: имя «${baseName}» уже занято в top.sv - выберите другое`, pin }); continue;
-    }
-    if (!mm || SV_KEYWORDS.has(baseName)) {
-      out.push({ lvl: 'err', text: `Вывод ${pin}: имя «${net}» недопустимо для порта SystemVerilog`, pin }); continue;
-    }
+    if (mm && reserved.has(baseName)) { out.push({ lvl: 'err', text: `Вывод ${pin}: имя «${baseName}» уже занято в top.sv - выберите другое`, pin }); continue; }
+    if (!mm || SV_KEYWORDS.has(baseName)) { out.push({ lvl: 'err', text: `Вывод ${pin}: имя «${net}» недопустимо для порта SystemVerilog`, pin }); continue; }
     if (nets.has(net)) out.push({ lvl: 'err', text: `Имя «${net}» у выводов ${nets.get(net)} и ${pin}`, pin });
+    if (net !== net.toUpperCase()) out.push({ lvl: 'warn', text: `Имя цепи «${net}» пишут заглавными (${net.toUpperCase()}): это и define в Си - переименуйте`, pin });
     nets.set(net, pin);
     if (!buses.has(baseName)) buses.set(baseName, { idx: [], scalar: false });
     if (mm[2] !== undefined) buses.get(baseName).idx.push(Number(mm[2])); else buses.get(baseName).scalar = true;
@@ -299,17 +398,26 @@ function validate(m) {
   for (const [name, b] of buses) {
     if (b.scalar && b.idx.length) out.push({ lvl: 'err', text: `«${name}» используется и как шина, и как одиночный сигнал` });
     if (b.idx.length) {
-      const max = Math.max(...b.idx);
-      const miss = [];
+      const max = Math.max(...b.idx), miss = [];
       for (let i = 0; i <= max; i++) if (!b.idx.includes(i)) miss.push(i);
       if (miss.length) out.push({ lvl: 'err', text: `Шина «${name}[${max}:0]»: нет разрядов ${miss.join(', ')}` });
     }
+  }
+  //Имена выводов GPIO в Си (soc.h): <имя>_Pin, <имя>_Port
+  const cn = new Map();
+  for (const s of sigs) {
+    if (!s.inst || s.inst.type !== 'gpio' || s.pin == null) continue;
+    const net = netOf(m, s.pin);
+    if (!net || !NET_RE.test(net)) continue;
+    const c = cName(net);
+    if (cn.has(c) && cn.get(c) !== net) out.push({ lvl: 'err', text: `Цепи «${cn.get(c)}» и «${net}» дают в Си одно имя ${c}_PIN`, pin: s.pin });
+    cn.set(c, net);
   }
 
   if (m.clock.xtalPin != null && PIN[m.clock.xtalPin] && !clockCapable(m.clock.xtalPin))
     out.push({ lvl: 'warn', text: `Кварц на выводе ${m.clock.xtalPin} без GCLK/PLL_IN: такт пойдёт по обычной трассировке`, pin: m.clock.xtalPin });
   const pll = pllOf(m);
-  pll.errs.forEach(e => out.push({ lvl: 'err', text: 'rPLL: ' + e, block: 'sys' }));
+  pll.errs.forEach(e => out.push({ lvl: 'err', text: 'rPLL: ' + e, inst: 'clock' }));
 
   //Банки: одно напряжение VCCIO на банк (иначе Gowin EDA остановит размещение)
   const bankV = new Map();
@@ -327,46 +435,46 @@ function validate(m) {
 
   //Ядро и прерывания
   const c = m.core;
-  if (![1, 2, 4].includes(Number(c.divBpc))) out.push({ lvl: 'err', text: 'Ядро: бит частного за такт - 1, 2 или 4', block: 'core' });
+  if (![1, 2, 4].includes(Number(c.divBpc))) out.push({ lvl: 'err', text: 'Ядро: бит частного за такт - 1, 2 или 4', inst: 'core' });
   for (const k of ['imem', 'dmem'])
-    if (c[k].type === 'bsram' && !MEM_KB.includes(Number(c[k].kb))) out.push({ lvl: 'err', text: `Ядро: ${k.toUpperCase()} в BSRAM - 8, 16 или 32 кБайт`, block: 'core' });
+    if (c[k].type === 'bsram' && !MEM_KB.includes(Number(c[k].kb))) out.push({ lvl: 'err', text: `Ядро: ${k.toUpperCase()} в BSRAM - 8, 16 или 32 кБайт`, inst: 'core' });
   const nsrc = Number(c.plicSources);
-  if (!(nsrc >= 1 && nsrc <= 31)) out.push({ lvl: 'err', text: 'Ядро: источников PLIC 1..31', block: 'core' });
+  if (!(nsrc >= 1 && nsrc <= 31)) out.push({ lvl: 'err', text: 'Ядро: источников PLIC 1..31', inst: 'core' });
   const irqs = Object.values(irqMap(m));
   const usedPlic = irqs.filter(r => r.route === 'plic').map(r => r.n);
   if (usedPlic.length && Math.max(...usedPlic) > nsrc)
-    out.push({ lvl: 'err', text: `PLIC: устройствам нужно ${Math.max(...usedPlic)} источников, а в ядре ${nsrc} - увеличьте число источников PLIC`, block: 'core' });
+    out.push({ lvl: 'err', text: `PLIC: устройствам нужно ${Math.max(...usedPlic)} источников, а в ядре ${nsrc} - увеличьте число источников PLIC`, inst: 'core' });
   if (irqs.filter(r => r.route === 'local').length > 16) out.push({ lvl: 'err', text: 'Локальных линий прерываний всего 16' });
   const nbs = bsramBlocks(m);
-  if (nbs > BSRAM_TOTAL) out.push({ lvl: 'err', text: `BSRAM: нужно ${nbs} блоков, в ПЛИС ${BSRAM_TOTAL} - уменьшите IMEM/DMEM`, block: 'core' });
-  if (!c.mExt) out.push({ lvl: 'warn', text: 'Ядро без расширения M: в настройках проекта Eclipse замените -march=rv32im_zicsr на rv32i_zicsr', block: 'core' });
+  if (nbs > BSRAM_TOTAL) out.push({ lvl: 'err', text: `BSRAM: нужно ${nbs} блоков, в ПЛИС ${BSRAM_TOTAL} - уменьшите IMEM/DMEM`, inst: 'core' });
+  if (!c.mExt) out.push({ lvl: 'warn', text: 'Ядро без расширения M: в настройках проекта Eclipse замените -march=rv32im_zicsr на rv32i_zicsr', inst: 'core' });
 
-  //UART: делитель скорости
-  if (m.blocks.uart.enabled && !pll.errs.length) {
-    const u = uartDiv(m);
-    if (u.div < 7 || u.div > 0xFFFF)
-      out.push({ lvl: 'err', text: `UART: скорость ${m.blocks.uart.baud} при частоте ${sysclkHz(m)} Гц не получить (div ${u.div}, нужно 7..65535)`, block: 'uart' });
-    else if (u.err > 2) out.push({ lvl: 'err', text: `UART: ошибка скорости ${u.err.toFixed(2)} % (фактически ${Math.round(u.real)} бит/с) - больше 2 %`, block: 'uart' });
-    else if (u.err > 1) out.push({ lvl: 'warn', text: `UART: ошибка скорости ${u.err.toFixed(2)} % (фактически ${Math.round(u.real)} бит/с)`, block: 'uart' });
+  //Устройства
+  for (const inst of m.periph) {
+    if (inst.type === 'gpio') {
+      if (!inst.lines.length) out.push({ lvl: 'err', text: `${inst.name}: нет ни одной линии - добавьте линию (+)`, inst: inst.name });
+      if (inst.lines.length > 32) out.push({ lvl: 'err', text: `${inst.name}: не больше 32 линий`, inst: inst.name });
+    }
+    if (inst.type === 'uart' && !pll.errs.length) {
+      const u = uartDiv(m, inst);
+      if (u.div < 7 || u.div > 0xFFFF)
+        out.push({ lvl: 'err', text: `${inst.name}: скорость ${inst.baud} при частоте ${sysclkHz(m)} Гц не получить (div ${u.div}, нужно 7..65535)`, inst: inst.name });
+      else if (u.err > 2) out.push({ lvl: 'err', text: `${inst.name}: ошибка скорости ${u.err.toFixed(2)} % (фактически ${Math.round(u.real)} бит/с) - больше 2 %`, inst: inst.name });
+      else if (u.err > 1) out.push({ lvl: 'warn', text: `${inst.name}: ошибка скорости ${u.err.toFixed(2)} % (фактически ${Math.round(u.real)} бит/с)`, inst: inst.name });
+    }
   }
 
   if (m.build.toolchain === 'apicula' && m.core.debug)
     out.push({ lvl: 'warn', text: 'apicula: отладчик JTAG в этой сборке будет выключен (GW_JTAG для GW1N-9C не поддерживается)' });
   if (m.build.toolchain === 'apicula' && !pll.errs.length && pll.fout > 31.5)
     out.push({ lvl: 'warn', text: `apicula: ${fmt(pll.fout)} МГц - открытый маршрут держит около 31 МГц, Gowin EDA - 45 МГц` });
-  if (m.blocks.gpio.enabled && m.blocks.gpio.lines.length === 0) out.push({ lvl: 'err', text: 'GPIO: нет ни одной линии', block: 'gpio' });
   out.push(...addressMap(m).issues);
   return { issues: out, byPin };
 }
 
 // ============================================================================================
-// Изображение микросхемы
+// SVG
 // ============================================================================================
-const G = { pitch: 24, pad: 16, marg: 22, label: 132 };
-G.body = DEV.perSide * G.pitch + 2 * G.marg;
-G.o = G.label + G.pad + 8;
-G.size = G.body + 2 * G.o;
-
 const SVGNS = 'http://www.w3.org/2000/svg';
 function el(tag, attrs, parent, text) {
   const e = document.createElementNS(SVGNS, tag);
@@ -375,8 +483,53 @@ function el(tag, attrs, parent, text) {
   if (parent) parent.appendChild(e);
   return e;
 }
+const BANK_COLOR = b => `var(--bank${b})`;
 
-//Положение вывода n: сторона, центр, направление наружу
+//Схема: слева микросхема с выводами, справа структура (процессор, шины, периферия и её выводы)
+const G = { pitch: 22, pad: 16, marg: 22, label: 116 };
+G.body = DEV.perSide * G.pitch + 2 * G.marg;
+G.o = G.label + G.pad + 8;
+G.size = G.body + 2 * G.o;
+const SG = { sysX: 112, sysW: 214, busX: 380, clkX: 398, perX: 420, perW: 196, pinX: 654, top: 20, gap: 14, row: 20, w: 850 };
+const STRUCT_X = G.size + 20;     //Структура - правее микросхемы
+let hover = null;                 //Блок под указателем: подсветка его выводов на микросхеме
+
+function render() {
+  const v = validate(model);
+  const svg = document.getElementById('chip');
+  svg.textContent = '';
+  drawChip(el('g', { class: 'chip-part' }, svg), v);
+  const sh = drawStruct(el('g', { class: 'struct-part', transform: `translate(${STRUCT_X} 0)` }, svg), v);
+  svgW = STRUCT_X + SG.w;
+  svgH = Math.max(G.size, sh);
+  svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
+  applyZoom();
+  applyHighlight();
+  renderSettings(v);
+  renderIssues(v);
+  renderAddressMap();
+  renderLegend();
+  renderIoTable(v);
+  renderResources();
+  document.getElementById('placeOpt').value = model.build.placeOption ?? '';
+  document.getElementById('placeOpt').disabled = model.build.toolchain !== 'gowin';
+}
+
+//Подсветка выводов блока под указателем (или выбранного): остальные выводы приглушаются
+function applyHighlight() {
+  const svg = document.getElementById('chip');
+  const name = hover || (sel ? (sel.kind === 'inst' ? sel.name : sel.kind === 'clock' ? 'sys' : null) : null);
+  svg.classList.toggle('hl', !!name);
+  svg.querySelectorAll('.pin').forEach(g => g.classList.toggle('on', !!name && g.classList.contains('b-' + name)));
+  svg.querySelectorAll('.blk[data-hl]').forEach(g => g.classList.toggle('hover', g.dataset.hl === hover));
+}
+function hoverOn(g, name) {
+  g.dataset.hl = name;
+  g.addEventListener('mouseenter', () => { hover = name; applyHighlight(); });
+  g.addEventListener('mouseleave', () => { hover = null; applyHighlight(); });
+}
+
+// --- Микросхема: номера выводов внутри корпуса, имена цепей снаружи ---
 function pinGeom(n) {
   const N = DEV.perSide, o = G.o, B = G.body;
   const side = Math.floor((n - 1) / N), k = (n - 1) % N;
@@ -389,31 +542,18 @@ function pinGeom(n) {
   }
 }
 
-function render() {
-  const svg = document.getElementById('chip');
-  svg.textContent = '';
-  svg.setAttribute('viewBox', `0 0 ${G.size} ${G.size}`);
-  applyZoom();
-
-  const v = validate(model);
-  const sigs = signals(model);
+function drawChip(svg, v) {
   const sigByPin = new Map();
-  sigs.forEach(s => { if (s.pin != null) { if (!sigByPin.has(s.pin)) sigByPin.set(s.pin, []); sigByPin.get(s.pin).push(s); } });
+  signals(model).forEach(s => { if (s.pin != null) { if (!sigByPin.has(s.pin)) sigByPin.set(s.pin, []); sigByPin.get(s.pin).push(s); } });
   const conflictPins = new Set(v.issues.filter(i => i.conflict).map(i => i.pin));
-
-  el('rect', { class: 'body-rect', x: G.o, y: G.o, width: G.body, height: G.body, rx: 10 }, svg);
+  const body = el('rect', { class: 'body-rect', x: G.o, y: G.o, width: G.body, height: G.body, rx: 10 }, svg);
+  el('title', {}, body, 'Двойной щелчок - показать все выводы');
+  body.addEventListener('dblclick', () => { hover = null; if (sel) select(null); else applyHighlight(); });
   el('circle', { class: 'pin1', cx: G.o + 14, cy: G.o + 14, r: 5 }, svg);
-  el('text', { class: 'chip-title', x: G.o + G.body / 2, y: G.o + 52 }, svg, 'GW1NR-LV9QN88P');
-  el('text', { class: 'chip-sub', x: G.o + G.body / 2, y: G.o + 68 }, svg, 'askoRV32 · вид сверху');
-
+  el('text', { class: 'chip-title', x: G.o + G.body / 2, y: G.o + G.body / 2 - 6 }, svg, 'GW1NR-LV9QN88P');
+  el('text', { class: 'chip-sub', x: G.o + G.body / 2, y: G.o + G.body / 2 + 14 }, svg, `вид сверху · ${DEV.pins.length} выводов`);
   for (const p of DEV.pins) drawPin(svg, p, sigByPin.get(p.n) || [], conflictPins.has(p.n));
-  drawTiles(svg);
-  renderSide(v);
-  renderLegend();
-  renderIoTable(v);
 }
-
-const BANK_COLOR = b => `var(--bank${b})`;
 
 function drawPin(svg, p, sigs, conflict) {
   const g = pinGeom(p.n);
@@ -422,13 +562,14 @@ function drawPin(svg, p, sigs, conflict) {
   const cls = ['pin'];
   if (p.type !== 'io') cls.push('power');
   else if (jtag && !sigs.length) cls.push('jtag');
-  if (sigs.length) cls.push('used', 'b-' + sigs[0].block);
+  sigs.forEach(s => cls.push('b-' + (s.inst ? s.inst.name : 'sys')));
+  if (sigs.length) cls.push('used');
   if (net) cls.push('labeled');
   if (conflict) cls.push('conflict');
   const gp = el('g', { class: cls.join(' '), 'data-pin': p.n }, svg);
 
-  //Ячейка вывода снаружи корпуса (цвет - банк), кружок в ней (цвет - блок, если вывод занят)
-  const C = 18, out = G.pad + 4;
+  //Ячейка вывода снаружи корпуса (цвет - банк), кружок в ней (цвет - группа блока, если вывод занят)
+  const C = 16, out = G.pad + 2;
   let cx, cy, numA, labA;
   if (g.side === 'L') { cx = g.x - out / 2; cy = g.y; numA = { x: g.x + 5, y: g.y, a: 'start' }; labA = { x: g.x - out - 6, y: g.y, a: 'end' }; }
   if (g.side === 'R') { cx = g.x + out / 2; cy = g.y; numA = { x: g.x - 5, y: g.y, a: 'end' }; labA = { x: g.x + out + 6, y: g.y, a: 'start' }; }
@@ -438,8 +579,8 @@ function drawPin(svg, p, sigs, conflict) {
   const cellFill = p.type === 'gnd' ? 'var(--gnd)' : p.type === 'pwr' ? 'var(--pwr)' : BANK_COLOR(p.bank);
   el('rect', { class: 'cell', x: cx - C / 2, y: cy - C / 2, width: C, height: C, rx: 2, fill: cellFill }, gp);
   if (p.type === 'io') {
-    const mk = el('circle', { class: 'mark', cx, cy, r: 5.5 }, gp);
-    if (sigs.length && !conflict) mk.style.fill = blockColor(sigs[0].block);
+    const mk = el('circle', { class: 'mark', cx, cy, r: 5 }, gp);
+    if (sigs.length && !conflict) mk.style.fill = sigColor(sigs[0]);
     if (jtag && !sigs.length) mk.style.fill = 'var(--c-jtag)';
   } else {
     el('text', { class: 'sym', x: cx, y: cy, 'dominant-baseline': 'central' }, gp, p.type === 'gnd' ? '⏚' : 'V');
@@ -450,7 +591,6 @@ function drawPin(svg, p, sigs, conflict) {
     return t;
   };
   txt(numA, 'num', String(p.n));
-
   let label = net, free = false;
   if (!label) {
     if (p.type !== 'io') label = p.name;
@@ -460,41 +600,319 @@ function drawPin(svg, p, sigs, conflict) {
   const lab = txt(labA, 'label' + (free ? ' free' : ''), label);
 
   //Невидимая область щелчка: ячейка + номер внутри корпуса
-  const span = out + 24;
+  const span = out + 22;
   const hit = g.side === 'L' ? { x: g.x - out, y: g.y - G.pitch / 2, width: span, height: G.pitch }
             : g.side === 'R' ? { x: g.x + out - span, y: g.y - G.pitch / 2, width: span, height: G.pitch }
             : g.side === 'B' ? { x: g.x - G.pitch / 2, y: g.y + out - span, width: G.pitch, height: span }
             :                  { x: g.x - G.pitch / 2, y: g.y - out, width: G.pitch, height: span };
   const hitEl = el('rect', Object.assign({ class: 'hit' }, hit), gp);
-
   const info = [`Вывод ${p.n} · ${p.name}`];
   if (p.bank != null) info.push(`банк ${p.bank}`);
   if (p.cfg) info.push(p.cfg);
   if (p.lvds) info.push('True LVDS');
-  const tip = info.join(' · ') + (sigs.length ? '\n' + sigs.map(s => s.name).join(', ') : '') + (net ? `\nцепь: ${net}` : '');
-  el('title', {}, gp, tip);
-
+  el('title', {}, gp, info.join(' · ') + (sigs.length ? '\n' + sigs.map(s => s.name).join(', ') : '') + (net ? `\nцепь: ${net}` : ''));
   if (p.type === 'io') {
     hitEl.addEventListener('dblclick', () => pinDialog(p.n));
+    hitEl.addEventListener('click', () => {
+      if (dragJustEnded) return;
+      const s = sigs[0]; if (s && s.inst) select({ kind: 'inst', name: s.inst.name });
+    });
+    if (sigs.length || net) hitEl.addEventListener('pointerdown', e => startPinDrag(e, p.n));
     lab.addEventListener('dblclick', ev => { ev.stopPropagation(); inlineNetEdit(p.n, lab); });
   }
 }
+//Перетаскивание вывода: сигналы, имя цепи и стандарт I/O переходят на другой вывод (с занятым - обмен)
+let drag = null, dragJustEnded = false;
+function svgPoint(e) {
+  const svg = document.getElementById('chip'), pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+function pinUnder(e) {
+  const t = document.elementFromPoint(e.clientX, e.clientY);
+  const g = t && t.closest && t.closest('#chip .pin');
+  return g ? Number(g.dataset.pin) : null;
+}
+const canDrop = n => PIN[n] && PIN[n].type === 'io' && !(model.core.debug && JTAG_PINS[n]);
+function startPinDrag(e, from) {
+  if (e.button !== 0) return;
+  drag = { from, x: e.clientX, y: e.clientY, on: false, line: null, label: null, over: null };
+  document.addEventListener('pointermove', dragMove);
+  document.addEventListener('pointerup', dragEnd, { once: true });
+}
+function dragMove(e) {
+  if (!drag) return;
+  if (!drag.on) {
+    if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return;
+    drag.on = true;
+    document.body.classList.add('dragging');
+    const svg = document.getElementById('chip'), g = pinGeom(drag.from);
+    drag.line = el('line', { class: 'drag-line', x1: g.x, y1: g.y, x2: g.x, y2: g.y }, svg);
+    drag.label = el('text', { class: 'drag-label' }, svg, netOf(model, drag.from) || ('вывод ' + drag.from));
+  }
+  const pt = svgPoint(e);
+  drag.line.setAttribute('x2', pt.x); drag.line.setAttribute('y2', pt.y);
+  drag.label.setAttribute('x', pt.x + 10); drag.label.setAttribute('y', pt.y - 8);
+  const n = pinUnder(e);
+  if (n !== drag.over) {
+    document.querySelectorAll('#chip .pin.drop, #chip .pin.drop-bad').forEach(x => x.classList.remove('drop', 'drop-bad'));
+    drag.over = n;
+    const g = n != null && n !== drag.from && document.querySelector(`#chip .pin[data-pin="${n}"]`);
+    if (g) g.classList.add(canDrop(n) ? 'drop' : 'drop-bad');
+  }
+}
+function dragEnd(e) {
+  document.removeEventListener('pointermove', dragMove);
+  const d = drag; drag = null;
+  if (!d || !d.on) return;
+  document.body.classList.remove('dragging');
+  d.line.remove(); d.label.remove();
+  dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 0);
+  const to = pinUnder(e);
+  if (to == null || to === d.from) { render(); return; }
+  if (!canDrop(to)) { setStatus(`Вывод ${to} занят ${PIN[to] && PIN[to].type === 'io' ? 'JTAG' : 'питанием'} - перенос невозможен`, 'err'); render(); return; }
+  swapPins(d.from, to);
+}
+function swapPins(a, b) {
+  const all = signals(model), sa = all.filter(s => s.pin === a), sb = all.filter(s => s.pin === b);
+  sa.forEach(s => setSignalPin(model, s, b));
+  sb.forEach(s => setSignalPin(model, s, a));
+  const pa = model.pins[a], pb = model.pins[b];
+  delete model.pins[a]; delete model.pins[b];
+  if (pa) model.pins[b] = pa;
+  if (pb) model.pins[a] = pb;
+  const what = (pa && pa.net) || sa.map(s => s.name).join(', ') || ('вывод ' + a);
+  setStatus(sb.length || pb ? `Выводы ${a} и ${b} обменялись` : `${what}: вывод ${a} → ${b}`, 'ok');
+  changed();
+}
 
+const memTxt = mm => mm ? (mm.type === 'bsram' ? `${mm.kb} КБ` : `${mm.synthWords * 4} Б`) : '?';
+
+// --- Структура: процессор, шины bus_per и clk_per, периферия с внешними выводами ---
+function drawStruct(svg, v) {
+  const m = model, pll = pllOf(m), irqs = irqMap(m), core = m.core;
+  const badPins = new Set(v.issues.filter(i => i.lvl === 'err' && i.pin != null).map(i => i.pin));
+  const errInst = new Set(v.issues.filter(i => i.lvl === 'err' && i.inst).map(i => i.inst));
+  const gBus = el('g', { class: 'buses' }, svg);       //Шины рисуются под блоками
+  const fper = pll.errs.length ? '—' : fmt(sysclkHz(m) / 1e6) + ' МГц';
+
+  // --- Такт и сброс ---
+  const ck = { x: SG.sysX, y: SG.top, w: SG.sysW, h: 66 };
+  const ckG = blockBox(svg, ck, 'PLL', 'var(--c-sys)', isSel({ kind: 'clock' }), errInst.has('clock'), () => select({ kind: 'clock' }), 'sys');
+  el('text', { class: 'blk-ru', x: ck.x + 10, y: ck.y + 40 }, ckG, 'Такт и сброс');
+  el('text', { class: 'blk-text', x: ck.x + 10, y: ck.y + 56 }, ckG, `rPLL ${pll.errs.length ? 'ошибка' : fmt(pll.fout) + ' МГц'} · кварц ${fmt(Number(m.clock.xtalMHz))} МГц`);
+  leftPin(svg, ck.x, ck.y + 36, findSig('clk'), badPins);
+  leftPin(svg, ck.x, ck.y + 54, findSig('rst'), badPins);
+
+  // --- Процессор ---
+  const sub = [
+    ['CORE', `ядро RV32I${core.mExt ? 'M' : ''}, ${core.coreType === 'pipeline' ? 'конвейер' : 'однотактное'}`],
+    ['IMEM', `память команд ${memTxt(core.imem)}`],
+    ['DMEM', `память данных ${memTxt(core.dmem)}`],
+    ['CLINT', 'машинный таймер'],
+    ['PLIC', `прерывания, ${core.plicSources} ист.`],
+    ['DEBUG', core.debug ? 'отладчик JTAG' : 'отладчик выключен'],
+    ['BUS', 'шина bus_per'],
+  ];
+  const cpu = { x: SG.sysX, y: ck.y + ck.h + 34, w: SG.sysW, h: 30 + sub.length * 24 + 6 };
+  const cpuG = blockBox(svg, cpu, 'CPU', 'var(--c-sys)', isSel({ kind: 'core' }), errInst.has('core'), () => select({ kind: 'core' }), null);
+  sub.forEach(([t, d], i) => {
+    const y = cpu.y + 30 + i * 24;
+    el('rect', { class: 'sub', x: cpu.x + 8, y, width: cpu.w - 16, height: 20, rx: 4 }, cpuG);
+    el('text', { class: 'sub-t', x: cpu.x + 15, y: y + 14 }, cpuG, t);
+    el('text', { class: 'sub-d', x: cpu.x + cpu.w - 14, y: y + 14, 'text-anchor': 'end' }, cpuG, d);
+  });
+  if (core.debug) {
+    const yd = cpu.y + 30 + 5 * 24 + 10;
+    Object.entries(JTAG_PINS).forEach(([n, t], i) =>
+      leftPin(svg, cpu.x, yd - 24 + i * 16, { id: 'jtag', pin: Number(n), def: t, fixed: true }, new Set()));
+  }
+  el('path', { class: 'clk-line', d: `M${ck.x + ck.w / 2} ${ck.y + ck.h} V${cpu.y}` }, gBus);
+  el('text', { class: 'bus-label clk', x: ck.x + ck.w / 2 + 6, y: ck.y + ck.h + 20 }, gBus, 'clk_core');
+
+  // --- Периферия ---
+  let y = SG.top;
+  const per = m.periph.map(inst => {
+    const rows = instRows(inst);
+    const box = { x: SG.perX, y, w: SG.perW, h: 24 + 20 + Math.max(1, rows.length) * SG.row + 4 };
+    y += box.h + SG.gap;
+    return { inst, rows, box };
+  });
+  const addBox = { x: SG.perX, y, w: SG.perW, h: 34 };
+
+  //Шина данных bus_per: из процессора к стволу и ветви к каждому устройству
+  const busY = cpu.y + 30 + 6 * 24 + 10;
+  const brY = b => b.y + 34;
+  el('path', { class: 'bus-line', d: `M${cpu.x + cpu.w} ${busY} H${SG.busX}` }, gBus);
+  if (per.length) {
+    const ys = per.map(p => brY(p.box));
+    el('path', { class: 'bus-line', d: `M${SG.busX} ${Math.min(busY, ...ys)} V${Math.max(busY, ...ys)}` }, gBus);
+    per.forEach(p => el('path', { class: 'bus-line', d: `M${SG.busX} ${brY(p.box)} H${p.box.x}` }, gBus));
+  }
+  el('text', { class: 'bus-label', x: cpu.x + cpu.w + 4, y: busY - 6 }, gBus, 'bus_per');
+
+  //Шина тактирования clk_per
+  const clkY = ck.y + 22;
+  const clkBot = per.length ? Math.max(...per.map(p => p.box.y + 12)) : clkY;
+  el('path', { class: 'clk-line', d: `M${ck.x + ck.w} ${clkY} H${SG.clkX} V${clkBot}` }, gBus);
+  per.forEach(p => el('path', { class: 'clk-line', d: `M${SG.clkX} ${p.box.y + 12} H${p.box.x}` }, gBus));
+  const cl = el('text', { class: 'bus-label clk', x: ck.x + ck.w + 4, y: clkY - 5 }, gBus, 'clk_per');
+  el('title', {}, cl, `Такт шины периферии clk_per: ${fper}`);
+
+  per.forEach(p => drawPeriph(svg, p, irqs, badPins, errInst.has(p.inst.name)));
+
+  const add = el('g', { class: 'add-block' }, svg);
+  el('rect', { x: addBox.x, y: addBox.y, width: addBox.w, height: addBox.h, rx: 8 }, add);
+  el('text', { x: addBox.x + addBox.w / 2, y: addBox.y + 22, 'text-anchor': 'middle' }, add, per.length ? '+ Добавить блок' : '+ Добавить первый блок');
+  add.addEventListener('click', () => openLibrary());
+  return Math.max(cpu.y + cpu.h, addBox.y + addBox.h) + SG.top;
+}
+
+//Блок схемы: рамка, шапка цвета группы с коротким латинским именем
+function blockBox(svg, b, title, color, selected, bad, onClick, hlName) {
+  const g = el('g', { class: 'blk' + (selected ? ' selected' : '') + (bad ? ' bad' : '') }, svg);
+  el('rect', { class: 'blk-body', x: b.x, y: b.y, width: b.w, height: b.h, rx: 7, style: `stroke:${color}` }, g);
+  el('path', { class: 'blk-head', d: `M${b.x} ${b.y + 22} V${b.y + 7} Q${b.x} ${b.y} ${b.x + 7} ${b.y} H${b.x + b.w - 7} Q${b.x + b.w} ${b.y} ${b.x + b.w} ${b.y + 7} V${b.y + 22} Z`, style: `fill:${color}` }, g);
+  el('text', { class: 'blk-title', x: b.x + 9, y: b.y + 16 }, g, title);
+  if (onClick) g.addEventListener('click', onClick);
+  if (hlName) hoverOn(g, hlName);
+  return g;
+}
+
+//Вывод слева от системного блока: номер в ячейке цвета банка (щелчок - выбор вывода) и имя цепи (щелчок - имя)
+function leftPin(svg, x, y, sig, bad) {
+  const pin = sig.pin;
+  const g = el('g', { class: 'xpin' + (pin == null || bad.has(pin) ? ' missing' : '') + (sig.fixed ? ' small' : '') }, svg);
+  el('path', { class: 'stub', d: `M${x - 22} ${y} H${x}` }, g);
+  const p = PIN[pin];
+  const cell = el('rect', { class: 'pcell', x: x - 54, y: y - 7.5, width: 32, height: 15, rx: 3, fill: p ? BANK_COLOR(p.bank) : 'var(--surface)' }, g);
+  el('text', { class: 'pnum', x: x - 38, y: y + 4, 'text-anchor': 'middle' }, g, pin == null ? '+' : String(pin));
+  const name = el('text', { class: 'pnet', x: x - 60, y: y + 4, 'text-anchor': 'end' }, g, (pin != null && netOf(model, pin)) || sig.def);
+  if (p) el('title', {}, g, `Вывод ${pin} · ${p.name} · банк ${p.bank}`);
+  if (sig.fixed) return;
+  cell.classList.add('click');
+  cell.addEventListener('click', () => pickPinInline(cell, sig));
+  if (pin != null) { name.classList.add('click'); name.addEventListener('click', () => inlineNetEdit(pin, name)); }
+}
+
+//Строки выводов устройства на схеме: назначенные и «+» для добавления
+function instRows(inst) {
+  const rows = instSignals(inst).map(g => ({ kind: 'sig', key: g.key, label: g.label, pin: instPin(inst, g.key) }));
+  if (inst.type === 'gpio' && inst.lines.length < 32) rows.push({ kind: 'add', key: 'newline', label: 'добавить линию' });
+  if (inst.type === 'stim' && inst.out == null) rows.push({ kind: 'add', key: 'out', label: 'вывести ШИМ' });
+  return rows;
+}
+
+function drawPeriph(svg, p, irqs, badPins, bad) {
+  const { inst, rows, box } = p;
+  const g = blockBox(svg, box, inst.name, instColor(inst), isSel({ kind: 'inst', name: inst.name }), bad,
+                     () => select({ kind: 'inst', name: inst.name }), inst.name);
+  el('text', { class: 'blk-ru', x: box.x + 9, y: box.y + 38 }, g, TYPES[inst.type].ru);
+  if (irqs[inst.name]) el('text', { class: 'blk-irq', x: box.x + box.w - 9, y: box.y + 38, 'text-anchor': 'end' }, g, 'IRQ ' + irqText(irqs[inst.name]));
+  const y0 = box.y + 44;
+  rows.forEach((r, i) => {
+    const y = y0 + i * SG.row + 10;
+    const rg = el('g', { class: 'prow' + (r.kind === 'add' ? ' add' : '') }, svg);
+    if (r.kind === 'sig') {
+      el('text', { class: 'sig-l', x: box.x + box.w - 9, y: y + 4, 'text-anchor': 'end' }, g, r.label);
+      rg.classList.toggle('missing', r.pin == null || badPins.has(r.pin));
+      el('path', { class: 'stub', d: `M${box.x + box.w} ${y} H${SG.pinX - 16}` }, rg);
+      const pp = PIN[r.pin];
+      const cell = el('rect', { class: 'pcell click', x: SG.pinX - 16, y: y - 7.5, width: 32, height: 15, rx: 3, fill: pp ? BANK_COLOR(pp.bank) : 'var(--surface)' }, rg);
+      el('text', { class: 'pnum', x: SG.pinX, y: y + 4, 'text-anchor': 'middle' }, rg, r.pin == null ? '+' : String(r.pin));
+      const net = r.pin != null ? netOf(model, r.pin) : '';
+      const sig = findSig(`${inst.name}.${r.key}`);
+      cell.addEventListener('click', () => pickPinInline(cell, sig));
+      const nt = el('text', { class: 'pnet' + (r.pin != null ? ' click' : ''), x: SG.pinX + 22, y: y + 4 }, rg, r.pin == null ? 'выбрать вывод' : (net || '—'));
+      if (r.pin != null) nt.addEventListener('click', () => inlineNetEdit(r.pin, nt));
+      if (net && inst.type === 'gpio' && NET_RE.test(net))
+        el('text', { class: 'pcname', x: SG.pinX + 30 + net.length * 7.2, y: y + 4 }, rg, `${cName(net)}_PIN`);
+      if (pp) el('title', {}, rg, `Вывод ${r.pin} · ${pp.name} · банк ${pp.bank}${net ? '\nцепь: ' + net : ''}\nщелчок по номеру - другой вывод, по имени - переименовать`);
+    } else {
+      el('path', { class: 'stub dashed', d: `M${box.x + box.w} ${y} H${SG.pinX - 9}` }, rg);
+      el('circle', { class: 'plus-c', cx: SG.pinX, cy: y, r: 8 }, rg);
+      el('text', { class: 'plus-t', x: SG.pinX, y: y + 4, 'text-anchor': 'middle' }, rg, '+');
+      el('text', { class: 'pnet add', x: SG.pinX + 22, y: y + 4 }, rg, r.label);
+      rg.addEventListener('click', () => {
+        if (r.key === 'newline') pinPicker({ id: `${inst.name}.newline`, inst, key: 'newline', name: `${inst.name} IO${inst.lines.length}`, dir: 'inout', def: defNet(inst, 'line' + inst.lines.length) });
+        else pinPicker({ id: `${inst.name}.${r.key}`, inst, key: r.key, name: `${inst.name} ${r.key.toUpperCase()}`, dir: 'output', def: defNet(inst, r.key) });
+      });
+    }
+  });
+}
+
+//Выбор вывода прямо на схеме: список поверх ячейки
+function pickPinInline(anchor, sig) {
+  const rc = anchor.getBoundingClientRect();
+  const s = document.createElement('select');
+  s.className = 'inline-edit';
+  s.innerHTML = pinOptions(sig.pin ?? null, sig.id, true);
+  s.style.left = Math.max(4, rc.left - 2) + 'px';
+  s.style.top = (rc.top - 3) + 'px';
+  document.body.appendChild(s);
+  s.focus();
+  try { s.showPicker(); } catch (e) { /* открыть список нельзя - он уже в фокусе */ }
+  let done = false;
+  const finish = ok => {
+    if (done) return; done = true;
+    const val = s.value;
+    s.remove();
+    if (!ok || val === String(sig.pin ?? '')) return;
+    movePin(sig, val);
+    changed();
+  };
+  s.addEventListener('change', () => finish(true));
+  s.addEventListener('blur', () => finish(false));
+  s.addEventListener('keydown', e => { if (e.key === 'Escape') finish(false); if (e.key === 'Enter') finish(true); });
+}
+
+// --- Легенда, проверка, карта адресов, таблица выводов ---
 function renderLegend() {
+  const items = [];
   const banks = [...new Set(DEV.pins.filter(p => p.bank != null).map(p => p.bank))].sort();
-  const items = banks.map(b => `<span><i style="background:${BANK_COLOR(b)}"></i>банк ${b}</span>`);
+  banks.forEach(b => items.push(`<span><i style="background:${BANK_COLOR(b)}"></i>банк ${b}</span>`));
   items.push(`<span><i style="background:var(--pwr)"></i>питание</span>`, `<span><i style="background:var(--gnd)"></i>земля</span>`);
-  const used = [['sys', 'такт/сброс'], ['gpio', 'GPIO'], ['tm1638', 'TM1638'], ['stim', 'STIM'], ['uart', 'UART']];
-  used.forEach(([k, t]) => items.push(`<span><i class="round" style="background:${blockColor(k)}"></i>${t}</span>`));
-  if (model.core.debug) items.push(`<span><i class="round" style="background:var(--c-jtag)"></i>JTAG</span>`);
+  items.push(`<span><i class="round" style="background:var(--c-sys)"></i>системное</span>`);
+  Object.values(CATS).forEach(c => items.push(`<span><i class="round" style="background:${c.color}"></i>${c.title}</span>`));
+  items.push(`<span><i class="line"></i>шина bus_per</span>`, `<span><i class="line clk"></i>тактирование</span>`);
   document.getElementById('legend').innerHTML = items.join('');
 }
 
-//Нижняя таблица - как «I/O Constraints» во FloorPlanner: одна строка на назначенный вывод
+function renderIssues(v) {
+  const ul = document.getElementById('issues');
+  const iss = v.issues;
+  const nErr = iss.filter(i => i.lvl === 'err').length, nWarn = iss.length - nErr;
+  const badge = document.getElementById('issueCount');
+  badge.textContent = iss.length ? String(iss.length) : '✓';
+  badge.className = 'badge' + (nErr ? ' err' : nWarn ? ' warn' : '');
+  ul.innerHTML = iss.length ? '' : '<li class="ok">Ошибок нет, можно собирать</li>';
+  iss.forEach(i => {
+    const li = document.createElement('li');
+    li.className = i.lvl;
+    li.textContent = i.text;
+    if (i.pin != null) { li.dataset.pin = i.pin; li.addEventListener('click', () => flashPin(i.pin)); }
+    else if (i.inst) {
+      li.dataset.pin = '';
+      li.addEventListener('click', () => select(i.inst === 'clock' ? { kind: 'clock' } : i.inst === 'core' ? { kind: 'core' } : { kind: 'inst', name: i.inst }));
+    }
+    ul.appendChild(li);
+  });
+}
+
+function renderAddressMap() {
+  const am = addressMap(model);
+  const t = document.getElementById('amap');
+  t.innerHTML = am.rows.map(r => `<tr${r.inst ? ` data-inst="${esc(r.name)}" class="click${isSel({ kind: 'inst', name: r.name }) ? ' sel' : ''}"` : ''}>
+      <td class="addr">${r.slot == null ? '—' : hexSlot(r.slot)}</td>
+      <td><span class="sw" style="background:${r.color}"></span>${esc(r.name)}${r.fixed ? '' : (r.auto ? ' <span class="muted">авто</span>' : '')}</td>
+      <td class="muted">${esc(r.note)}</td></tr>`).join('');
+}
+
+//Нижняя таблица - как «I/O Constraints» во FloorPlanner
 function renderIoTable(v) {
   const sigs = signals(model).filter(s => s.pin != null).sort((a, b) => a.pin - b.pin);
   const d = model.ioDefaults;
-  const sel = (pin, key, list, cur, def) => `<select data-pin="${pin}" data-key="${key}">` +
+  const sel_ = (pin, key, list, cur, def) => `<select data-pin="${pin}" data-key="${key}">` +
     `<option value="">${def}*</option>` + list.map(x => `<option${x === cur ? ' selected' : ''}>${x}</option>`).join('') + '</select>';
   const bad = new Set(v.issues.filter(i => i.lvl === 'err' && i.pin != null).map(i => i.pin));
   const dirRu = { input: 'вход', output: 'выход', inout: 'вход/выход' };
@@ -502,13 +920,13 @@ function renderIoTable(v) {
     const p = PIN[s.pin] || {}, a = model.pins[s.pin] || {};
     return `<tr data-pin="${s.pin}" class="${bad.has(s.pin) ? 'bad' : ''}">
       <td class="mono">${esc(netOf(model, s.pin) || '—')}</td>
-      <td><span class="dot" style="background:${blockColor(s.block)}"></span>${esc(s.name)}</td>
+      <td><span class="dot" style="background:${sigColor(s)}"></span>${esc(s.name)}</td>
       <td>${dirRu[s.dir]}</td>
       <td class="mono">${s.pin}</td><td class="mono">${esc(p.name || '?')}</td><td>${p.bank ?? ''}</td>
-      <td>${sel(s.pin, 'ioType', IO_TYPES, a.ioType, bankDefault(model, s.pin, 'ioType'))}</td>
-      <td>${s.dir === 'input' ? '<span class="muted">—</span>' : sel(s.pin, 'drive', DRIVES, a.drive, d.drive)}</td>
-      <td>${sel(s.pin, 'pull', PULLS, a.pull, d.pull)}</td>
-      <td>${sel(s.pin, 'vccio', VCCIOS, a.vccio, bankDefault(model, s.pin, 'vccio'))}</td></tr>`;
+      <td>${sel_(s.pin, 'ioType', IO_TYPES, a.ioType, bankDefault(model, s.pin, 'ioType'))}</td>
+      <td>${s.dir === 'input' ? '<span class="muted">—</span>' : sel_(s.pin, 'drive', DRIVES, a.drive, d.drive)}</td>
+      <td>${sel_(s.pin, 'pull', PULLS, a.pull, d.pull)}</td>
+      <td>${sel_(s.pin, 'vccio', VCCIOS, a.vccio, bankDefault(model, s.pin, 'vccio'))}</td></tr>`;
   }).join('');
   document.getElementById('iotab').innerHTML = `<tr><th>Порт (цепь)</th><th>Сигнал</th><th>Направление</th><th>Вывод</th>
     <th>Площадка</th><th>Банк</th><th>IO_TYPE</th><th>DRIVE</th><th>PULL_MODE</th><th>BANK_VCCIO</th></tr>` + rows;
@@ -525,130 +943,6 @@ function renderIoTable(v) {
   });
 }
 
-const blockColor = b => ({ sys: 'var(--c-sys)', gpio: 'var(--c-gpio)', tm1638: 'var(--c-tm1638)', stim: 'var(--c-stim)', uart: 'var(--c-uart)' }[b]);
-
-// --- Блоки внутри кристалла ---
-function tileDefs() {
-  const m = model, b = m.blocks, am = addressMap(m), pll = pllOf(m);
-  const baseTxt = k => { const s = am.baseOf(k); return s == null ? '<span class="bad">—</span>' : `<span class="v">${hexSlot(s)}</span>`; };
-  const pinsOf = arr => arr.filter(x => x != null);
-  const core = m.core;
-  const irqs = irqMap(m);
-  return [
-    { key: 'clock', title: 'Такт и сброс', color: 'var(--c-sys)', editable: true, on: true,
-      body: `Кварц <span class="v">${fmt(Number(m.clock.xtalMHz))} МГц</span> · вывод <span class="v">${m.clock.xtalPin ?? '—'}</span><br>
-             rPLL <span class="v">${pll.errs.length ? '<span class="bad">ошибка</span>' : fmt(pll.fout) + ' МГц'}</span>
-             <span class="dim">(${m.clock.pll.mode === 'auto' ? 'авто' : 'вручную'})</span><br>
-             <span class="dim">IDIV ${m.clock.pll.idiv} · FBDIV ${m.clock.pll.fbdiv} · ODIV ${m.clock.pll.odiv}</span><br>
-             Сброс rst_n · вывод <span class="v">${m.reset.pin ?? '—'}</span>` },
-    { key: 'core', title: 'Ядро askoRV32', color: 'var(--c-core)', editable: true, on: true,
-      body: `RV32I${core.mExt ? 'M' : ''}_Zicsr · ${core.coreType === 'pipeline' ? 'конвейер' : 'однотактное'}<br>
-             IMEM <span class="v">${memTxt(core.imem)}</span> · DMEM <span class="v">${memTxt(core.dmem)}</span><br>
-             <span class="dim">шина периферии ${pll.errs.length ? '—' : fmt(sysclkHz(m) / 1e6) + ' МГц'}</span>` },
-    { key: 'debug', title: 'Отладчик JTAG', color: 'var(--c-jtag)', editable: false, on: !!core.debug,
-      body: core.debug ? `GW_JTAG · выводы <span class="v">5–8</span><br><span class="dim">OpenOCD, riscv-debug 0.13</span>` : 'выключен' },
-    { key: 'gpio', toggle: true },
-    { key: 'tm1638', toggle: true },
-    { key: 'stim', toggle: true },
-    { key: 'uart', toggle: true },
-    { key: 'clint', title: 'CLINT', color: 'var(--c-core)', editable: false, on: true,
-      body: `<span class="v">0x0200_0000</span><br><span class="dim">mtime = mcycle, msip · в cpu.sv</span>` },
-    { key: 'plic', title: 'PLIC', color: 'var(--c-core)', editable: false, on: true,
-      body: `<span class="v">0x0C00_0000</span> · векторный режим<br>` +
-            (Object.entries(irqs).filter(([, r]) => r.route === 'plic').map(([k, r]) => `${r.n}: ${BLOCKS[k].title}`).join(', ') || '<span class="dim">источников нет</span>') +
-            `<br><span class="dim">${core.plicSources ?? 8} источников → MEI · в cpu.sv</span>` },
-    { key: 'mem', title: 'Шина периферии', color: 'var(--c-core)', editable: false, on: true,
-      body: `Порт <span class="v">per_*</span> процессора<br><span class="dim">адреса вне IMEM, DMEM, CLINT, PLIC; окно 16 МБайт на устройство</span>` },
-  ].map(t => {
-    if (!t.toggle) return t;
-    const k = t.key, blk = b[k], meta = BLOCKS[k];
-    let body;
-    if (k === 'gpio') body = `Линий <span class="v">${blk.lines.length}</span> · выводы ${pinList(pinsOf(blk.lines))}`;
-    if (k === 'tm1638') body = `DIO <span class="v">${blk.dio ?? '—'}</span> · CLK <span class="v">${blk.clk ?? '—'}</span> · STB <span class="v">${blk.stb ?? '—'}</span>`;
-    if (k === 'stim') body = `${blk.width} бит · выход ${blk.out == null ? '<span class="dim">не выведен</span>' : `<span class="v">${blk.out}</span>`}<br>Прерывание <span class="v">${irqText(irqs[k])}</span>`;
-    if (k === 'uart') {
-      const u = uartDiv(m);
-      body = `TX <span class="v">${blk.tx ?? '—'}</span> · RX <span class="v">${blk.rx ?? '—'}</span> · <span class="v">${blk.baud}</span> ` +
-             `${{ none: 'N', even: 'E', odd: 'O' }[blk.parity]}${blk.stop}<br><span class="dim">ошибка скорости ${pll.errs.length ? '—' : u.err.toFixed(2) + ' %'} · FIFO ${blk.fifo}</span>` +
-             `<br>Прерывание <span class="v">${irqText(irqs[k])}</span>`;
-    }
-    return { key: k, title: meta.title, color: meta.color, editable: true, toggle: true, on: blk.enabled,
-             body: `${body}<br>Адрес ${baseTxt(k)}` };
-  });
-}
-const memTxt = mm => mm ? (mm.type === 'bsram' ? `${mm.kb} КБ` : `${mm.synthWords * 4} Б`) : '?';
-function pinList(a) {
-  if (!a.length) return '<span class="dim">нет</span>';
-  const s = a.slice(0, 6).join(', ') + (a.length > 6 ? '…' : '');
-  return `<span class="v">${s}</span>`;
-}
-
-function drawTiles(svg) {
-  const inner = G.body - 2 * (G.marg + 20);
-  const x0 = G.o + G.marg + 20, y0 = G.o + G.marg + 70;
-  const tiles = tileDefs(), rows = Math.ceil(tiles.length / 3);
-  const gap = 12, w = (inner - 2 * gap) / 3, h = (inner - 50 - (rows - 1) * gap) / rows;
-  tiles.forEach((t, i) => {
-    const x = x0 + (i % 3) * (w + gap), y = y0 + Math.floor(i / 3) * (h + gap);
-    const fo = el('foreignObject', { class: 'tile-fo', x, y, width: w, height: h }, svg);
-    const div = document.createElement('div');
-    div.className = 'tile' + (t.on ? '' : ' off') + (t.editable && t.on ? ' editable' : '');
-    div.dataset.block = t.key;
-    div.innerHTML = `<div class="th"><span class="dot" style="background:${t.color}"></span><span class="name">${esc(t.title)}</span>
-      ${t.toggle ? `<span class="switch${t.on ? ' on' : ''}" title="${t.on ? 'Выключить' : 'Включить'} блок"></span>` : ''}</div>
-      <div class="tb">${t.on || !t.toggle ? t.body : '<span class="dim">выключен</span><br>' + esc(BLOCKS[t.key].about)}</div>`;
-    fo.appendChild(div);
-    if (t.toggle) div.querySelector('.switch').addEventListener('click', ev => { ev.stopPropagation(); toggleBlock(t.key); });
-    div.addEventListener('dblclick', ev => {
-      if (ev.target.classList.contains('switch')) return;
-      if (!t.on) { setStatus(`Блок ${t.title} выключен - включите его переключателем`, ''); return; }
-      if (t.key === 'clock') clockDialog();
-      else if (t.key === 'core') coreDialog();
-      else if (BLOCKS[t.key]) blockDialog(t.key);
-    });
-    div.addEventListener('mouseenter', () => highlightBlock(t.key === 'clock' ? 'sys' : t.key, true));
-    div.addEventListener('mouseleave', () => highlightBlock(null, false));
-  });
-}
-
-function highlightBlock(block, on) {
-  document.querySelectorAll('#chip .pin').forEach(g => {
-    g.classList.toggle('dim', on && !g.classList.contains('b-' + block));
-  });
-}
-
-function toggleBlock(k) {
-  const b = model.blocks[k];
-  b.enabled = !b.enabled;
-  if (b.enabled) signals(model).filter(s => s.block === k).forEach(s => ensureNet(model, s));
-  changed();
-}
-
-// --- Правая панель ---
-function renderSide(v) {
-  const am = addressMap(model);
-  const t = document.getElementById('amap');
-  t.innerHTML = am.rows.map(r => `<tr class="${r.on ? '' : 'off'}">
-      <td class="addr">${r.slot == null ? '—' : hexSlot(r.slot)}</td>
-      <td><span class="sw" style="background:${r.color}"></span>${esc(r.name)}${r.fixed ? '' : (r.auto ? ' <span class="muted">авто</span>' : '')}</td>
-      <td class="muted">${r.on ? esc(r.note) : 'выключен'}</td></tr>`).join('');
-
-  const ul = document.getElementById('issues');
-  const iss = v.issues;
-  const nErr = iss.filter(i => i.lvl === 'err').length, nWarn = iss.length - nErr;
-  const badge = document.getElementById('issueCount');
-  badge.textContent = iss.length ? String(iss.length) : '✓';
-  badge.className = 'badge' + (nErr ? ' err' : nWarn ? ' warn' : '');
-  ul.innerHTML = iss.length ? '' : '<li class="ok">Ошибок нет, можно собирать</li>';
-  iss.forEach(i => {
-    const li = document.createElement('li');
-    li.className = i.lvl;
-    li.textContent = i.text;
-    if (i.pin != null) { li.dataset.pin = i.pin; li.addEventListener('click', () => flashPin(i.pin)); }
-    ul.appendChild(li);
-  });
-}
-
 function flashPin(n) {
   const g = document.querySelector(`#chip .pin[data-pin="${n}"]`);
   if (!g) return;
@@ -656,14 +950,84 @@ function flashPin(n) {
   g.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
 }
 
+// --- Ресурсы ПЛИС (правый верхний угол): свободно / всего ---
+//Логика, регистры, DSP и Fmax - по последней сборке (hw/impl/socgen/resources.json); BSRAM, выводы, PLL - по конфигурации
+let lastRes = null;
+const ICONS = {
+  lut: '<rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1"/><rect x="9" y="9" width="5.5" height="5.5" rx="1"/>',
+  reg: '<rect x="2.5" y="1.5" width="11" height="13" rx="1.5"/><path d="M2.5 9.5 5.5 11.5 2.5 13.5"/><path d="M6 5h4M8 3v4"/>',
+  bsram: '<rect x="2" y="2" width="12" height="3.2" rx=".8"/><rect x="2" y="6.4" width="12" height="3.2" rx=".8"/><rect x="2" y="10.8" width="12" height="3.2" rx=".8"/>',
+  dsp: '<rect x="1.5" y="1.5" width="13" height="13" rx="2"/><path d="M5 5l6 6M11 5l-6 6"/>',
+  io: '<rect x="3" y="2" width="10" height="7" rx="1.2"/><path d="M5.5 9v5M8 9v5M10.5 9v5"/>',
+  pll: '<path d="M1 8c1.5-5 3.5-5 5 0s3.5 5 5 0 2.5-3 4-3"/>',
+  fmax: '<circle cx="8" cy="8" r="6.5"/><path d="M8 4v4l3 2"/>',
+};
+function renderResources() {
+  const box = document.getElementById('res');
+  const r = (lastRes && lastRes.items) || {};
+  const when = lastRes ? `по сборке ${lastRes.time} (${lastRes.toolchain === 'apicula' ? 'apicula' : 'Gowin EDA'})` : '';
+  const ioUsed = signals(model).filter(s => s.pin != null).length + (model.core.debug ? 4 : 0);
+  const items = [
+    { k: 'lut', name: 'Логические ячейки (LUT4, ALU, ROM16)', v: r.lut, src: when },
+    { k: 'reg', name: 'Регистры (триггеры)', v: r.reg, src: when },
+    { k: 'bsram', name: 'Блоки памяти BSRAM (2 кБайт каждый): IMEM, DMEM, шрифты TM1638', v: [bsramBlocks(model), BSRAM_TOTAL], src: 'по конфигурации' },
+    { k: 'dsp', name: 'Блоки DSP (умножители MULT18X18)', v: r.dsp, src: when },
+    { k: 'io', name: 'Выводы I/O (с выводами JTAG отладчика)', v: [ioUsed, 71], src: 'по конфигурации' },
+    { k: 'pll', name: 'Блоки rPLL', v: [1, 2], src: 'по конфигурации' },
+  ];
+  let h = items.map(it => {
+    const has = Array.isArray(it.v) && it.v[1] > 0;
+    const used = has ? it.v[0] : 0, total = has ? it.v[1] : 0, free = total - used, pct = has ? used / total : 0;
+    const cls = !has ? 'na' : pct > 1 ? 'bad' : pct > 0.9 ? 'bad' : pct > 0.75 ? 'warn' : '';
+    const tip = has ? `${it.name}\nсвободно ${free} из ${total} (занято ${used}, ${Math.round(pct * 100)} %)\n${it.src}`
+                    : `${it.name}\nпоявится после сборки`;
+    return `<span class="res-item ${cls}" title="${esc(tip)}"><svg viewBox="0 0 16 16">${ICONS[it.k]}</svg>` +
+      `<b>${has ? `${free}/${total}` : '—'}</b><i style="width:${Math.min(100, Math.round(pct * 100))}%"></i></span>`;
+  }).join('');
+  const fmax = lastRes && lastRes.fmax ? lastRes.fmax.clk_core : null;
+  if (fmax != null) {
+    const need = pllOf(model).fout, bad = fmax < need;
+    h += `<span class="res-item ${bad ? 'bad' : ''}" title="${esc(`Fmax ядра clk_core ${fmax.toFixed(1)} МГц при рабочих ${fmt(need)} МГц\n${when}`)}">` +
+      `<svg viewBox="0 0 16 16">${ICONS.fmax}</svg><b>${fmax.toFixed(1)}</b></span>`;
+  }
+  box.innerHTML = h;
+}
+
+// --- Ход сборки (строки @@PROGRESS генератора передаёт плагин) ---
+let building = false, buildT0 = 0, buildTimer = 0, progPct = 0, progText = '';
+const mmss = t => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+function drawProgress() {
+  const p = document.getElementById('prog');
+  p.querySelector('.prog-bar').style.width = Math.max(0, Math.min(100, progPct)) + '%';
+  p.querySelector('span').textContent = `${Math.round(progPct)} % · ${progText} · ${mmss(Math.round((Date.now() - buildT0) / 1000))}`;
+}
+//Режим сборки: кнопка «Собрать» неактивна, вместо ресурсов ПЛИС - шкала хода и время сборки
+function setBuilding(on) {
+  building = on;
+  const b = document.getElementById('build');
+  b.disabled = on;
+  b.classList.toggle('busy', on);
+  document.getElementById('prog').hidden = !on;
+  document.getElementById('res').hidden = on;
+  clearInterval(buildTimer);
+  if (on) { buildT0 = Date.now(); progPct = 0; progText = 'Подготовка'; drawProgress(); buildTimer = setInterval(drawProgress, 1000); }
+}
+function showProgress(pct, text) {
+  if (pct < 0) { setBuilding(false); return; }
+  if (!building) setBuilding(true);
+  progPct = pct; progText = text;
+  drawProgress();
+}
+
 // --- Масштаб ---
 function applyZoom() {
   const svg = document.getElementById('chip'), c = document.getElementById('canvas');
-  const s = zoom || Math.max(0.4, Math.min((c.clientWidth - 16) / G.size, (c.clientHeight - 16) / G.size));
-  svg.setAttribute('width', Math.round(G.size * s));
-  svg.setAttribute('height', Math.round(G.size * s));
+  if (!svgW) return;
+  const s = zoom || Math.max(0.35, Math.min(1.2, (c.clientWidth - 16) / svgW));
+  svg.setAttribute('width', Math.round(svgW * s));
+  svg.setAttribute('height', Math.round(svgH * s));
 }
-function currentScale() { return document.getElementById('chip').getBoundingClientRect().width / G.size; }
+function currentScale() { return document.getElementById('chip').getBoundingClientRect().width / svgW; }
 
 // ============================================================================================
 // Редактирование
@@ -671,15 +1035,20 @@ function currentScale() { return document.getElementById('chip').getBoundingClie
 function changed() {
   dirty = true;
   host('dirty');
+  //Фокус ввода переживает перерисовку панели настроек: элемент находится по имени
+  const a = document.activeElement, name = a && a.name && a.closest && a.closest('#settings') ? a.name : null;
   render();
+  if (name) { const e = document.querySelector(`#settings [name="${CSS.escape(name)}"]`); if (e) e.focus(); }
 }
+const isSel = s => !!sel && sel.kind === s.kind && (s.kind !== 'inst' || sel.name === s.name);
+function select(s) { sel = s; render(); document.querySelector('.side').scrollTop = 0; }
 
 function inlineNetEdit(n, labEl) {
   const rc = labEl.getBoundingClientRect();
   const inp = document.createElement('input');
-  inp.className = 'inline-edit';
+  inp.className = 'inline-edit net';
   inp.value = netOf(model, n);
-  inp.placeholder = 'имя цепи';
+  inp.placeholder = 'ИМЯ_ЦЕПИ';
   inp.style.left = Math.max(4, rc.left - 4) + 'px';
   inp.style.top = (rc.top + rc.height / 2 - 11) + 'px';
   document.body.appendChild(inp);
@@ -700,319 +1069,58 @@ function openDialog(title, color, bodyHtml, onApply, onOpen) {
   const d = document.getElementById('dlg');
   document.getElementById('dlgTitle').innerHTML = (color ? `<span class="dot" style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${color}"></span>` : '') + esc(title);
   document.getElementById('dlgBody').innerHTML = bodyHtml;
+  document.getElementById('dlgOk').style.display = onApply ? '' : 'none';
   dlgApply = onApply;
   d.returnValue = '';
   if (onOpen) onOpen(document.getElementById('dlgBody'));
   d.showModal();
 }
+//Enter в поле диалога - «Применить» (первая кнопка формы - «Отмена»)
+document.getElementById('dlgForm').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.tagName === 'INPUT' && dlgApply) { e.preventDefault(); document.getElementById('dlg').close('ok'); }
+});
 document.getElementById('dlg').addEventListener('close', () => {
   const d = document.getElementById('dlg');
   if (d.returnValue === 'ok' && dlgApply) { dlgApply(document.getElementById('dlgBody')); changed(); }
   dlgApply = null;
 });
 
-function pinOptions(selected, forSignal) {
+//Список выводов для выбора: занятые подписаны, выводы JTAG при отладчике недоступны
+function pinOptions(selected, forSigId, freeFirst) {
   const owner = new Map();
-  signals(model).forEach(s => { if (s.pin != null && s.id !== forSignal) owner.set(s.pin, s.name); });
+  signals(model).forEach(s => { if (s.pin != null && s.id !== forSigId) owner.set(s.pin, s.name); });
+  const list = freeFirst ? [...IO_PINS].sort((a, b) => (owner.has(a) - owner.has(b)) || a - b) : IO_PINS;
   let h = `<option value="">— не подключён —</option>`;
-  for (const n of IO_PINS) {
+  for (const n of list) {
     const p = PIN[n];
     const jt = model.core.debug && JTAG_PINS[n];
-    const who = owner.get(n);
-    const lbl = `${n} · ${p.name} · банк ${p.bank}${p.cfg ? ' · ' + p.cfg : ''}${jt ? ' (JTAG)' : ''}${who ? '  ← ' + who : ''}`;
+    const who = owner.get(n), net = netOf(model, n);
+    const lbl = `${n} · ${p.name} · банк ${p.bank}${p.cfg ? ' · ' + p.cfg : ''}${jt ? ' (JTAG)' : ''}${who ? '  ← ' + who : net ? '  «' + net + '»' : ''}`;
     h += `<option value="${n}"${n === selected ? ' selected' : ''}${jt ? ' disabled' : ''}>${esc(lbl)}</option>`;
   }
   return h;
 }
-const netInput = (pin, name) => `<input type="text" class="mono" name="${name}" value="${esc(pin != null ? netOf(model, pin) : '')}" placeholder="имя цепи">`;
 
-function baseField(k) {
-  const b = model.blocks[k];
-  const auto = parseBase(b.base) === null;
-  return `<label>Адрес регистров</label>
-    <div><select name="baseMode"><option value="auto"${auto ? ' selected' : ''}>авто</option><option value="manual"${auto ? '' : ' selected'}>вручную</option></select>
-    <input type="text" class="mono" name="base" value="${auto ? hexSlot(addressMap(model).baseOf(k) ?? BLOCKS[k].slot) : esc(b.base)}" ${auto ? 'disabled' : ''} style="width:130px"></div>`;
-}
-function wireBaseField(body) {
-  const mode = body.querySelector('[name=baseMode]'), base = body.querySelector('[name=base]');
-  mode.addEventListener('change', () => { base.disabled = mode.value === 'auto'; });
-}
-function readBase(body) {
-  const mode = body.querySelector('[name=baseMode]').value;
-  return mode === 'auto' ? 'auto' : body.querySelector('[name=base]').value.trim().replace(/_/g, '');
-}
-
-//Маршрут прерывания устройства: PLIC (по умолчанию), локальная линия ядра или без прерывания
-function irqField(k) {
-  const cur = model.blocks[k].irq || 'plic';
-  return `<label>Прерывание</label><div><select name="irq">${Object.entries(IRQ_ROUTES).map(([v, txt]) =>
-    `<option value="${v}"${v === cur ? ' selected' : ''}>${txt}</option>`).join('')}</select>
-    <span class="muted"> сейчас: ${irqText(irqMap(model)[k])}</span></div>`;
-}
-
-//Строки «сигнал - вывод - имя цепи»: применение с учётом имён
-function applySignalRows(body, rows) {
-  //Сначала снимаются старые назначения, затем ставятся новые (чтобы обмен выводами работал)
-  const plan = rows.map(r => ({ id: r.id, def: r.def, pin: body.querySelector(`[name=pin_${r.key}]`).value,
-                                 net: body.querySelector(`[name=net_${r.key}]`).value.trim() }));
-  plan.forEach(p => setSignalPin(model, p.id, null));
-  plan.forEach(p => {
-    setSignalPin(model, p.id, p.pin);
-    if (p.pin !== '') {
-      if (p.net) setNet(model, Number(p.pin), p.net);
-      else ensureNet(model, { pin: Number(p.pin), def: p.def });
-    }
-  });
-}
-function signalRowsHtml(rows) {
-  return `<table class="sig-table"><tr><th style="width:110px">Сигнал</th><th>Вывод</th><th style="width:170px">Имя цепи</th></tr>` +
-    rows.map(r => `<tr><td>${esc(r.label)}</td><td><select name="pin_${r.key}">${pinOptions(r.pin, r.id)}</select></td>
-                   <td>${netInput(r.pin, 'net_' + r.key)}</td></tr>`).join('') + `</table>`;
-}
-//Смена вывода в строке подставляет имя цепи нового вывода
-function wireSignalRows(body) {
-  body.querySelectorAll('select[name^=pin_]').forEach(sel => sel.addEventListener('change', () => {
-    const key = sel.name.slice(4), inp = body.querySelector(`[name=net_${key}]`);
-    inp.value = sel.value === '' ? '' : netOf(model, Number(sel.value));
-  }));
-}
-
-// --- Диалог блока ---
-function blockDialog(k) {
-  const meta = BLOCKS[k], b = model.blocks[k];
-  if (k === 'gpio') {
-    const rowsFor = count => Array.from({ length: count }, (_, i) =>
-      ({ key: String(i), id: 'gpio.' + i, def: 'gpio' + i, label: 'Линия ' + i, pin: b.lines[i] ?? null }));
-    const html = cnt => `<div class="form-grid">
-        <label>Количество линий</label><div><input type="number" name="count" min="1" max="32" value="${cnt}" style="width:80px">
-        <span class="muted"> разрядность регистров GPIO = числу линий</span></div>
-        ${baseField(k)}</div>
-        <div id="gpioRows">${signalRowsHtml(rowsFor(cnt))}</div>
-        <p class="note">Регистры: +0x00 направление (1 - выход), +0x04 выход, +0x08 состояние входов.</p>`;
-    openDialog(`GPIO - ${meta.about}`, meta.color, html(b.lines.length), body => {
-      const cnt = Number(body.querySelector('[name=count]').value);
-      const rows = rowsFor(cnt);
-      b.lines = b.lines.slice(0, cnt);
-      while (b.lines.length < cnt) b.lines.push(null);
-      applySignalRows(body, rows);
-      b.base = readBase(body);
-    }, body => {
-      wireBaseField(body); wireSignalRows(body);
-      const cntInp = body.querySelector('[name=count]');
-      cntInp.addEventListener('change', () => {
-        const cnt = Math.max(1, Math.min(32, Number(cntInp.value) || 1));
-        cntInp.value = cnt;
-        //Сохранить введённое в уже показанных строках
-        const keep = {};
-        body.querySelectorAll('select[name^=pin_]').forEach(s => { const key = s.name.slice(4);
-          keep[key] = { pin: s.value, net: body.querySelector(`[name=net_${key}]`).value }; });
-        body.querySelector('#gpioRows').innerHTML = signalRowsHtml(rowsFor(cnt));
-        for (const key in keep) {
-          const s = body.querySelector(`[name=pin_${key}]`); if (!s) continue;
-          s.value = keep[key].pin; body.querySelector(`[name=net_${key}]`).value = keep[key].net;
-        }
-        wireSignalRows(body);
-      });
-    });
-  }
-  if (k === 'tm1638') {
-    const rows = [['dio', 'DIO (данные)'], ['clk', 'CLK (такт)'], ['stb', 'STB (строб)']].map(([key, label]) =>
-      ({ key, id: 'tm1638.' + key, def: 'tm_' + key, label, pin: b[key] }));
-    openDialog(`TM1638 - ${meta.about}`, meta.color,
-      `<div class="form-grid">${baseField(k)}</div>${signalRowsHtml(rows)}
-       <p class="note">Делители интерфейса считаются от частоты шины (rPLL).</p>`,
-      body => { applySignalRows(body, rows); b.base = readBase(body); },
-      body => { wireBaseField(body); wireSignalRows(body); });
-  }
-  if (k === 'stim') {
-    const rows = [{ key: 'out', id: 'stim.out', def: 'stim_out', label: 'Выход ШИМ', pin: b.out }];
-    openDialog(`STIM - ${meta.about}`, meta.color,
-      `<div class="form-grid">
-        <label>Разрядность</label><div><select name="width">${[16, 32].map(w => `<option${w === b.width ? ' selected' : ''}>${w}</option>`).join('')}</select>
-          <span class="muted"> предделитель, период, сравнение, счётчик</span></div>
-        ${irqField(k)}
-        ${baseField(k)}</div>${signalRowsHtml(rows)}
-       <p class="note">«Не подключён» - таймер работает только на прерывание, выход ШИМ не выводится.</p>`,
-      body => {
-        b.width = Number(body.querySelector('[name=width]').value);
-        b.irq = body.querySelector('[name=irq]').value;
-        const pin = body.querySelector('[name=pin_out]').value;
-        b.out = pin === '' ? null : Number(pin);
-        if (b.out != null) applySignalRows(body, rows);
-        b.base = readBase(body);
-      },
-      body => { wireBaseField(body); wireSignalRows(body); });
-  }
-  if (k === 'uart') {
-    const rows = [['tx', 'TX (выход)', 'uart_tx'], ['rx', 'RX (вход)', 'uart_rx']].map(([key, label, def]) =>
-      ({ key, id: 'uart.' + key, def, label, pin: b[key] }));
-    const sel = (name, list, v) => `<select name="${name}">${list.map(([val, txt]) =>
-      `<option value="${val}"${String(val) === String(v) ? ' selected' : ''}>${txt}</option>`).join('')}</select>`;
-    openDialog(`UART - ${meta.about}`, meta.color,
-      `<div class="form-grid">
-        <label>Скорость, бит/с</label><div><input type="number" name="baud" list="uartBauds" min="300" max="3000000" value="${b.baud}" style="width:110px">
-          <datalist id="uartBauds">${UART_BAUDS.map(v => `<option value="${v}">`).join('')}</datalist></div>
-        <label>Контроль чётности</label>${sel('parity', Object.entries(UART_PARITY), b.parity)}
-        <label>Стоп-битов</label>${sel('stop', [[1, '1'], [2, '2']], b.stop)}
-        <label>Глубина FIFO</label><div>${sel('fifo', FIFO_DEPTHS.map(v => [v, v + ' байт']), b.fifo)}
-          <span class="muted"> на приём и на передачу</span></div>
-        <div class="full readout" id="uartOut"></div>
-        ${irqField(k)}
-        ${baseField(k)}</div>${signalRowsHtml(rows)}
-       <p class="note">Скорость, чётность и стоп-биты - значения после сброса (параметры uart_top в top.sv и
-       UART_BAUD, UART_PARITY_DEFAULT, UART_STOP_DEFAULT в soc.h); прошивка может сменить их регистрами DIV,
-       CFG и TXCTRL. Делитель считается от частоты шины периферии. На Tang Nano 9K к UART программатора BL702
-       идут выводы 17 (TX ПЛИС) и 18 (RX ПЛИС).</p>`,
-      body => {
-        const q = name => body.querySelector(`[name=${name}]`);
-        b.baud = Number(q('baud').value);
-        b.parity = q('parity').value;
-        b.stop = Number(q('stop').value);
-        b.fifo = Number(q('fifo').value);
-        b.irq = q('irq').value;
-        applySignalRows(body, rows);
-        b.base = readBase(body);
-      },
-      body => {
-        wireBaseField(body); wireSignalRows(body);
-        const q = name => body.querySelector(`[name=${name}]`);
-        const upd = () => {
-          const f = sysclkHz(model), baud = Number(q('baud').value);
-          const out = body.querySelector('#uartOut');
-          if (pllOf(model).errs.length || !(baud > 0)) { out.innerHTML = '<span class="bad">нет частоты или скорости</span>'; return; }
-          const div = Math.max(0, Math.round(f / baud) - 1), real = f / (div + 1), err = Math.abs(real - baud) / baud * 100;
-          const bad = div < 7 || div > 0xFFFF || err > 2, warn = !bad && err > 1;
-          out.innerHTML = `Шина ${fmt(f / 1e6)} МГц · DIV = <b class="mono">${div}</b> · фактически ` +
-            `<b class="${bad ? 'bad' : warn ? '' : 'good'}">${Math.round(real)} бит/с</b> (ошибка ${err.toFixed(2)} %)` +
-            (div < 7 || div > 0xFFFF ? '<br><span class="bad">DIV должен быть 7..65535</span>' :
-             err > 2 ? '<br><span class="bad">ошибка больше 2 % - приём будет со сбоями</span>' : '');
-        };
-        q('baud').addEventListener('input', upd);
-        upd();
-      });
-  }
-}
-
-// --- Диалог тактирования ---
-function clockDialog() {
-  const c = model.clock, p = c.pll;
-  const clkPins = IO_PINS.filter(clockCapable);
-  const xtalOpts = IO_PINS.map(n => { const q = PIN[n];
-    return `<option value="${n}"${n === c.xtalPin ? ' selected' : ''}>${clockCapable(n) ? '★ ' : ''}${n} · ${q.name}${q.cfg ? ' · ' + q.cfg : ''}</option>`; }).join('');
-  const rows = [{ key: 'rst', id: 'rst', def: 'rst_n', label: 'Сброс rst_n', pin: model.reset.pin }];
-  openDialog('Тактирование и сброс', 'var(--c-sys)', `
+//Назначение вывода сигналу или новой линии GPIO: вывод и имя цепи
+function pinPicker(sig) {
+  openDialog(`${sig.name}: вывод`, sig.inst ? instColor(sig.inst) : 'var(--c-sys)', `
     <div class="form-grid">
-      <label>Частота кварца, МГц</label><input type="number" name="xtal" step="any" min="3" max="400" value="${c.xtalMHz}" style="width:110px">
-      <label>Вывод кварца</label><select name="xtalPin">${xtalOpts}</select>
-      <label>Имя цепи кварца</label>${netInput(c.xtalPin, 'xtalNet')}
-      <label>Расчёт rPLL</label><div>
-        <label style="color:inherit"><input type="radio" name="mode" value="auto"${p.mode === 'auto' ? ' checked' : ''}> по частоте</label>&nbsp;&nbsp;
-        <label style="color:inherit"><input type="radio" name="mode" value="manual"${p.mode !== 'auto' ? ' checked' : ''}> делители вручную</label></div>
-      <label>Нужная частота, МГц</label><input type="number" name="target" step="any" value="${p.targetMHz}" style="width:110px">
-      <label>IDIV_SEL · FBDIV_SEL · ODIV_SEL</label><div>
-        <input type="number" name="idiv" min="0" max="63" value="${p.idiv}" style="width:64px">
-        <input type="number" name="fbdiv" min="0" max="63" value="${p.fbdiv}" style="width:64px">
-        <select name="odiv">${ODIV_SET.map(o => `<option${o === p.odiv ? ' selected' : ''}>${o}</option>`).join('')}</select></div>
-      <div class="full readout" id="pllOut"></div>
+      <label>Вывод</label><select name="pin">${pinOptions(sig.pin ?? null, sig.id, true)}</select>
+      <label>Имя цепи</label><input type="text" class="mono net" name="net" placeholder="${esc(sig.def)}">
     </div>
-    ${signalRowsHtml(rows)}
-    <p class="note">★ - выводы с глобальным тактом (GCLK) или входом PLL: ${clkPins.join(', ')}.
-    f<sub>out</sub> = f<sub>кв</sub>·(FBDIV+1)/(IDIV+1); PFD = f<sub>кв</sub>/(IDIV+1) ≥ 3 МГц; VCO = f<sub>out</sub>·ODIV = 400..1200 МГц.
-    При смене частоты обновите период в riscv.sdc и SYSCLK_HZ в прошивке.</p>`,
+    <p class="note">Свободные выводы - в начале списка. Имя цепи (заглавными) - имя порта в top.sv и riscv.cst${sig.inst && sig.inst.type === 'gpio' ?
+      ' и define в Си: цепь LED3 - LED3_PIN, LED3_PORT в soc.h' : ''}.</p>`,
     body => {
-      const q = name => body.querySelector(`[name=${name}]`);
-      c.xtalMHz = Number(q('xtal').value);
-      p.mode = body.querySelector('[name=mode]:checked').value;
-      p.targetMHz = Number(q('target').value);
-      p.idiv = Number(q('idiv').value); p.fbdiv = Number(q('fbdiv').value); p.odiv = Number(q('odiv').value);
-      applyPllAuto(model);
-      c.xtalPin = Number(q('xtalPin').value);
-      const net = q('xtalNet').value.trim();
-      if (net) setNet(model, c.xtalPin, net); else ensureNet(model, { pin: c.xtalPin, def: 'clk' });
-      applySignalRows(body, rows);
+      const pin = body.querySelector('[name=pin]').value;
+      if (pin === '') return;
+      const n = Number(pin), net = body.querySelector('[name=net]').value.trim();
+      if (sig.key === 'newline') { sig.inst.lines.push(n); }
+      else setSignalPin(model, sig, n);
+      if (net) setNet(model, n, net); else ensureNet(model, { pin: n, def: sig.def });
     },
     body => {
-      wireSignalRows(body);
-      const q = name => body.querySelector(`[name=${name}]`);
-      q('xtalPin').addEventListener('change', () => { q('xtalNet').value = netOf(model, Number(q('xtalPin').value)); });
-      const upd = () => {
-        const auto = body.querySelector('[name=mode]:checked').value === 'auto';
-        ['idiv', 'fbdiv', 'odiv'].forEach(n => { q(n).disabled = auto; });
-        q('target').disabled = !auto;
-        const fin = Number(q('xtal').value);
-        if (auto) {
-          const r = pllSolve(fin, Number(q('target').value));
-          if (r) { q('idiv').value = r.idiv; q('fbdiv').value = r.fbdiv; q('odiv').value = r.odiv; }
-        }
-        const e = pllEval(fin, Number(q('idiv').value), Number(q('fbdiv').value), Number(q('odiv').value));
-        body.querySelector('#pllOut').innerHTML =
-          `CLKOUT = <b class="${e.errs.length ? 'bad' : 'good'}">${fmt(e.fout)} МГц</b>` +
-          (auto ? ` <span class="muted">(нужно ${fmt(Number(q('target').value))}, ошибка ${fmt(Math.abs(e.fout - Number(q('target').value)))} МГц)</span>` : '') +
-          `<br>PFD = ${fmt(e.pfd)} МГц · VCO = ${fmt(e.vco)} МГц` +
-          (e.errs.length ? `<br><span class="bad">${e.errs.map(esc).join('<br>')}</span>` : '');
-      };
-      body.querySelectorAll('input, select').forEach(i => { i.addEventListener('input', upd); i.addEventListener('change', upd); });
-      upd();
-    });
-}
-
-// --- Диалог ядра ---
-function coreDialog() {
-  const c = model.core;
-  const sel = (name, list, v) => `<select name="${name}">${list.map(([val, txt]) =>
-    `<option value="${val}"${String(val) === String(v) ? ' selected' : ''}>${txt}</option>`).join('')}</select>`;
-  const memRow = (k, title) => `<label>${title}</label><div>
-      ${sel(k + 'Type', [['bsram', 'BSRAM'], ['synth', 'синтезированная (LUT)']], c[k].type)}
-      <span data-mem="${k}-bsram">${sel(k + 'Kb', MEM_KB.map(v => [v, v + ' кБайт']), c[k].kb)}</span>
-      <span data-mem="${k}-synth"><input type="number" name="${k}Words" min="16" max="4096" value="${c[k].synthWords}" style="width:80px"> слов по 4 Байт</span></div>`;
-  openDialog('Ядро askoRV32', 'var(--c-core)', `<div class="form-grid">
-      <label>Тип ядра</label>${sel('coreType', [['pipeline', 'конвейерное (5 стадий)'], ['singlecycle', 'однотактное']], c.coreType)}
-      <label>Расширение M</label><div><label style="color:inherit"><input type="checkbox" name="mExt"${c.mExt ? ' checked' : ''}> умножение и деление</label>
-        &nbsp; ${sel('divBpc', [[1, '1 бит'], [2, '2 бита'], [4, '4 бита']], c.divBpc)} <span class="muted">частного за такт</span></div>
-      ${memRow('imem', 'Память команд IMEM')}
-      ${memRow('dmem', 'Память данных DMEM')}
-      <label>Отладчик JTAG</label><label style="color:inherit"><input type="checkbox" name="debug"${c.debug ? ' checked' : ''}> GW_JTAG, выводы 5–8 (TMS, TCK, TDI, TDO)</label>
-      <label>Источников PLIC</label><div><input type="number" name="plicSources" min="1" max="31" value="${c.plicSources}" style="width:80px">
-        <span class="muted"> 1..31; устройствам сейчас нужно ${Math.max(0, ...Object.values(irqMap(model)).filter(r => r.route === 'plic').map(r => r.n))}</span></div>
-      <div class="full readout" id="coreOut"></div>
-    </div>
-    <p class="note">Параметры попадают в параметры cpu в top.sv и в soc.h. Однотактное ядро с памятью в BSRAM делит
-    частоту rPLL на 3 (шина периферии, SYSCLK_HZ). Деление 4 бит/такт быстрее, но длиннее по логике - на 45 МГц
-    проверяйте Fmax. Размер IMEM/DMEM в BSRAM ограничивает и компоновщик (GW1NR9.lds, до 32 кБайт).</p>`,
-    body => {
-      const q = name => body.querySelector(`[name=${name}]`);
-      c.coreType = q('coreType').value;
-      c.mExt = q('mExt').checked;
-      c.divBpc = Number(q('divBpc').value);
-      for (const k of ['imem', 'dmem']) {
-        c[k].type = q(k + 'Type').value;
-        c[k].kb = Number(q(k + 'Kb').value);
-        c[k].synthWords = Math.max(16, Math.min(4096, Number(q(k + 'Words').value) || 256));
-      }
-      c.debug = q('debug').checked;
-      c.plicSources = Math.max(1, Math.min(31, Number(q('plicSources').value) || 8));
-    },
-    body => {
-      const q = name => body.querySelector(`[name=${name}]`);
-      const upd = () => {
-        q('divBpc').disabled = !q('mExt').checked;
-        for (const k of ['imem', 'dmem']) {
-          const bs = q(k + 'Type').value === 'bsram';
-          body.querySelector(`[data-mem=${k}-bsram]`).style.display = bs ? '' : 'none';
-          body.querySelector(`[data-mem=${k}-synth]`).style.display = bs ? 'none' : '';
-        }
-        //Пересчёт по копии модели с введёнными значениями
-        const tmp = JSON.parse(JSON.stringify(model));
-        tmp.core.coreType = q('coreType').value;
-        for (const k of ['imem', 'dmem']) { tmp.core[k].type = q(k + 'Type').value; tmp.core[k].kb = Number(q(k + 'Kb').value); }
-        const nbs = bsramBlocks(tmp), pll = pllOf(tmp);
-        body.querySelector('#coreOut').innerHTML =
-          `Шина периферии: <b>${pll.errs.length ? '—' : fmt(sysclkHz(tmp) / 1e6) + ' МГц'}</b> · ` +
-          `BSRAM: <b class="${nbs > BSRAM_TOTAL ? 'bad' : 'good'}">${nbs} из ${BSRAM_TOTAL}</b> блоков` +
-          (model.blocks.tm1638.enabled ? ' <span class="muted">(1 - шрифт TM1638)</span>' : '');
-      };
-      body.querySelectorAll('input, select').forEach(i => { i.addEventListener('input', upd); i.addEventListener('change', upd); });
-      upd();
+      const s = body.querySelector('[name=pin]'), net = body.querySelector('[name=net]');
+      s.addEventListener('change', () => { net.value = s.value ? netOf(model, Number(s.value)) : ''; });
     });
 }
 
@@ -1025,33 +1133,39 @@ function pinDialog(n) {
   const opt = (list, v, def) => `<option value=""${!v ? ' selected' : ''}>по умолчанию (${def})</option>` +
     list.map(x => `<option${x === v ? ' selected' : ''}>${x}</option>`).join('');
   const sigOpts = `<option value="">— не назначен —</option>` + sigs.map(s =>
-    `<option value="${s.id}"${cur.length && cur[0].id === s.id ? ' selected' : ''}>${esc(s.name)}${s.pin != null && s.pin !== n ? ' (сейчас ' + s.pin + ')' : ''}</option>`).join('');
+    `<option value="${esc(s.id)}"${cur.length && cur[0].id === s.id ? ' selected' : ''}>${esc(s.name)}${s.pin != null && s.pin !== n ? ' (сейчас ' + s.pin + ')' : ''}</option>`).join('');
   const info = [`<span>${p.name}</span>`, `<span>банк ${p.bank}</span>`];
   if (p.cfg) info.push(`<span>${esc(p.cfg)}</span>`);
   if (p.diff) info.push(`<span>${p.diff === 'P' ? 'плюс' : 'минус'} пары с ${p.pair}</span>`);
   if (p.lvds) info.push('<span>True LVDS</span>');
   const d = { ioType: bankDefault(model, n, 'ioType'), pull: bankDefault(model, n, 'pull'),
               drive: bankDefault(model, n, 'drive'), vccio: bankDefault(model, n, 'vccio') };
-  openDialog(`Вывод ${n}`, cur.length ? blockColor(cur[0].block) : null, `
+  const gpioSig = cur.find(s => s.inst && s.inst.type === 'gpio');
+  openDialog(`Вывод ${n}`, cur.length ? sigColor(cur[0]) : null, `
     <div class="pininfo">${info.join('')}</div>
     <div class="form-grid">
       <label>Сигнал</label><select name="sig">${sigOpts}</select>
-      <label>Имя цепи</label>${netInput(n, 'net')}
+      <label>Имя цепи</label><input type="text" class="mono net" name="net" value="${esc(netOf(model, n))}" placeholder="ИМЯ_ЦЕПИ">
       <label>IO_TYPE</label><select name="ioType">${opt(IO_TYPES, pa.ioType, d.ioType)}</select>
       <label>PULL_MODE</label><select name="pull">${opt(PULLS, pa.pull, d.pull)}</select>
       <label>DRIVE, мА</label><select name="drive">${opt(DRIVES, pa.drive, d.drive)}</select>
       <label>BANK_VCCIO, В</label><select name="vccio">${opt(VCCIOS, pa.vccio, d.vccio)}</select>
     </div>
     ${cur.length > 1 ? `<p class="note" style="color:var(--error)">На вывод назначено несколько сигналов: ${cur.map(s => esc(s.name)).join(', ')}</p>` : ''}
-    <p class="note">Выключенные блоки в списке сигналов не показаны. Имя цепи без сигнала - просто подпись, в riscv.cst она не попадает.</p>`,
+    ${gpioSig && netOf(model, n) ? `<p class="note">В Си (soc.h): <code>${esc(cName(netOf(model, n)))}_PIN</code>, <code>${esc(cName(netOf(model, n)))}_PORT</code> -
+      например <code>GPIO_WRITE(${esc(cName(netOf(model, n)))}, GPIO_PIN_SET)</code>.</p>` : ''}
+    <p class="note">Имя цепи без сигнала - просто подпись, в riscv.cst она не попадает.</p>`,
     body => {
       const q = name => body.querySelector(`[name=${name}]`);
-      const sig = q('sig').value;
+      const sigId = q('sig').value;
       //Снять с вывода прежние сигналы, кроме выбранного
-      cur.forEach(s => { if (s.id !== sig) setSignalPin(model, s.id, null); });
-      if (sig) setSignalPin(model, sig, n);
+      cur.forEach(s => { if (s.id !== sigId) setSignalPin(model, s, null); });
+      const s = sigs.find(x => x.id === sigId);
+      if (s) setSignalPin(model, s, n);
       setNet(model, n, q('net').value);
-      if (sig) ensureNet(model, Object.assign({}, sigs.find(s => s.id === sig), { pin: n }));
+      if (s) ensureNet(model, Object.assign({}, s, { pin: n }));
+      //Пустые линии GPIO (вывод снят) удаляются
+      for (const inst of insts(model, 'gpio')) inst.lines = inst.lines.filter(x => x != null);
       const np = model.pins[n] || {};
       for (const k of ['ioType', 'pull', 'drive', 'vccio']) { const v = q(k).value; if (v) np[k] = v; else delete np[k]; }
       if (Object.keys(np).length) model.pins[n] = np; else delete model.pins[n];
@@ -1062,11 +1176,11 @@ function ioDefaultsDialog() {
   const d = model.ioDefaults;
   const KEYS = [['ioType', IO_TYPES], ['pull', PULLS], ['drive', DRIVES], ['vccio', VCCIOS]];
   const banks = [...new Set(DEV.pins.filter(p => p.type === 'io').map(p => String(p.bank)))].sort();
-  const sel = (name, list, v, inherit) => `<select name="${name}">` +
+  const sel_ = (name, list, v, inherit) => `<select name="${name}">` +
     (inherit ? `<option value=""${!v ? ' selected' : ''}>общие</option>` : '') +
     list.map(x => `<option${x === v ? ' selected' : ''}>${x}</option>`).join('') + `</select>`;
   const row = (title, pre, src, inherit, color) => `<tr><td>${color ? `<span class="dot" style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${color}"></span> ` : ''}${title}</td>` +
-    KEYS.map(([k, list]) => `<td>${sel(pre + k, list, src[k], inherit)}</td>`).join('') + '</tr>';
+    KEYS.map(([k, list]) => `<td>${sel_(pre + k, list, src[k], inherit)}</td>`).join('') + '</tr>';
   openDialog('Стандарты I/O по умолчанию', null, `
     <table class="sig-table"><tr><th></th><th>IO_TYPE</th><th>PULL_MODE</th><th>DRIVE, мА</th><th>BANK_VCCIO, В</th></tr>
       ${row('Общие', 'd_', d, false, null)}
@@ -1086,6 +1200,327 @@ function ioDefaultsDialog() {
 }
 
 // ============================================================================================
+// Панель настроек справа
+// ============================================================================================
+const opts = (list, v) => list.map(([val, txt]) => `<option value="${esc(val)}"${String(val) === String(v) ? ' selected' : ''}>${esc(txt)}</option>`).join('');
+
+function renderSettings(v) {
+  const box = document.getElementById('settings');
+  if (sel && sel.kind === 'inst' && !instByName(sel.name)) sel = null;
+  if (!sel) { box.innerHTML = hintsHtml(); return; }
+  if (sel.kind === 'clock') { box.innerHTML = clockForm(); wireClockForm(box); return; }
+  if (sel.kind === 'core') { box.innerHTML = coreForm(); wireCoreForm(box); return; }
+  const inst = instByName(sel.name);
+  box.innerHTML = instForm(inst, v);
+  wireInstForm(box, inst);
+}
+
+function panelHead(title, sub, color) {
+  return `<div class="pane-head"><span class="dot" style="background:${color}"></span><div><b>${esc(title)}</b>` +
+    `<div class="muted">${esc(sub)}</div></div><button type="button" class="close" data-act="close" title="Закрыть - к карте адресов">✕</button></div>`;
+}
+
+function hintsHtml() {
+  return `<h2>Подсказки</h2>
+    <ul class="hints">
+      <li>Щелчок по блоку на схеме открывает здесь его настройки; наведение подсвечивает его выводы на микросхеме.</li>
+      <li>«+ Добавить блок» - периферия из библиотеки, сколько нужно; второй блок типа: UART0, UART1.</li>
+      <li>На схеме: щелчок по номеру вывода - выбрать другой вывод, по имени цепи - переименовать; «+» - добавить вывод.</li>
+      <li>Двойной щелчок по выводу микросхемы - сигнал и стандарт I/O; по корпусу - снова видны все выводы.</li>
+      <li>Вывод микросхемы можно перетащить на другой: сигнал, имя цепи и стандарт I/O переходят на него (с занятым выводом - обмен).</li>
+      <li>Имя цепи - имя порта ПЛИС и define в Си, заглавными: <code>LED3</code> → <code>LED3_PIN</code>, <code>LED3_PORT</code>.</li>
+    </ul>`;
+}
+
+//Строки «сигнал - вывод - имя цепи» в панели (изменения применяются сразу)
+function pinRowsHtml(inst, rows, removable) {
+  if (!rows.length) return '';
+  return `<table class="sig-table"><tr><th style="width:52px">Порт</th><th>Вывод</th><th style="width:124px">Имя цепи</th>${removable ? '<th></th>' : ''}</tr>` +
+    rows.map(r => {
+      const pin = instPin(inst, r.key);
+      const net = pin != null ? netOf(model, pin) : '';
+      return `<tr><td>${esc(r.label)}</td>
+        <td><select name="pin_${r.key}" data-key="${r.key}">${pinOptions(pin ?? null, `${inst.name}.${r.key}`, false)}</select></td>
+        <td><input type="text" class="mono net" name="net_${r.key}" data-key="${r.key}" value="${esc(net)}" ${pin == null ? 'disabled' : ''}
+             placeholder="${esc(defNet(inst, r.key))}"></td>
+        ${removable ? `<td><button type="button" class="mini" data-act="delline" data-key="${r.key}" title="Удалить линию">✕</button></td>` : ''}</tr>`;
+    }).join('') + '</table>';
+}
+
+function instForm(inst, v) {
+  const t = TYPES[inst.type], am = addressMap(model), irqs = irqMap(model);
+  const auto = parseBase(inst.base) === null;
+  const nameErr = v.issues.find(i => i.inst === inst.name && /^Имя/.test(i.text));
+  let h = panelHead(inst.name, `${t.title} · ${CATS[t.cat].title}`, instColor(inst));
+  h += `<div class="form-grid pane">
+    <label>Имя</label><input type="text" class="mono${nameErr ? ' bad' : ''}" name="name" value="${esc(inst.name)}" title="Имя в прошивке (указатель ${esc(inst.name)}, ${esc(inst.name)}_BASE) и в top.sv (${esc(hdl(inst))})">
+    <label>Адрес регистров</label><div><select name="baseMode">${opts([['auto', 'авто'], ['manual', 'вручную']], auto ? 'auto' : 'manual')}</select>
+      <input type="text" class="mono" name="base" style="width:116px" value="${auto ? (am.baseOf(inst.name) == null ? '' : hexSlot(am.baseOf(inst.name))) : esc(inst.base)}" ${auto ? 'disabled' : ''}></div>`;
+  if (t.irq) h += `<label>Прерывание</label><div><select name="irq">${opts(Object.entries(IRQ_ROUTES), inst.irq || 'plic')}</select>
+      <span class="muted"> ${irqText(irqs[inst.name])}</span></div>`;
+  if (inst.type === 'stim') h += `<label>Разрядность</label><select name="width">${opts([[16, '16 бит'], [32, '32 бита']], inst.width)}</select>`;
+  if (inst.type === 'uart') {
+    const u = uartDiv(model, inst), pe = pllOf(model).errs.length;
+    const bad = u.div < 7 || u.div > 0xFFFF || u.err > 2;
+    h += `<label>Скорость, бит/с</label><div><input type="number" name="baud" list="uartBauds" min="300" max="3000000" value="${inst.baud}" style="width:110px">
+        <datalist id="uartBauds">${UART_BAUDS.map(x => `<option value="${x}">`).join('')}</datalist></div>
+      <label>Чётность</label><select name="parity">${opts(Object.entries(UART_PARITY), inst.parity)}</select>
+      <label>Стоп-битов</label><select name="stop">${opts([[1, '1'], [2, '2']], inst.stop)}</select>
+      <label>Глубина FIFO</label><select name="fifo">${opts(FIFO_DEPTHS.map(x => [x, x + ' байт']), inst.fifo)}</select>
+      <div class="full readout">${pe ? '<span class="bad">нет частоты rPLL</span>' :
+        `DIV = <b>${u.div}</b> · фактически <b class="${bad ? 'bad' : 'good'}">${Math.round(u.real)} бит/с</b> (ошибка ${u.err.toFixed(2)} %)`}</div>`;
+  }
+  h += `</div><h3 class="pane-sub">Выводы</h3>`;
+  const rows = instSignals(inst).map(g => ({ key: g.key, label: g.label }));
+  if (inst.type === 'gpio') {
+    h += pinRowsHtml(inst, rows, true) +
+      `<button type="button" data-act="addline"${inst.lines.length >= 32 ? ' disabled' : ''}>+ Добавить линию</button>
+       <p class="note">IO0 - младший разряд регистров MODE, OUT, IN. Имя цепи - define в Си: <code>LED3</code> → <code>LED3_PIN</code>,
+       <code>LED3_PORT</code>, <code>GPIO_WRITE(LED3, ...)</code>; шина <code>LED[…]</code> → <code>LED_MSK</code>, <code>LED_POS</code>.</p>`;
+  } else if (inst.type === 'stim') {
+    h += inst.out == null
+      ? `<button type="button" data-act="addout">+ Вывести ШИМ на вывод</button><p class="note">Без вывода таймер работает только на прерывание.</p>`
+      : pinRowsHtml(inst, rows, false) + `<button type="button" data-act="delout">Не выводить ШИМ</button>`;
+  } else {
+    h += pinRowsHtml(inst, rows, false);
+  }
+  if (inst.type === 'uart') h += `<p class="note">Скорость, чётность и стоп-биты - значения после сброса (параметры uart_top и ${esc(inst.name)}_BAUD...
+    в soc.h); прошивка может сменить их регистрами. На Tang Nano 9K к UART программатора BL702 идут выводы 17 (TX) и 18 (RX).</p>`;
+  if (inst.type === 'tm1638') h += `<p class="note">Знакогенератор занимает 1 блок BSRAM; делители интерфейса считаются от частоты шины.</p>`;
+  h += `<div class="pane-actions"><button type="button" data-act="readme">Описание модуля</button>
+        <button type="button" class="danger" data-act="remove">Удалить блок</button></div>`;
+  return h;
+}
+
+function wireInstForm(box, inst) {
+  const q = name => box.querySelector(`[name="${name}"]`);
+  box.querySelector('[data-act=close]').addEventListener('click', () => select(null));
+  q('name').addEventListener('change', e => {
+    const nv = e.target.value.trim();
+    if (!nv || nv === inst.name) return;
+    inst.name = nv; sel = { kind: 'inst', name: nv };
+    changed();
+  });
+  q('baseMode').addEventListener('change', e => {
+    if (e.target.value === 'auto') inst.base = 'auto';
+    else { const s = addressMap(model).baseOf(inst.name); inst.base = s == null ? '0x15000000' : hex8(s * 0x01000000); }
+    changed();
+  });
+  q('base').addEventListener('change', e => { inst.base = e.target.value.trim().replace(/_/g, ''); changed(); });
+  for (const k of ['irq', 'parity']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = e.target.value; changed(); });
+  for (const k of ['width', 'stop', 'fifo', 'baud']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
+  box.querySelectorAll('select[name^=pin_]').forEach(s => s.addEventListener('change', () => {
+    const key = s.dataset.key, sig = findSig(`${inst.name}.${key}`) || { id: `${inst.name}.${key}`, inst, key, def: defNet(inst, key) };
+    movePin(sig, s.value);
+    changed();
+  }));
+  box.querySelectorAll('input[name^=net_]').forEach(i => i.addEventListener('change', () => {
+    const pin = instPin(inst, i.dataset.key);
+    if (pin != null) { setNet(model, pin, i.value); changed(); }
+  }));
+  box.querySelectorAll('[data-act=delline]').forEach(b => b.addEventListener('click', () => {
+    inst.lines.splice(Number(b.dataset.key.slice(4)), 1);
+    changed();
+  }));
+  const act = (a, fn) => { const b = box.querySelector(`[data-act=${a}]`); if (b) b.addEventListener('click', fn); };
+  act('addline', () => pinPicker({ id: `${inst.name}.newline`, inst, key: 'newline', name: `${inst.name} IO${inst.lines.length}`,
+                                   dir: 'inout', def: defNet(inst, 'line' + inst.lines.length) }));
+  act('addout', () => pinPicker({ id: `${inst.name}.out`, inst, key: 'out', name: `${inst.name} PWM`, dir: 'output', def: defNet(inst, 'out') }));
+  act('delout', () => { inst.out = null; changed(); });
+  act('readme', () => openLibrary(inst.type));
+  act('remove', () => {
+    if (!confirm(`Удалить блок ${inst.name}? Его выводы освободятся, имена цепей останутся подписями.`)) return;
+    model.periph.splice(model.periph.indexOf(inst), 1);
+    unnumberSingles(model);
+    sel = null;
+    changed();
+  });
+}
+
+function clockForm() {
+  const c = model.clock, p = c.pll;
+  const xtalOpts = IO_PINS.map(n => { const q = PIN[n];
+    return `<option value="${n}"${n === c.xtalPin ? ' selected' : ''}>${clockCapable(n) ? '★ ' : ''}${n} · ${q.name}${q.cfg ? ' · ' + q.cfg : ''}</option>`; }).join('');
+  const e = pllOf(model), auto = p.mode === 'auto';
+  return panelHead('Такт и сброс', 'rPLL · системное', 'var(--c-sys)') + `<div class="form-grid pane">
+      <label>Кварц, МГц</label><input type="number" name="xtal" step="any" min="3" max="400" value="${c.xtalMHz}" style="width:100px">
+      <label>Вывод кварца</label><select name="xtalPin">${xtalOpts}</select>
+      <label>Имя цепи кварца</label><input type="text" class="mono net" name="xtalNet" value="${esc(netOf(model, c.xtalPin))}">
+      <label>Расчёт rPLL</label><select name="mode">${opts([['auto', 'по частоте'], ['manual', 'делители вручную']], p.mode)}</select>
+      <label>Нужная частота, МГц</label><input type="number" name="target" step="any" value="${p.targetMHz}" style="width:100px" ${auto ? '' : 'disabled'}>
+      <label>IDIV · FBDIV · ODIV</label><div>
+        <input type="number" name="idiv" min="0" max="63" value="${p.idiv}" style="width:54px" ${auto ? 'disabled' : ''}>
+        <input type="number" name="fbdiv" min="0" max="63" value="${p.fbdiv}" style="width:54px" ${auto ? 'disabled' : ''}>
+        <select name="odiv" ${auto ? 'disabled' : ''}>${ODIV_SET.map(o => `<option${o === p.odiv ? ' selected' : ''}>${o}</option>`).join('')}</select></div>
+      <div class="full readout">CLKOUT = <b class="${e.errs.length ? 'bad' : 'good'}">${fmt(e.fout)} МГц</b> · PFD ${fmt(e.pfd)} · VCO ${fmt(e.vco)} МГц
+        ${e.errs.length ? `<br><span class="bad">${e.errs.map(esc).join('<br>')}</span>` : ''}</div>
+      <label>Вывод сброса</label><select name="rstPin">${pinOptions(model.reset.pin, 'rst', false)}</select>
+      <label>Имя цепи сброса</label><input type="text" class="mono net" name="rstNet" value="${esc(model.reset.pin != null ? netOf(model, model.reset.pin) : '')}">
+    </div>
+    <p class="note">★ - выводы с глобальным тактом (GCLK) или входом PLL. f<sub>out</sub> = f<sub>кв</sub>·(FBDIV+1)/(IDIV+1);
+    PFD ≥ 3 МГц; VCO = f<sub>out</sub>·ODIV = 400..1200 МГц. SYSCLK_HZ в soc.h пересчитывается сам; цель в riscv.sdc держите выше рабочей частоты.</p>`;
+}
+function wireClockForm(box) {
+  const c = model.clock, p = c.pll, q = name => box.querySelector(`[name="${name}"]`);
+  box.querySelector('[data-act=close]').addEventListener('click', () => select(null));
+  const num = (name, fn) => q(name).addEventListener('change', e => { fn(Number(e.target.value)); applyPllAuto(model); changed(); });
+  num('xtal', x => { c.xtalMHz = x; });
+  num('target', x => { p.targetMHz = x; });
+  num('idiv', x => { p.idiv = x; }); num('fbdiv', x => { p.fbdiv = x; }); num('odiv', x => { p.odiv = x; });
+  q('mode').addEventListener('change', e => { p.mode = e.target.value; applyPllAuto(model); changed(); });
+  q('xtalPin').addEventListener('change', e => { c.xtalPin = Number(e.target.value); ensureNet(model, { pin: c.xtalPin, def: 'clk' }); changed(); });
+  q('xtalNet').addEventListener('change', e => { setNet(model, c.xtalPin, e.target.value); changed(); });
+  q('rstPin').addEventListener('change', e => { model.reset.pin = e.target.value === '' ? null : Number(e.target.value);
+    if (model.reset.pin != null) ensureNet(model, { pin: model.reset.pin, def: 'rst_n' }); changed(); });
+  q('rstNet').addEventListener('change', e => { if (model.reset.pin != null) { setNet(model, model.reset.pin, e.target.value); changed(); } });
+}
+
+function coreForm() {
+  const c = model.core;
+  const nbs = bsramBlocks(model), pll = pllOf(model);
+  const need = Math.max(0, ...Object.values(irqMap(model)).filter(r => r.route === 'plic').map(r => r.n));
+  const mem = (k, t) => `<label>${t}</label><div><select name="${k}Type">${opts([['bsram', 'BSRAM'], ['synth', 'синтезированная']], c[k].type)}</select>
+      ${c[k].type === 'bsram' ? `<select name="${k}Kb">${opts(MEM_KB.map(v => [v, v + ' кБайт']), c[k].kb)}</select>`
+        : `<input type="number" name="${k}Words" min="16" max="4096" value="${c[k].synthWords}" style="width:70px"> слов`}</div>`;
+  return panelHead('Процессор cpu.sv', 'ядро, память, CLINT, PLIC, отладчик · системное', 'var(--c-sys)') + `<div class="form-grid pane">
+      <label>Тип ядра</label><select name="coreType">${opts([['pipeline', 'конвейерное (5 стадий)'], ['singlecycle', 'однотактное']], c.coreType)}</select>
+      <label>Расширение M</label><div><label class="chk"><input type="checkbox" name="mExt"${c.mExt ? ' checked' : ''}> mul/div</label>
+        <select name="divBpc" ${c.mExt ? '' : 'disabled'}>${opts([[1, '1 бит'], [2, '2 бита'], [4, '4 бита']], c.divBpc)}</select> <span class="muted">за такт</span></div>
+      ${mem('imem', 'IMEM')}
+      ${mem('dmem', 'DMEM')}
+      <label>Отладчик JTAG</label><label class="chk"><input type="checkbox" name="debug"${c.debug ? ' checked' : ''}> выводы 5–8</label>
+      <label>Источников PLIC</label><div><input type="number" name="plicSources" min="1" max="31" value="${c.plicSources}" style="width:64px">
+        <span class="muted"> нужно ${need}</span></div>
+      <div class="full readout">Шина периферии: <b>${pll.errs.length ? '—' : fmt(sysclkHz(model) / 1e6) + ' МГц'}</b> ·
+        BSRAM: <b class="${nbs > BSRAM_TOTAL ? 'bad' : 'good'}">${nbs} из ${BSRAM_TOTAL}</b></div>
+    </div>
+    <p class="note">Параметры попадают в параметры cpu в top.sv и в soc.h. Однотактное ядро с BSRAM делит частоту rPLL на 3.
+    Размер IMEM/DMEM ограничивает и компоновщик (GW1NR9.lds).</p>`;
+}
+function wireCoreForm(box) {
+  const c = model.core, q = name => box.querySelector(`[name="${name}"]`);
+  box.querySelector('[data-act=close]').addEventListener('click', () => select(null));
+  const on = (name, fn) => { const e = q(name); if (e) e.addEventListener('change', ev => { fn(ev.target); changed(); }); };
+  on('coreType', e => { c.coreType = e.value; });
+  on('mExt', e => { c.mExt = e.checked; });
+  on('divBpc', e => { c.divBpc = Number(e.value); });
+  on('debug', e => { c.debug = e.checked; });
+  on('plicSources', e => { c.plicSources = Math.max(1, Math.min(31, Number(e.value) || 8)); });
+  for (const k of ['imem', 'dmem']) {
+    on(k + 'Type', e => { c[k].type = e.value; });
+    on(k + 'Kb', e => { c[k].kb = Number(e.value); });
+    on(k + 'Words', e => { c[k].synthWords = Math.max(16, Math.min(4096, Number(e.value) || 256)); });
+  }
+}
+
+// ============================================================================================
+// Библиотека периферии и описание модуля (README.md устройства)
+// ============================================================================================
+function openLibrary(type) {
+  const d = document.getElementById('lib');
+  if (typeof type === 'string') showReadme(type); else showLibraryList();
+  if (!d.open) d.showModal();
+}
+function showLibraryList() {
+  const body = document.getElementById('libBody');
+  document.getElementById('libTitle').textContent = 'Библиотека периферии';
+  body.innerHTML = Object.entries(CATS).map(([ck, c]) => {
+    const list = Object.entries(TYPES).filter(([, t]) => t.cat === ck);
+    if (!list.length) return '';
+    return `<h4><span class="dot" style="background:${c.color}"></span>${c.title}</h4>` + list.map(([k, t]) => {
+      const n = insts(model, k).length;
+      return `<div class="lib-card" style="border-left-color:${c.color}"><div class="lib-main"><b>${t.title}</b>
+        ${n ? `<span class="muted"> · в проекте: ${n}</span>` : ''}<div>${esc(t.about)}</div></div>
+        <div class="lib-btns"><button type="button" data-readme="${k}">Описание</button>
+        <button type="button" class="primary" data-add="${k}">Добавить</button></div></div>`;
+    }).join('');
+  }).join('') + `<p class="note">Устройства лежат в hw/src/periph/&lt;тип&gt;/ (модуль, тест, README.md). Как сделать своё -
+    hw/src/periph/README.md; чтобы оно появилось здесь, его добавляют в генератор socgen.py и в app.js (TYPES).</p>`;
+  body.querySelectorAll('[data-readme]').forEach(b => b.addEventListener('click', () => showReadme(b.dataset.readme)));
+  body.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => addInstance(b.dataset.add)));
+}
+function addInstance(type) {
+  const same = insts(model, type), t = TYPES[type].title;
+  if (same.length === 1 && same[0].name === t && !model.periph.some(i => i.name.toLowerCase() === (t + '0').toLowerCase())) {
+    same[0].name = t + '0';
+    if (sel && sel.kind === 'inst' && sel.name === t) sel.name = t + '0';
+  }
+  const inst = Object.assign(TYPES[type].defaults(), { type, name: defaultName(model, type), base: 'auto' });
+  //Порядок ключей в файле: тип, имя, адрес, настройки
+  const ordered = { type, name: inst.name, base: 'auto' };
+  for (const k of Object.keys(inst)) if (!(k in ordered)) ordered[k] = inst[k];
+  model.periph.push(ordered);
+  document.getElementById('lib').close();
+  sel = { kind: 'inst', name: ordered.name };
+  changed();
+  setStatus(`Добавлен ${ordered.name}: назначьте выводы (+ на схеме или справа)`, '');
+}
+
+const readmeWait = {};
+function loadReadme(type) {
+  if (inHost()) return new Promise(res => { readmeWait[type] = res; host('readme', type); });
+  const cfg = new URLSearchParams(location.search).get('cfg') || '';
+  const hw = (model.paths && model.paths.hw) || '../hw';
+  const url = new URL(`${hw}/src/periph/${type}/README.md`, new URL(cfg, location.href));
+  return fetch(url).then(r => r.ok ? r.text() : Promise.reject(new Error(r.status))).catch(e => `Описание не найдено (${url.pathname}): ${e.message}`);
+}
+function showReadme(type) {
+  const t = TYPES[type];
+  document.getElementById('libTitle').textContent = `${t.title} - описание модуля`;
+  const body = document.getElementById('libBody');
+  body.innerHTML = `<div class="lib-nav"><button type="button" data-back>← К библиотеке</button>
+    <button type="button" class="primary" data-add="${type}">Добавить ${t.title}</button></div><div class="md">Загрузка…</div>`;
+  body.querySelector('[data-back]').addEventListener('click', showLibraryList);
+  body.querySelector('[data-add]').addEventListener('click', () => addInstance(type));
+  loadReadme(type).then(text => { const md = body.querySelector('.md'); if (md) md.innerHTML = mdToHtml(text); });
+}
+
+//Небольшой разбор Markdown для описаний модулей: заголовки, списки, таблицы, код, выделение
+function mdToHtml(src) {
+  const inline = s => esc(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<span class="lnk" title="$2">$1</span>');
+  const lines = src.replace(/\r/g, '').split('\n');
+  let html = '', i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (/^```/.test(l)) {
+      const code = []; i++;
+      while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
+      i++; html += `<pre>${esc(code.join('\n'))}</pre>`; continue;
+    }
+    if (/^#{1,6}\s/.test(l)) { const n = l.match(/^#+/)[0].length; html += `<h${Math.min(6, n + 2)}>${inline(l.replace(/^#+\s*/, ''))}</h${Math.min(6, n + 2)}>`; i++; continue; }
+    if (/^(=+|-+)\s*$/.test(l) && i > 0) { i++; continue; }
+    if (i + 1 < lines.length && /^(=+)\s*$/.test(lines[i + 1]) && l.trim()) { html += `<h3>${inline(l)}</h3>`; i += 2; continue; }
+    if (/^\s*\|/.test(l)) {
+      const rows = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++]);
+      const cells = r => r.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      html += '<table>' + rows.filter(r => !/^\s*\|[\s:|-]+\|\s*$/.test(r)).map((r, k) =>
+        `<tr>${cells(r).map(c => k === 0 ? `<th>${inline(c)}</th>` : `<td>${inline(c)}</td>`).join('')}</tr>`).join('') + '</table>';
+      continue;
+    }
+    if (/^\s*([-*]|\d+\.)\s/.test(l)) {
+      const ordered = /^\s*\d+\./.test(l), items = [];
+      while (i < lines.length && (/^\s*([-*]|\d+\.)\s/.test(lines[i]) || (/^\s{2,}\S/.test(lines[i]) && items.length))) {
+        if (/^\s*([-*]|\d+\.)\s/.test(lines[i]) && !/^\s{3,}/.test(lines[i])) items.push(lines[i].replace(/^\s*([-*]|\d+\.)\s/, ''));
+        else items[items.length - 1] += ' ' + lines[i].trim();
+        i++;
+      }
+      html += `<${ordered ? 'ol' : 'ul'}>${items.map(x => `<li>${inline(x)}</li>`).join('')}</${ordered ? 'ol' : 'ul'}>`;
+      continue;
+    }
+    if (!l.trim()) { i++; continue; }
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !/^(#|```|\s*\||\s*([-*]|\d+\.)\s)/.test(lines[i])) para.push(lines[i++]);
+    html += `<p>${inline(para.join(' '))}</p>`;
+  }
+  return html;
+}
+
+// ============================================================================================
 // Сохранение и связь с Eclipse
 // ============================================================================================
 //JSON в читаемом виде: короткие объекты и массивы чисел - в одну строку
@@ -1098,9 +1533,9 @@ function toJson(v, ind = '') {
   if (v && typeof v === 'object') {
     const keys = Object.keys(v);
     if (!keys.length) return '{}';
-    const flat = keys.every(k => v[k] === null || typeof v[k] !== 'object');
-    const one = '{ ' + keys.map(k => JSON.stringify(k) + ': ' + JSON.stringify(v[k])).join(', ') + ' }';
-    if (flat && one.length + ind.length < 110) return one;
+    const flat = keys.every(k => v[k] === null || typeof v[k] !== 'object' || (Array.isArray(v[k]) && v[k].every(x => typeof x !== 'object' || x === null)));
+    const one = '{ ' + keys.map(k => JSON.stringify(k) + ': ' + toJson(v[k])).join(', ') + ' }';
+    if (flat && one.length + ind.length < 116) return one;
     return '{\n' + keys.map(k => inner + JSON.stringify(k) + ': ' + toJson(v[k], inner)).join(',\n') + '\n' + ind + '}';
   }
   return JSON.stringify(v);
@@ -1108,6 +1543,14 @@ function toJson(v, ind = '') {
 function pinsSorted(p) {
   const o = {};
   Object.keys(p).sort((a, b) => Number(a) - Number(b)).forEach(k => { o[k] = p[k]; });
+  return o;
+}
+//Порядок разделов в файле
+function ordered(m) {
+  const keys = ['format', 'version', 'device', 'paths', 'core', 'clock', 'reset', 'periph', 'ioDefaults', 'banks', 'pins', 'build'];
+  const o = {};
+  for (const k of keys) if (k in m) o[k] = m[k];
+  for (const k of Object.keys(m)) if (!(k in o)) o[k] = m[k];
   return o;
 }
 
@@ -1122,18 +1565,33 @@ window.gwsoc = {
       model = normalize(JSON.parse(text));
       applyPllAuto(model);
       dirty = false;
+      const ren = unnumberSingles(model);
+      if (sel && sel.kind === 'inst' && !instByName(sel.name)) sel = null;
       document.getElementById('devname').textContent = model.device || DEV.part;
       document.getElementById('toolchain').value = model.build.toolchain;
       render();
       setStatus('', '');
+      if (ren.length) { dirty = true; host('dirty'); setStatus(`Единственный блок типа - без номера: ${ren.join(', ')}. Сохраните файл`, ''); }
     } catch (e) { setStatus('Ошибка чтения файла .gwsoc: ' + e.message, 'err'); }
   },
   getJson() {
     model.pins = pinsSorted(model.pins);
-    return toJson(model) + '\n';
+    model.version = 2;
+    if (model.build.placeOption === '') delete model.build.placeOption;
+    return toJson(ordered(model)) + '\n';
   },
   saved() { dirty = false; setStatus('Сохранено', 'ok'); },
   status(text, kind) { setStatus(text, kind); },
+  readme(type, text) { const r = readmeWait[type]; delete readmeWait[type]; if (r) r(text); },
+  progress(pct, text) { showProgress(Number(pct), text || ''); },
+  buildDone(ok) {
+    clearInterval(buildTimer);
+    const t = mmss(Math.round((Date.now() - buildT0) / 1000));
+    setBuilding(false);
+    const s = document.getElementById('status');
+    if (s.textContent) s.textContent += ` (${t})`;
+  },
+  resources(text) { try { lastRes = text ? JSON.parse(text) : null; } catch (e) { lastRes = null; } if (model) renderResources(); },
   hasErrors() { return validate(model).issues.some(i => i.lvl === 'err'); },
 };
 
@@ -1142,20 +1600,24 @@ function doSave() {
   host('save', window.gwsoc.getJson());
 }
 function doBuild() {
+  if (building) return;
   const errs = validate(model).issues.filter(i => i.lvl === 'err');
   if (errs.length) { setStatus(`Сборка невозможна: ошибок ${errs.length} (см. «Проверка»)`, 'err'); return; }
   if (!inHost()) { setStatus('Сборка доступна при запуске из Eclipse', ''); return; }
   setStatus('Сборка…', '');
+  setBuilding(true);
   host('build', window.gwsoc.getJson());
 }
 
 document.getElementById('save').addEventListener('click', doSave);
-document.getElementById('toolchain').addEventListener('change', e => {
+document.getElementById('toolchain').addEventListener('change', e => { if (model) { model.build.toolchain = e.target.value; changed(); } });
+document.getElementById('placeOpt').addEventListener('change', e => {
   if (!model) return;
-  model.build.toolchain = e.target.value;
+  if (e.target.value === '') delete model.build.placeOption; else model.build.placeOption = e.target.value;
   changed();
 });
 document.getElementById('build').addEventListener('click', doBuild);
+document.getElementById('addBlock').addEventListener('click', () => model && openLibrary());
 document.getElementById('ioDefaults').addEventListener('click', () => model && ioDefaultsDialog());
 document.getElementById('zoomIn').addEventListener('click', () => { zoom = (zoom || currentScale()) * 1.2; applyZoom(); });
 document.getElementById('zoomOut').addEventListener('click', () => { zoom = Math.max(0.3, (zoom || currentScale()) / 1.2); applyZoom(); });
@@ -1166,10 +1628,19 @@ document.getElementById('canvas').addEventListener('wheel', e => {
   zoom = Math.max(0.3, Math.min(4, (zoom || currentScale()) * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
   applyZoom();
 }, { passive: false });
+document.getElementById('amap').addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-inst]');
+  if (tr) select({ kind: 'inst', name: tr.dataset.inst });
+});
+//Enter в поле панели - сохранить (как уход из поля)
+document.getElementById('settings').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); e.target.dispatchEvent(new Event('change', { bubbles: true })); }
+});
 window.addEventListener('resize', () => { if (!zoom) applyZoom(); });
 document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); doSave(); }
 });
+document.getElementById('placeOpt').innerHTML = opts(PLACE_OPTIONS, '');
 
 //Запуск: в Eclipse файл передаёт редактор (gwsoc.load), в браузере - параметр ?cfg=<url>
 window.addEventListener('DOMContentLoaded', () => {
@@ -1177,5 +1648,10 @@ window.addEventListener('DOMContentLoaded', () => {
   const cfg = new URLSearchParams(location.search).get('cfg');
   //В Eclipse функция gwsocHost может появиться позже DOMContentLoaded - файл тогда передаст редактор
   if (!cfg) { setStatus('Загрузка конфигурации…', ''); return; }
-  fetch(cfg).then(r => r.text()).then(t => window.gwsoc.load(t)).catch(e => setStatus('Не удалось загрузить ' + cfg + ': ' + e.message, 'err'));
+  fetch(cfg).then(r => r.text()).then(t => {
+    window.gwsoc.load(t);
+    //Ресурсы последней сборки (в Eclipse их передаёт редактор)
+    const url = new URL(`${(model.paths && model.paths.hw) || '../hw'}/impl/socgen/resources.json`, new URL(cfg, location.href));
+    fetch(url).then(r => r.ok ? r.text() : '').then(x => window.gwsoc.resources(x)).catch(() => {});
+  }).catch(e => setStatus('Не удалось загрузить ' + cfg + ': ' + e.message, 'err'));
 });

@@ -1,6 +1,6 @@
 {
   "format": "askorv32-gwsoc",
-  "version": 1,
+  "version": 2,
   "device": "GW1NR-LV9QN88PC6/I5",
   "paths": { "hw": "../hw", "top": "src/top.sv", "cst": "src/riscv.cst", "generator": "../sw/socgen/socgen.py" },
   "core": {
@@ -18,16 +18,13 @@
     "pll": { "mode": "auto", "targetMHz": 45, "idiv": 2, "fbdiv": 4, "odiv": 16 }
   },
   "reset": { "pin": 3 },
-  "blocks": {
-    "gpio": {
-      "enabled": true,
-      "base": "auto",
-      "lines": [10, 11, 13, 14, 15, 16]
-    },
-    "tm1638": { "enabled": true, "base": "auto", "dio": 25, "clk": 26, "stb": 27 },
-    "stim": { "enabled": true, "base": "auto", "width": 16, "out": 68, "irq": "plic" },
-    "uart": {
-      "enabled": true,
+  "periph": [
+    { "type": "gpio", "name": "GPIO", "base": "auto", "lines": [10, 11, 13, 14, 15, 16] },
+    { "type": "tm1638", "name": "TM1638", "base": "auto", "dio": 25, "clk": 26, "stb": 27 },
+    { "type": "stim", "name": "STIM", "base": "auto", "width": 16, "out": 68, "irq": "plic" },
+    {
+      "type": "uart",
+      "name": "UART0",
       "base": "auto",
       "tx": 17,
       "rx": 18,
@@ -37,7 +34,7 @@
       "fifo": 16,
       "irq": "plic"
     }
-  },
+  ],
   "ioDefaults": { "ioType": "LVCMOS18", "pull": "UP", "drive": "8", "vccio": "1.8" },
   "banks": {
     "0": { "ioType": "LVCMOS33", "vccio": "3.3" },
@@ -46,20 +43,20 @@
     "3": { "ioType": "LVCMOS18", "vccio": "1.8" }
   },
   "pins": {
-    "3": { "net": "rst_n" },
-    "10": { "net": "led[0]" },
-    "11": { "net": "led[1]" },
-    "13": { "net": "led[2]" },
-    "14": { "net": "led[3]" },
-    "15": { "net": "led[4]" },
-    "16": { "net": "led[5]" },
-    "17": { "net": "uart_tx" },
-    "18": { "net": "uart_rx" },
+    "3": { "net": "RESET" },
+    "10": { "net": "LED0" },
+    "11": { "net": "LED1" },
+    "13": { "net": "LED2" },
+    "14": { "net": "LED3" },
+    "15": { "net": "LED4" },
+    "16": { "net": "LED5" },
+    "17": { "net": "UART_TX" },
+    "18": { "net": "UART_RX" },
     "25": { "net": "GPIO[0]" },
     "26": { "net": "GPIO[1]" },
     "27": { "net": "GPIO[2]" },
-    "52": { "net": "clk" },
-    "68": { "net": "stim_out" }
+    "52": { "net": "CLOCK" },
+    "68": { "net": "STIM_OUT" }
   },
-  "build": { "toolchain": "gowin" }
+  "build": { "toolchain": "gowin", "placeOption": "0" }
 }

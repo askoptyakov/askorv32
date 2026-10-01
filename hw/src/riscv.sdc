@@ -2,7 +2,7 @@
 //clk - генератор платы 27 МГц; такт ядра и памяти даёт PLL (clk_pll в clock.sv).
 //tck_pad_i - JTAG отладчика (выделенные выводы GW1NR-9, IO_LOC не нужен). Сигналы JTAG выбираются
 //тактом clk в jtag_tap_gowin, поэтому пути между доменами не анализируются.
-create_clock -name clk     -period 37.037 -waveform {0 18.518} [get_ports {clk}]
+create_clock -name clk     -period 37.037 -waveform {0 18.518} [get_ports {CLOCK}]
 //Такт конвейерного ядра и памяти (CORE_TYPE = PIPELINE_CORE): работает на 45 МГц от PLL (параметры PLL_*
 //в top.sv), а ограничение - цель 50 МГц (20 нс). С целью выше рабочей частоты Gowin размещает и трассирует
 //лучше, чем с целью, равной ей (шаги 17 и 20 журнала в hw/info/performance_roadmap.md). Поэтому отрицательный

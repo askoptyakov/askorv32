@@ -136,8 +136,28 @@ public class GwsocEditor extends EditorPart {
             case "dirty" -> setDirty(true);
             case "save" -> { if (arg != null) writeFile(arg); }
             case "build" -> { if (arg != null && writeFile(arg)) runBuild(); }
+            case "readme" -> { if (arg != null) sendReadme(arg); }
             default -> { }
         }
+    }
+
+    //Описание модуля из библиотеки: hw/src/periph/<тип>/README.md (каталог hw - из paths.hw файла .gwsoc)
+    private void sendReadme(String type) {
+        String text;
+        if (!type.matches("[a-z0-9_]+")) {
+            text = "Недопустимое имя типа: " + type;
+        } else {
+            try (InputStream in = file.getContents(true)) {
+                String cfg = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                File hw = new File(file.getLocation().toFile().getParentFile(), jsonPath(cfg, "hw", "../hw"));
+                File md = new File(hw, "src/periph/" + type + "/README.md");
+                text = md.isFile() ? java.nio.file.Files.readString(md.toPath(), StandardCharsets.UTF_8)
+                                   : "Описание не найдено: " + md.getCanonicalPath();
+            } catch (IOException | CoreException e) {
+                text = "Не удалось прочитать описание: " + e.getMessage();
+            }
+        }
+        browser.execute("window.gwsoc && gwsoc.readme(" + jsString(type) + "," + jsString(text) + ");");
     }
 
     // --- Файл ---
@@ -146,9 +166,26 @@ public class GwsocEditor extends EditorPart {
             String text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             browser.execute("window.gwsoc && gwsoc.load(" + jsString(text) + ");");
             setDirty(false);
+            sendResources(text);
         } catch (IOException | CoreException e) {
             status("Не удалось прочитать " + file.getName() + ": " + e.getMessage(), "err");
         }
+    }
+
+    //Занятые ресурсы последней сборки (генератор пишет hw/impl/socgen/resources.json) - для панели ресурсов
+    private void sendResources(String cfgText) {
+        String res = "";
+        try {
+            File f = new File(new File(file.getLocation().toFile().getParentFile(), jsonPath(cfgText, "hw", "../hw")),
+                              "impl/socgen/resources.json");
+            if (f.isFile()) res = java.nio.file.Files.readString(f.toPath(), StandardCharsets.UTF_8);
+        } catch (IOException ignored) { }
+        browser.execute("window.gwsoc && gwsoc.resources(" + jsString(res) + ");");
+    }
+
+    private void progress(int pct, String text) {
+        if (browser != null && !browser.isDisposed())
+            browser.execute("window.gwsoc && gwsoc.progress(" + pct + "," + jsString(text) + ");");
     }
 
     private boolean writeFile(String json) {
@@ -214,13 +251,16 @@ public class GwsocEditor extends EditorPart {
         File generator = new File(cfg.getParentFile(), jsonPath(text, "generator", "../sw/socgen/socgen.py"));
         File hwDir = new File(cfg.getParentFile(), jsonPath(text, "hw", "../hw"));
         MessageConsole console = console();
-        status("Сборка… (ход - в консоли «" + CONSOLE_NAME + "»)", "");
+        status("Сборка…", "");   //Консоль сама не открывается: ход - полосой в конфигураторе, подробности - в консоли
 
         buildJob = new Job("Сборка ПЛИС askoRV32") {
             @Override
             protected IStatus run(IProgressMonitor monitor) {
                 int code = -1;
                 int warnings = 0;
+                monitor.beginTask("Сборка ПЛИС askoRV32", 100);
+                int done = 0;
+                Display.getDefault().asyncExec(() -> progress(0, "Генерация файлов"));
                 try (MessageConsoleStream out = console.newMessageStream()) {
                     List<String> cmd = new ArrayList<>(List.of(python(), generator.getCanonicalPath(), cfg.getCanonicalPath(), "--build"));
                     out.println("> " + String.join(" ", cmd));
@@ -232,6 +272,16 @@ public class GwsocEditor extends EditorPart {
                     try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                         String line;
                         while ((line = r.readLine()) != null) {
+                            //Ход сборки: строка «@@PROGRESS <проценты> <этап>» - в полосу на странице и в задачу Eclipse
+                            Matcher pm = PROGRESS.matcher(line);
+                            if (pm.matches()) {
+                                int pct = Math.min(100, Integer.parseInt(pm.group(1)));
+                                String stage = pm.group(2);
+                                if (pct > done) { monitor.worked(pct - done); done = pct; }
+                                monitor.subTask(pct + " % · " + stage);
+                                Display.getDefault().asyncExec(() -> progress(pct, stage));
+                                continue;
+                            }
                             out.println(line);
                             if (line.startsWith("Предупреждение")) warnings++;
                             if (monitor.isCanceled()) { p.destroy(); break; }
@@ -248,11 +298,17 @@ public class GwsocEditor extends EditorPart {
                     Thread.currentThread().interrupt();
                 }
                 refresh(hwDir, monitor);
+                monitor.done();
                 final int c = code, w = warnings;
                 Display.getDefault().asyncExec(() -> {
+                    try (InputStream in = file.getContents(true)) {
+                        sendResources(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+                    } catch (IOException | CoreException ignored) { }
                     if (c == 0) status(w == 0 ? "Сборка завершена" : "Сборка завершена, предупреждений: " + w + " (см. консоль)", "ok");
-                    else if (c == 1) status("Ошибки в конфигурации - см. консоль", "err");
-                    else status("Сборка не удалась - см. консоль", "err");
+                    else if (c == 1) status("Ошибки в конфигурации - см. консоль «" + CONSOLE_NAME + "»", "err");
+                    else status("Сборка не удалась - см. консоль «" + CONSOLE_NAME + "»", "err");
+                    //Конец сборки: кнопка снова активна, вместо шкалы - ресурсы; к статусу добавляется время сборки
+                    if (browser != null && !browser.isDisposed()) browser.execute("window.gwsoc && gwsoc.buildDone(" + (c == 0) + ");");
                 });
                 return Status.OK_STATUS;
             }
@@ -260,6 +316,8 @@ public class GwsocEditor extends EditorPart {
         buildJob.setUser(false);
         buildJob.schedule();
     }
+
+    private static final Pattern PROGRESS = Pattern.compile("@@PROGRESS (\\d+) (.*)");
 
     private static String python() {
         String p = System.getenv("GWSOC_PYTHON");
@@ -280,12 +338,10 @@ public class GwsocEditor extends EditorPart {
         for (IConsole c : mgr.getConsoles())
             if (CONSOLE_NAME.equals(c.getName()) && c instanceof MessageConsole mc) {
                 mc.clearConsole();
-                mgr.showConsoleView(mc);
                 return mc;
             }
         MessageConsole mc = new MessageConsole(CONSOLE_NAME, null);
         mgr.addConsoles(new IConsole[] { mc });
-        mgr.showConsoleView(mc);
         return mc;
     }
 

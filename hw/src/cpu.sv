@@ -16,10 +16,10 @@
 //==============================================================================================
 //DESCRIPTION: Всё, без чего система не работает: тактирование (rPLL), сброс, ядро, отладчик JTAG,
 //память команд и данных, CLINT, PLIC и системная шина. Пользовательская периферия подключается
-//снаружи, к порту шины регистров per_* (правила - hw/info/architecture.md, «Шина данных и
+//снаружи, к порту шины регистров bus_per (правила - hw/info/architecture.md, «Шина данных и
 //периферии»): на него уходят обращения к окну 0x1xxx_xxxx.
 //  0x0000_0000 IMEM (своя шина команд)   0x0200_0000 CLINT   0x0C00_0000 PLIC   0x1000_0000 DMEM
-//  0x1100_0000..0x1FFF_FFFF - порт per_* (пользовательская периферия; 0x1F00_0000 - устройства тестбенча)
+//  0x1100_0000..0x1FFF_FFFF - порт bus_per (пользовательская периферия; 0x1F00_0000 - устройства тестбенча)
 //Верхний уровень платы top.sv создаёт конфигуратор ПЛИС (sw/socgen) из fw/riscv.gwsoc: он
 //переопределяет параметры cpu и подключает периферию. Тесты ядра (hw/sim) моделируют cpu без
 //top.sv, поэтому от конфигурации платы не зависят. Этот файл правится вручную, top.sv - нет.
@@ -51,12 +51,12 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
              input  logic        tck_pad_i, tms_pad_i, tdi_pad_i,
              output logic        tdo_pad_o,
              //Порт пользовательской периферии: шина регистров (обращения вне системных окон)
-             output logic        per_clk,       //Такт шины (clk_dmem: такт ядра; у однотактного ядра с BSRAM - фаза данных)
-             output logic        per_rst,       //Сброс системы (кнопка или отладчик)
-             output logic [ 3:0] per_Write,     //Байтовые стробы записи
-             output logic        per_Read,      //Строб чтения (для регистров с побочным действием)
-             output logic [31:0] per_Addr, per_WData,
-             input  logic [31:0] per_RData,     //Данные чтения: при DMEM_TYPE = 1 - на следующем такте
+             output logic        clk_per,       //Такт шины (clk_dmem: такт ядра; у однотактного ядра с BSRAM - фаза данных)
+             output logic        rst_per,       //Сброс системы (кнопка или отладчик)
+             output logic [ 3:0] bus_per_Write,     //Байтовые стробы записи
+             output logic        bus_per_Read,      //Строб чтения (для регистров с побочным действием)
+             output logic [31:0] bus_per_Addr, bus_per_WData,
+             input  logic [31:0] bus_per_RData,     //Данные чтения: при DMEM_TYPE = 1 - на следующем такте
              //Прерывания пользовательской периферии
              input  logic [15:0]           irq_local,   //Локальные LI0..LI15 (mcause 16..31)
              input  logic [PLIC_SOURCES:1] irq_src      //Источники PLIC 1..PLIC_SOURCES (-> MEI, mcause 11)
@@ -101,8 +101,8 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
         //Сброс системы: кнопка или модуль отладки (ndmreset). Модуль отладки сбрасывает только кнопка
     logic ndmreset, rst_sys;
     assign rst_sys = rst_sync | ndmreset;
-    assign per_clk = clk_dmem;
-    assign per_rst = rst_sys;
+    assign clk_per = clk_dmem;
+    assign rst_per = rst_sys;
         //Интерфейс памяти команд
     logic [31:0] imem_data;
     logic        imem_re, imem_rst;
@@ -223,12 +223,12 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
             memmux
              (.clk(clk_dmem), .rst(rst_sys),
               .mWrite(bus_Write), .mRead(bus_Read), .mAddr(bus_Addr), .mWData(bus_WData), .mRData(dmem_ReadData),
-              .sWrite({per_Write, mem_Write,     clint_Write,     plic_Write}),
+              .sWrite({bus_per_Write, mem_Write,     clint_Write,     plic_Write}),
               .sRead (sRead),
-              .sAddr ({per_Addr,  mem_Addr,      clint_Addr,      plic_Addr}),
-              .sWData({per_WData, mem_WriteData, clint_WriteData, plic_WriteData}),
-              .sRData({per_RData, mem_ReadData,  clint_ReadData,  plic_ReadData}));
-    assign per_Read = sRead[3];
+              .sAddr ({bus_per_Addr,  mem_Addr,      clint_Addr,      plic_Addr}),
+              .sWData({bus_per_WData, mem_WriteData, clint_WriteData, plic_WriteData}),
+              .sRData({bus_per_RData, mem_ReadData,  clint_ReadData,  plic_ReadData}));
+    assign bus_per_Read = sRead[3];
 
     //#6 Память данных
     mem #(DMEM_TYPE, SYNTH_DMEM_SIZE, BSRAM_DMEM_SIZE, DMEM_INIT_FILE) dmem

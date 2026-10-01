@@ -5,12 +5,14 @@
   hw/src/top.sv     - верхний уровень платы: выводы, параметры процессора cpu.sv, карта адресов
                     и шина пользовательской периферии, сами устройства и их прерывания;
   hw/src/riscv.cst  - назначение выводов (IO_LOC/IO_PORT) для Gowin EDA и nextpnr;
-  fw/Core/Inc/soc.h - для прошивки: частота, адреса устройств, номера источников PLIC и имена
-                    обработчиков, настройки UART.
+  fw/Core/Inc/soc.h - для прошивки: частота, адреса и указатели устройств, номера источников PLIC
+                    и имена обработчиков, настройки устройств, имена выводов GPIO (<ЦЕПЬ>_PIN/_PORT).
 С ключом --build собирает проект ПЛИС: в Gowin EDA (gw_sh, проект hw/riscv.gprj) или открытым
 маршрутом Yosys + nextpnr-himbaechel + apicula - по build.toolchain в .gwsoc или ключу --toolchain.
 
-Правила (адреса, rPLL, проверки) продублированы в web/app.js - при изменении править оба места.
+Пользовательская периферия - список экземпляров "periph" (тип, имя, адрес, настройки, выводы);
+имя экземпляра - имя устройства в прошивке (указатель на регистры), в top.sv - его строчная форма.
+Правила (адреса, rPLL, проверки, имена) продублированы в web/app.js - при изменении править оба места.
 
 Запуск:  py sw/socgen/socgen.py fw/riscv.gwsoc [--check] [--build [--toolchain gowin|apicula]]
                                                 [--gowin <каталог IDE>] [--oss C:/oss-cad-suite]
@@ -35,13 +37,14 @@ JTAG_PINS = {5: "TMS", 6: "TCK", 7: "TDI", 8: "TDO"}
 ODIV_SET = [2, 4, 8, 16, 32, 48, 64, 80, 96, 112, 128]
 PLL = dict(inMin=3, inMax=400, pfdMin=3, pfdMax=400, vcoMin=400, vcoMax=1200, outMin=3.125, outMax=600)
 
-BLOCKS = {  # порядок = порядок подключения к memmux, портов top и номеров источников PLIC
-    "gpio":   dict(title="GPIO",   slot=0x11),
-    "tm1638": dict(title="TM1638", slot=0x12),
-    "stim":   dict(title="STIM",   slot=0x13, irq="irq_stim"),
-    "uart":   dict(title="UART",   slot=0x14, irq="irq_uart"),
+#Библиотека устройств (как TYPES в web/app.js). slot - окно адресов первого экземпляра при "auto";
+#cat - группа на схеме: iface - интерфейсы, gpio - выводы общего назначения, custom - своя периферия
+TYPES = {
+    "gpio":   dict(title="GPIO",   slot=0x11, cat="gpio",   irq=False, module="gpio_top"),
+    "tm1638": dict(title="TM1638", slot=0x12, cat="custom", irq=False, module="tm1638_top"),
+    "stim":   dict(title="STIM",   slot=0x13, cat="custom", irq=True,  module="stim_top"),
+    "uart":   dict(title="UART",   slot=0x14, cat="iface",  irq=True,  module="uart_top"),
 }
-PREFIX = {"gpio": "gpio", "tm1638": "tm", "stim": "tim", "uart": "uart"}   #Префикс сигналов шины устройства в top.sv
 UART_BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600]
 UART_PARITY = {"none": 0, "even": 1, "odd": 2}
 FIFO_DEPTHS = [8, 16, 32]
@@ -49,21 +52,23 @@ MEM_KB = [8, 16, 32]
 BSRAM_TOTAL = 26           #Блоков BSRAM (18 кбит, 2 кБайт данных) в GW1NR-9
 FIXED_REGIONS = {"IMEM": 0x00, "CLINT": 0x02, "PLIC": 0x0C, "DMEM": 0x10, "SIM": 0x1F}
 AUTO_FIRST, AUTO_LAST = 0x11, 0x1E
+PLACE_OPTIONS = {"0": "быстрее компиляция", "1": "лучше трассируемость", "2": "лучше тайминги"}
 
 NET_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_$]*)(?:\[(\d+)\])?$")
+NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,23}$")
 SV_KEYWORDS = {"input", "output", "inout", "wire", "logic", "reg", "module", "endmodule", "assign", "always",
                "begin", "end", "if", "else", "case", "for", "generate", "parameter", "localparam", "int", "bit"}
-#Имена, уже занятые в top.sv: порт cpu, сигналы, экземпляры и модули, параметры (как RESERVED_NETS в web/app.js)
-RESERVED_NETS = {"tck_pad_i", "tms_pad_i", "tdi_pad_i", "tdo_pad_o", "per_clk", "per_rst", "per_Write",
-                 "per_Read", "per_Addr", "per_WData", "per_RData", "irq_stim", "irq_uart", "irq_local", "irq_src",
-                 "sRead", "top", "cpu", "permux", "memmux", "gpio", "gpio_top", "stim", "stim_top", "tm1638", "tm1638_top",
-                 "uart", "uart_top",
+#Имена, занятые в top.sv независимо от состава периферии: порт cpu, сигналы, экземпляры и модули, параметры
+#(сигналы шины устройств <экземпляр>_Write... и <ИМЯ>_BASE добавляет reserved_nets)
+RESERVED_NETS = {"tck_pad_i", "tms_pad_i", "tdi_pad_i", "tdo_pad_o", "clk_per", "rst_per", "bus_per_Write",
+                 "bus_per_Read", "bus_per_Addr", "bus_per_WData", "bus_per_RData", "irq_local", "irq_src",
+                 "sRead", "top", "cpu", "permux", "memmux", "gpio_top", "stim_top", "tm1638_top", "uart_top",
                  "CORE_TYPE", "M_EXT", "DIV_BPC", "IMEM_TYPE", "BSRAM_IMEM_SIZE", "SYNTH_IMEM_SIZE", "IMEM_INIT_FILE",
                  "DMEM_TYPE", "BSRAM_DMEM_SIZE", "SYNTH_DMEM_SIZE", "DMEM_INIT_FILE", "DEBUG_EN", "PLIC_SOURCES",
                  "FCLKIN", "XTAL_KHZ", "PLL_IDIV_SEL", "PLL_FBDIV_SEL", "PLL_ODIV_SEL", "WIN_MASK", "CLK_BASE_MHZ",
                  "CLK_DMEM_MHZ"}
-#Сигналы шины устройств (gpio_Write, tim_Addr...) и их адреса (GPIO_BASE...)
-RESERVED_RE = re.compile(r"^(gpio|tim|tm|uart)_(Write|Addr|WriteData|ReadData)$|^(GPIO|TM1638|STIM|UART)_BASE$")
+#Имена экземпляров, занятые в прошивке (periphery.h, soc.h, драйверы)
+RESERVED_C = {"CLINT", "PLIC", "SOC", "SYSCLK_HZ", "MTIME_HZ", "LI", "IRQ", "NULL", "MODE", "OUT", "IN"}
 
 
 class ConfigError(Exception):
@@ -83,27 +88,91 @@ def slot_hex(slot):
     return f"32'h{v[:4]}_{v[4:]}"
 
 
+# --- Модель: переход со старого формата и экземпляры ---
+def migrate(m):
+    """Формат 1 ("blocks": фиксированные GPIO/TM1638/STIM/UART с enabled) -> формат 2 ("periph": список
+    экземпляров). Включённые блоки становятся экземплярами с именами типов, порядок прежний."""
+    if "periph" in m:
+        return m
+    periph = []
+    for t, b in (m.pop("blocks", None) or {}).items():
+        if t in TYPES and b.get("enabled"):
+            inst = {"type": t, "name": TYPES[t]["title"]}
+            inst.update({k: v for k, v in b.items() if k != "enabled"})
+            periph.append(inst)
+    periph.sort(key=lambda i: list(TYPES).index(i["type"]))
+    m["periph"] = periph
+    m["version"] = 2
+    return m
+
+
+def insts(m, typ=None):
+    return [i for i in m["periph"] if typ is None or i["type"] == typ]
+
+
+def hdl(inst):
+    """Имя экземпляра в top.sv и префикс его сигналов шины."""
+    return inst["name"].lower()
+
+
+def inst_title(inst):
+    """Подпись экземпляра: имя, а если оно не совпадает с типом - «имя (тип)»."""
+    t = TYPES[inst["type"]]["title"]
+    return inst["name"] if inst["name"] == t else f"{inst['name']} ({t})"
+
+
+def first_of_type(m, inst):
+    return insts(m, inst["type"])[0] is inst
+
+
 # --- Сигналы ---
+def inst_signals(inst):
+    """Сигналы устройства, которым нужен вывод: (ключ, подпись, направление, обязателен)."""
+    t = inst["type"]
+    if t == "gpio":
+        return [(f"line{i}", f"линия {i}", "inout", True) for i in range(len(inst.get("lines", [])))]
+    if t == "tm1638":
+        return [("dio", "DIO", "inout", True), ("clk", "CLK", "output", True), ("stb", "STB", "output", True)]
+    if t == "stim":
+        return [("out", "выход ШИМ", "output", False)] if inst.get("out") is not None else []
+    if t == "uart":
+        return [("tx", "TX", "output", True), ("rx", "RX", "input", True)]
+    return []
+
+
+def inst_pin(inst, key):
+    if key.startswith("line"):
+        return inst["lines"][int(key[4:])]
+    return inst.get(key)
+
+
 def signals(m):
-    s = [dict(id="clk", block="sys", name="Кварц", dir="input", pin=m["clock"].get("xtalPin")),
-         dict(id="rst", block="sys", name="Сброс rst_n", dir="input", pin=m["reset"].get("pin"))]
-    b = m["blocks"]
-    if b["gpio"].get("enabled"):
-        for i, p in enumerate(b["gpio"].get("lines", [])):
-            s.append(dict(id=f"gpio.{i}", block="gpio", name=f"GPIO {i}", dir="inout", pin=p))
-    if b["tm1638"].get("enabled"):
-        for k, d in (("dio", "inout"), ("clk", "output"), ("stb", "output")):
-            s.append(dict(id=f"tm1638.{k}", block="tm1638", name=f"TM1638 {k.upper()}", dir=d, pin=b["tm1638"].get(k)))
-    if b["stim"].get("enabled") and b["stim"].get("out") is not None:
-        s.append(dict(id="stim.out", block="stim", name="STIM выход", dir="output", pin=b["stim"]["out"]))
-    if b["uart"].get("enabled"):
-        s.append(dict(id="uart.tx", block="uart", name="UART TX", dir="output", pin=b["uart"].get("tx")))
-        s.append(dict(id="uart.rx", block="uart", name="UART RX", dir="input", pin=b["uart"].get("rx")))
+    s = [dict(id="clk", inst=None, key="clk", name="Кварц", dir="input", pin=m["clock"].get("xtalPin")),
+         dict(id="rst", inst=None, key="rst", name="Сброс rst_n", dir="input", pin=m["reset"].get("pin"))]
+    for inst in insts(m):
+        for key, label, d, _ in inst_signals(inst):
+            s.append(dict(id=f"{inst['name']}.{key}", inst=inst, key=key, name=f"{inst['name']} {label}",
+                          dir=d, pin=inst_pin(inst, key)))
     return s
 
 
 def net_of(m, pin):
     return (m["pins"].get(str(pin)) or {}).get("net", "")
+
+
+def c_name(net):
+    """Имя цепи -> имя в Си (define): LED[3] -> LED3, заглавными (скобки индекса убираются, $ -> _)."""
+    mm = NET_RE.match(net)
+    return (mm.group(1) + (mm.group(2) or "")).replace("$", "_").upper()
+
+
+def reserved_nets(m):
+    """Все имена, занятые в top.sv при текущем составе периферии."""
+    r = set(RESERVED_NETS)
+    for inst in insts(m):
+        h = hdl(inst)
+        r |= {h, f"{h}_Write", f"{h}_Addr", f"{h}_WriteData", f"{h}_ReadData", f"irq_{h}", f"{inst['name'].upper()}_BASE"}
+    return r
 
 
 # --- Адреса ---
@@ -119,32 +188,34 @@ def parse_base(v):
 
 
 def address_map(m, errors):
+    """Окна адресов экземпляров: {имя: слот}. Сначала ручные адреса, затем автоматические; при "auto" первый
+    экземпляр типа занимает окно типа, остальные - первое свободное с 0x11."""
     taken = {slot: name for name, slot in FIXED_REGIONS.items()}
     result = {}
     for pass_ in ("manual", "auto"):
-        for k, meta in BLOCKS.items():
-            b = m["blocks"][k]
-            base = parse_base(b.get("base", "auto"))
-            if (base is None) != (pass_ == "auto") or not b.get("enabled"):
+        for inst in insts(m):
+            base = parse_base(inst.get("base", "auto"))
+            if (base is None) != (pass_ == "auto"):
                 continue
+            name = inst["name"]
             if base is None:
-                s = meta["slot"]
+                s = TYPES[inst["type"]]["slot"] if first_of_type(m, inst) else AUTO_FIRST
                 if s in taken:
                     s = AUTO_FIRST
                     while s <= AUTO_LAST and s in taken:
                         s += 1
                 if s > AUTO_LAST:
-                    errors.append(f"{meta['title']}: нет свободного окна адресов")
+                    errors.append(f"{name}: нет свободного окна адресов")
                     continue
             else:
                 if base < 0 or base > 0xFFFFFFFF or base & 0x00FFFFFF:
-                    errors.append(f"{meta['title']}: адрес должен быть кратен 0x0100_0000 (окно 16 МБайт)")
+                    errors.append(f"{name}: адрес должен быть кратен 0x0100_0000 (окно 16 МБайт)")
                     continue
                 s = base >> 24
                 if s in taken:
-                    errors.append(f"{meta['title']}: адрес {slot_hex(s)} уже занят ({taken[s]})")
-            taken[s] = meta["title"]
-            result[k] = s
+                    errors.append(f"{name}: адрес {slot_hex(s)} уже занят ({taken[s]})")
+            taken[s] = name
+            result[name] = s
     return result
 
 
@@ -208,9 +279,8 @@ def sysclk_hz(m):
     return round(fout * 1e6 / (3 if div3 else 1))
 
 
-def uart_div(m):
-    """Делитель UART для скорости из конфигурации: div, фактическая скорость, ошибка в %."""
-    u = m["blocks"]["uart"]
+def uart_div(m, u):
+    """Делитель UART для скорости экземпляра: div, фактическая скорость, ошибка в %."""
     f, baud = sysclk_hz(m), int(u.get("baud", 115200))
     div = max(0, round(f / baud) - 1)
     real = f / (div + 1)
@@ -218,30 +288,27 @@ def uart_div(m):
 
 
 def bsram_blocks(m):
-    """Блоки BSRAM: IMEM и DMEM по 2 кБайт на блок, шрифт TM1638 - один блок. Возвращает (занято, всего)."""
+    """Блоки BSRAM: IMEM и DMEM по 2 кБайт на блок, шрифт каждого TM1638 - один блок. (занято, всего)."""
     core = m["core"]
     used = sum(int((core.get(k) or {}).get("kb", 8)) // 2 for k in ("imem", "dmem")
                if (core.get(k) or {}).get("type", "bsram") == "bsram")
-    if m["blocks"]["tm1638"].get("enabled"):
-        used += 1
-    return used, BSRAM_TOTAL
+    return used + len(insts(m, "tm1638")), BSRAM_TOTAL
 
 
 def irq_map(m):
-    """Прерывания устройств: по умолчанию - источники PLIC 1, 2, ... в порядке BLOCKS; по выбору
+    """Прерывания устройств: по умолчанию - источники PLIC 1, 2, ... в порядке списка периферии; по выбору
     (irq = "local") - локальные линии LI0, LI1, ...; irq = "none" - не подключено.
-    Возвращает {блок: ("plic", номер) | ("local", номер)}."""
+    Возвращает {имя экземпляра: ("plic", номер) | ("local", номер)}."""
     res, n_plic, n_loc = {}, 0, 0
-    for k, meta in BLOCKS.items():
-        b = m["blocks"][k]
-        if "irq" not in meta or not b.get("enabled"):
+    for inst in insts(m):
+        if not TYPES[inst["type"]]["irq"]:
             continue
-        route = b.get("irq", "plic")
+        route = inst.get("irq", "plic")
         if route == "plic":
             n_plic += 1
-            res[k] = ("plic", n_plic)
+            res[inst["name"]] = ("plic", n_plic)
         elif route == "local":
-            res[k] = ("local", n_loc)
+            res[inst["name"]] = ("local", n_loc)
             n_loc += 1
     return res
 
@@ -255,9 +322,42 @@ def pin_attrs(m, dev, pin):
     return a
 
 
+def gpio_pins(m):
+    """Выводы GPIO для прошивки: [(экземпляр, линия, вывод, цепь, имя в Си)]."""
+    out = []
+    for inst in insts(m, "gpio"):
+        for i, pin in enumerate(inst.get("lines", [])):
+            net = net_of(m, pin) if pin is not None else ""
+            if net and NET_RE.match(net):
+                out.append((inst, i, pin, net, c_name(net)))
+    return out
+
+
 # --- Проверка ---
 def validate(m, dev):
     errors, warns = [], []
+
+    #Имена экземпляров: идентификатор Си и SystemVerilog, уникальные без учёта регистра
+    seen = {}
+    for inst in insts(m):
+        n, t = inst.get("name", ""), inst.get("type")
+        if t not in TYPES:
+            errors.append(f"{n}: неизвестный тип устройства «{t}»")
+            continue
+        if not NAME_RE.match(n):
+            errors.append(f"Имя устройства «{n}»: латиница, цифры и _, не с цифры, до 24 символов")
+            continue
+        if n.lower() in seen:
+            errors.append(f"Имя устройства «{n}» повторяется ({seen[n.lower()]})")
+        seen[n.lower()] = n
+        if n.upper() in RESERVED_C or n.lower() in RESERVED_NETS or n.lower() in SV_KEYWORDS:
+            errors.append(f"Имя устройства «{n}» занято в прошивке или в top.sv")
+        own = [k for k, v in TYPES.items() if v["title"] == n]
+        if own and (own[0] != t or not first_of_type(m, inst)):
+            errors.append(f"Имя «{n}» - имя типа {n}: его может носить только первый блок этого типа")
+    if errors:
+        return errors, warns, {}, {}
+
     sigs = signals(m)
     by_pin = {}
     for s in sigs:
@@ -276,6 +376,7 @@ def validate(m, dev):
         if len(lst) > 1:
             errors.append(f"Вывод {pin}: {', '.join(s['name'] for s in lst)} - конфликт")
 
+    reserved = reserved_nets(m)
     nets, buses = {}, {}
     for pin in by_pin:
         net = net_of(m, pin)
@@ -286,7 +387,7 @@ def validate(m, dev):
         if not mm or mm.group(1) in SV_KEYWORDS:
             errors.append(f"Вывод {pin}: имя «{net}» недопустимо для порта SystemVerilog")
             continue
-        if mm.group(1) in RESERVED_NETS or RESERVED_RE.match(mm.group(1)):
+        if mm.group(1) in reserved:
             errors.append(f"Вывод {pin}: имя «{mm.group(1)}» уже занято в top.sv - выберите другое")
             continue
         if net in nets:
@@ -304,6 +405,21 @@ def validate(m, dev):
             miss = [i for i in range(max(b["idx"]) + 1) if i not in b["idx"]]
             if miss:
                 errors.append(f"Шина «{name}[{max(b['idx'])}:0]»: нет разрядов {', '.join(map(str, miss))}")
+
+    #Имена выводов GPIO в Си: <ИМЯ>_PIN, <ИМЯ>_PORT; шина - <ИМЯ>_MSK, <ИМЯ>_POS, <ИМЯ>_PORT
+    cnames = {}
+    for inst, i, pin, net, cn in gpio_pins(m):
+        if cn in cnames and cnames[cn] != net:
+            errors.append(f"Цепи «{cnames[cn]}» и «{net}» дают в Си одно имя {cn}_PIN")
+        cnames[cn] = net
+    bus_port = {}
+    for inst, i, pin, net, cn in gpio_pins(m):
+        mm = NET_RE.match(net)
+        if mm.group(2) is not None:
+            bus_port.setdefault(mm.group(1), set()).add(inst["name"])
+    for bname, ports in bus_port.items():
+        if len(ports) > 1:
+            warns.append(f"Шина «{bname}» на разных GPIO ({', '.join(sorted(ports))}): {bname.upper()}_MSK в soc.h не создаётся")
 
     #Банк: одно напряжение VCCIO на все выводы (иначе Gowin EDA остановит размещение)
     bank_v = {}
@@ -343,31 +459,39 @@ def validate(m, dev):
     if sum(1 for r, _ in irqs.values() if r == "local") > 16:
         errors.append("Локальных линий прерываний всего 16")
 
-    #UART: делитель скорости
-    u = m["blocks"]["uart"]
-    if u.get("enabled"):
-        if u.get("parity", "none") not in UART_PARITY:
-            errors.append("UART: чётность none, even или odd")
-        if int(u.get("stop", 1)) not in (1, 2):
-            errors.append("UART: стоп-битов 1 или 2")
-        if int(u.get("fifo", 16)) not in FIFO_DEPTHS:
-            errors.append("UART: глубина FIFO 8, 16 или 32")
-        div, real, err = uart_div(m)
-        if div < 7 or div > 0xFFFF:
-            errors.append(f"UART: скорость {u.get('baud')} при частоте {sysclk_hz(m)} Гц не получить (div = {div}, нужно 7..65535)")
-        elif err > 2.0:
-            errors.append(f"UART: ошибка скорости {err:.2f} % (фактически {real:.0f} бит/с) - больше 2 %")
-        elif err > 1.0:
-            warns.append(f"UART: ошибка скорости {err:.2f} % (фактически {real:.0f} бит/с)")
+    #Настройки устройств
+    for inst in insts(m):
+        n = inst["name"]
+        if inst["type"] == "gpio":
+            if not inst.get("lines"):
+                errors.append(f"{n}: нет ни одной линии")
+            elif len(inst["lines"]) > 32:
+                errors.append(f"{n}: не больше 32 линий")
+        if inst["type"] == "stim" and int(inst.get("width", 16)) not in (16, 32):
+            errors.append(f"{n}: разрядность 16 или 32")
+        if inst["type"] == "uart":
+            if inst.get("parity", "none") not in UART_PARITY:
+                errors.append(f"{n}: чётность none, even или odd")
+            if int(inst.get("stop", 1)) not in (1, 2):
+                errors.append(f"{n}: стоп-битов 1 или 2")
+            if int(inst.get("fifo", 16)) not in FIFO_DEPTHS:
+                errors.append(f"{n}: глубина FIFO 8, 16 или 32")
+            div, real, err = uart_div(m, inst)
+            if div < 7 or div > 0xFFFF:
+                errors.append(f"{n}: скорость {inst.get('baud')} при частоте {sysclk_hz(m)} Гц не получить (div = {div}, нужно 7..65535)")
+            elif err > 2.0:
+                errors.append(f"{n}: ошибка скорости {err:.2f} % (фактически {real:.0f} бит/с) - больше 2 %")
+            elif err > 1.0:
+                warns.append(f"{n}: ошибка скорости {err:.2f} % (фактически {real:.0f} бит/с)")
+
+    po = str((m.get("build") or {}).get("placeOption", ""))
+    if po and po not in PLACE_OPTIONS:
+        errors.append(f"Place_Option: 0, 1 или 2 (сейчас «{po}»)")
 
     xp = m["clock"].get("xtalPin")
     if xp in dev["byNum"] and not re.search(r"GCLK|PLL_T_IN", dev["byNum"][xp].get("cfg", "")):
         warns.append(f"Кварц на выводе {xp} без GCLK/PLL_IN: такт пойдёт по обычной трассировке")
     errors += ["rPLL: " + e for e in resolve_pll(m)[3]]
-    if m["blocks"]["gpio"].get("enabled") and not m["blocks"]["gpio"].get("lines"):
-        errors.append("GPIO: нет ни одной линии")
-    if m["blocks"]["gpio"].get("enabled") and len(m["blocks"]["gpio"]["lines"]) > 32:
-        errors.append("GPIO: не больше 32 линий")
     bases = address_map(m, errors)
     return errors, warns, by_pin, bases
 
@@ -414,13 +538,12 @@ def fmt_mhz(x):
 
 
 def gen_top(m, bases, cfg_rel):
-    c, core, b = m["clock"], m["core"], m["blocks"]
+    c, core = m["clock"], m["core"]
     p = c["pll"]
     pfd, fout, vco, _ = resolve_pll(m)
-    sigs = signals(m)
+    sigs = [s for s in signals(m) if s["pin"] is not None]
     ports = ports_of(m, sigs)
-    net = {s["id"]: net_of(m, s["pin"]) for s in sigs if s["pin"] is not None}
-    pin_of = {s["id"]: s["pin"] for s in sigs}
+    net = {s["id"]: net_of(m, s["pin"]) for s in sigs}
 
     L = []
     w = L.append
@@ -428,7 +551,7 @@ def gen_top(m, bases, cfg_rel):
     w("// top.sv - ВЕРХНИЙ УРОВЕНЬ askoRV32. ФАЙЛ СОЗДАН КОНФИГУРАТОРОМ ПЛИС - НЕ РЕДАКТИРУЙТЕ ВРУЧНУЮ.")
     w(f"// Источник: {cfg_rel}; генератор: sw/socgen/socgen.py (кнопка «Собрать» в Eclipse).")
     w("// Процессор (ядро, память, отладчик, CLINT, PLIC) - в cpu.sv, он правится вручную; здесь -")
-    w("// параметры платы для cpu и пользовательская периферия на его порту per_*.")
+    w("// параметры платы для cpu и пользовательская периферия на его порту bus_per.")
     w("//==============================================================================================")
     w("")
     coretype = 1 if core.get("coreType") == "singlecycle" else 0
@@ -460,7 +583,7 @@ def gen_top(m, bases, cfg_rel):
     ]
     items = [x for x in params if x[1] is not None]
     w("module top #(")
-    for i, x in enumerate(params):
+    for x in params:
         if x[1] is None:
             w(f"                {x[0]}")
             continue
@@ -469,19 +592,15 @@ def gen_top(m, bases, cfg_rel):
         decl = f"             parameter {typ + ' ' if typ else ''}{name}".ljust(45) + f"= {val}{')' if last else ','}"
         w(decl + (f" //{com}" if com else ""))
 
-    # --- Порты ---
+    # --- Порты: по группам - такт и сброс, затем устройства в порядке списка ---
     w("   (")
-    groups = [("Такт и сброс", "sys"), ("GPIO", "gpio"), ("TM1638", "tm1638"), ("STIM", "stim"), ("UART", "uart")]
-    block_of_port = {}
+    group_of_port = {}
     for s in sigs:
-        if s["pin"] is None:
-            continue
-        name = NET_RE.match(net_of(m, s["pin"])).group(1)
-        block_of_port.setdefault(name, s["block"])
-    # Запятая ставится после каждого порта, кроме последнего; порты JTAG идут отдельным блоком
+        group_of_port.setdefault(NET_RE.match(net_of(m, s["pin"])).group(1), s["inst"]["name"] if s["inst"] else None)
+    groups = [("Такт и сброс", None)] + [(inst_title(i), i["name"]) for i in insts(m)]
     entries = []
-    for title, blk in groups:
-        names = [n for n in ports if block_of_port.get(n) == blk]
+    for title, key in groups:
+        names = [n for n in ports if group_of_port.get(n) == key]
         if not names:
             continue
         entries.append(("//" + title, None))
@@ -515,16 +634,16 @@ def gen_top(m, bases, cfg_rel):
         w("`endif")
 
     # --- Карта адресов пользовательской периферии ---
-    order = [k for k in BLOCKS if k in bases]
-    names = {"gpio": "GPIO", "tm1638": "TM1638", "stim": "STIM", "uart": "UART"}
+    order = [i for i in insts(m) if i["name"] in bases]
     w("    //#1 Карта адресов пользовательской периферии: у каждого устройства окно 16 МБайт (маска 0xFF00_0000).")
     w("    //Системные окна - в cpu.sv: IMEM 0x0000_0000, CLINT 0x0200_0000, PLIC 0x0C00_0000, DMEM 0x1000_0000;")
-    w("    //0x1F00_0000 - устройства тестбенча. Всё вне системных окон cpu отдаёт на порт per_*")
-    for k in order:
-        w(f"    localparam logic [31:0] {names[k] + '_BASE':<12}= {slot_hex(bases[k])};")
-    w(f"    localparam logic [31:0] {'WIN_MASK':<12}= 32'hFF00_0000;")
+    w("    //0x1F00_0000 - устройства тестбенча. Всё вне системных окон cpu отдаёт на порт bus_per")
+    bw = max([12] + [len(i["name"]) + 6 for i in order])
+    for i in order:
+        w(f"    localparam logic [31:0] {i['name'].upper() + '_BASE':<{bw}}= {slot_hex(bases[i['name']])};")
+    w(f"    localparam logic [31:0] {'WIN_MASK':<{bw}}= 32'hFF00_0000;")
     w("")
-    w("    //Частота шины периферии (per_clk), МГц, целая часть: для делителей периферии (TM1638).")
+    w("    //Частота шины периферии (clk_per), МГц, целая часть: для делителей периферии (TM1638).")
     w("    //Однотактное ядро с BSRAM делит базовую частоту на 3. Прошивке то же значение задаёт SYSCLK_HZ.")
     w("    localparam int CLK_BASE_MHZ = XTAL_KHZ * (PLL_FBDIV_SEL + 1) / (PLL_IDIV_SEL + 1) / 1000;")
     w("    localparam int CLK_DMEM_MHZ = ((IMEM_TYPE | DMEM_TYPE) & CORE_TYPE) ? CLK_BASE_MHZ / 3 : CLK_BASE_MHZ;")
@@ -533,10 +652,10 @@ def gen_top(m, bases, cfg_rel):
     # --- Процессор ---
     w("    //#2 Процессор (cpu.sv): такт, сброс, ядро, отладчик, память команд и данных, CLINT, PLIC.")
     w("    //Параметры платы переопределяют значения по умолчанию из cpu.sv")
-    w("    logic        per_clk, per_rst;")
-    w("    logic [ 3:0] per_Write;")
-    w("    logic        per_Read;")
-    w("    logic [31:0] per_Addr, per_WData, per_RData;")
+    w("    logic        clk_per, rst_per;")
+    w("    logic [ 3:0] bus_per_Write;")
+    w("    logic        bus_per_Read;")
+    w("    logic [31:0] bus_per_Addr, bus_per_WData, bus_per_RData;")
     w("    logic [15:0] irq_local;")
     w("    logic [PLIC_SOURCES:1] irq_src;")
     w("")
@@ -547,93 +666,91 @@ def gen_top(m, bases, cfg_rel):
     w("          .FCLKIN(FCLKIN), .PLL_IDIV_SEL(PLL_IDIV_SEL), .PLL_FBDIV_SEL(PLL_FBDIV_SEL), .PLL_ODIV_SEL(PLL_ODIV_SEL))")
     w("        cpu (.clk(" + net["clk"] + "), .rst_n(" + net["rst"] + "),")
     w("             .tck_pad_i(tck_pad_i), .tms_pad_i(tms_pad_i), .tdi_pad_i(tdi_pad_i), .tdo_pad_o(tdo_pad_o),")
-    w("             .per_clk(per_clk), .per_rst(per_rst),")
-    w("             .per_Write(per_Write), .per_Read(per_Read), .per_Addr(per_Addr), .per_WData(per_WData), .per_RData(per_RData),")
+    w("             .clk_per(clk_per), .rst_per(rst_per),")
+    w("             .bus_per_Write(bus_per_Write), .bus_per_Read(bus_per_Read), .bus_per_Addr(bus_per_Addr), .bus_per_WData(bus_per_WData), .bus_per_RData(bus_per_RData),")
     w("             .irq_local(irq_local), .irq_src(irq_src));")
     w("")
 
     # --- Шина пользовательской периферии ---
-    pre = PREFIX
     n = len(order)
     if n:
-        cat = lambda suf: "{" + ", ".join(f"{pre[k]}_{suf}" for k in order) + "}"
+        pre = [hdl(i) for i in order]
+        cat = lambda suf: "{" + ", ".join(f"{h}_{suf}" for h in pre) + "}"
         w(f"    //#3 Шина пользовательской периферии (memmux): ведомые перечислены от старшего номера к младшему")
-        w(f"    logic [ 3:0] {', '.join(pre[k] + '_Write' for k in order)};")
-        w(f"    logic [31:0] {', '.join(pre[k] + '_Addr' for k in order)};")
-        w(f"    logic [31:0] {', '.join(pre[k] + '_WriteData' for k in order)};")
-        w(f"    logic [31:0] {', '.join(pre[k] + '_ReadData' for k in order)};")
+        w(f"    logic [ 3:0] {', '.join(h + '_Write' for h in pre)};")
+        w(f"    logic [31:0] {', '.join(h + '_Addr' for h in pre)};")
+        w(f"    logic [31:0] {', '.join(h + '_WriteData' for h in pre)};")
+        w(f"    logic [31:0] {', '.join(h + '_ReadData' for h in pre)};")
         w(f"    logic [{n - 1:>2}:0] sRead;")
         w("")
         w(f"    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES({n}),")
-        w("              .MATCH_ADDR ({" + ", ".join(names[k] + "_BASE" for k in order) + "}),")
+        w("              .MATCH_ADDR ({" + ", ".join(i["name"].upper() + "_BASE" for i in order) + "}),")
         w(f"              .MATCH_MASK ({{{n}{{WIN_MASK}}}}))")
         w("            permux")
-        w("             (.clk(per_clk), .rst(per_rst),")
-        w("              .mWrite(per_Write), .mRead(per_Read), .mAddr(per_Addr), .mWData(per_WData), .mRData(per_RData),")
+        w("             (.clk(clk_per), .rst(rst_per),")
+        w("              .mWrite(bus_per_Write), .mRead(bus_per_Read), .mAddr(bus_per_Addr), .mWData(bus_per_WData), .mRData(bus_per_RData),")
         w(f"              .sWrite({cat('Write')}),")
         w("              .sRead (sRead),")
         w(f"              .sAddr ({cat('Addr')}),")
         w(f"              .sWData({cat('WriteData')}),")
         w(f"              .sRData({cat('ReadData')}));")
     else:
-        w("    //#3 Пользовательской периферии нет: обращения к порту per_* читаются как 0")
-        w("    assign per_RData = 32'd0;")
+        w("    //#3 Пользовательской периферии нет: обращения к порту bus_per читаются как 0")
+        w("    assign bus_per_RData = 32'd0;")
     w("")
 
     num = 1
-    if "gpio" in bases:
-        lines = b["gpio"]["lines"]
-        io = ", ".join(compress_bits([net[f"gpio.{i}"] for i in reversed(range(len(lines)))]))
-        w(f"    //-{num}- GPIO: {len(lines)} лин., регистры с {slot_hex(bases['gpio'])} (линия 0 - младший разряд)")
-        w(f"    gpio_top #(.MEMORY_TYPE(DMEM_TYPE), .WIDTH({len(lines)})) gpio")
-        w("              (.clk(per_clk), .rst(per_rst),")
-        w("               .Write(gpio_Write), .Addr(gpio_Addr), .WData(gpio_WriteData), .RData(gpio_ReadData),")
-        w(f"               .io_ports({{{io}}}));")
-        w("")
-        num += 1
-    if "tm1638" in bases:
-        w(f"    //-{num}- Внешний модуль TM1638, регистры с {slot_hex(bases['tm1638'])}")
-        w("    tm1638_top #(.MEMORY_TYPE(DMEM_TYPE), .CLK_MHZ(CLK_DMEM_MHZ)) tm1638")
-        w("                (.clk(per_clk), .rst(per_rst),")
-        w("                 .Write(tm_Write), .Addr(tm_Addr), .WData(tm_WriteData), .RData(tm_ReadData),")
-        w(f"                 .tm_dio({net['tm1638.dio']}), .tm_clk({net['tm1638.clk']}), .tm_stb({net['tm1638.stb']}));")
-        w("")
-        num += 1
-    if "stim" in bases:
-        out = net.get("stim.out", "")
-        w(f"    //-{num}- Простой таймер STIM ({b['stim'].get('width', 16)} бит), регистры с {slot_hex(bases['stim'])}")
-        w("    logic irq_stim;")
-        w(f"    stim_top #(.MEMORY_TYPE(DMEM_TYPE), .WIDTH({b['stim'].get('width', 16)})) stim")
-        w("                (.clk(per_clk), .rst(per_rst),")
-        w("                 .Write(tim_Write), .Addr(tim_Addr), .WData(tim_WriteData), .RData(tim_ReadData),")
-        w(f"                 .tim_out({out}), .irq(irq_stim));" + ("" if out else "   //выход ШИМ не выведен"))
-        w("")
-        num += 1
-    if "uart" in bases:
-        u = b["uart"]
-        div, real, err = uart_div(m)
-        par = UART_PARITY[u.get("parity", "none")]
-        rd = n - 1 - order.index("uart")          #Строб чтения: rxdata забирает байт из FIFO
-        w(f"    //-{num}- UART: {u.get('baud', 115200)} бит/с (div {div}, фактически {real:.0f}, ошибка {err:.2f} %), "
-          f"чётность {u.get('parity', 'none')}, стоп-битов {u.get('stop', 1)}, FIFO {u.get('fifo', 16)}")
-        w(f"    //    регистры с {slot_hex(bases['uart'])}")
-        w("    logic irq_uart;")
-        w(f"    uart_top #(.MEMORY_TYPE(DMEM_TYPE), .DEPTH({u.get('fifo', 16)}), .DIV_INIT({div}), "
-          f".STOP_INIT({u.get('stop', 1)}), .PARITY_INIT({par})) uart")
-        w("                (.clk(per_clk), .rst(per_rst),")
-        w(f"                 .Write(uart_Write), .Read(sRead[{rd}]), .Addr(uart_Addr), .WData(uart_WriteData), .RData(uart_ReadData),")
-        w(f"                 .tx({net['uart.tx']}), .rx({net['uart.rx']}), .irq(irq_uart));")
+    for idx, inst in enumerate(order):
+        h, name, t = hdl(inst), inst["name"], inst["type"]
+        base = slot_hex(bases[name])
+        bus = f".Write({h}_Write), .Addr({h}_Addr), .WData({h}_WriteData), .RData({h}_ReadData)"
+        if t == "gpio":
+            lines = inst["lines"]
+            io = ", ".join(compress_bits([net[f"{name}.line{i}"] for i in reversed(range(len(lines)))]))
+            w(f"    //-{num}- {inst_title(inst)}: {len(lines)} лин., регистры с {base} (линия 0 - младший разряд)")
+            w(f"    gpio_top #(.MEMORY_TYPE(DMEM_TYPE), .WIDTH({len(lines)})) {h}")
+            w("              (.clk(clk_per), .rst(rst_per),")
+            w(f"               {bus},")
+            w(f"               .io_ports({{{io}}}));")
+        elif t == "tm1638":
+            w(f"    //-{num}- {inst_title(inst)}: внешний модуль LED&KEY, регистры с {base}")
+            w(f"    tm1638_top #(.MEMORY_TYPE(DMEM_TYPE), .CLK_MHZ(CLK_DMEM_MHZ)) {h}")
+            w("                (.clk(clk_per), .rst(rst_per),")
+            w(f"                 {bus},")
+            w(f"                 .tm_dio({net[name + '.dio']}), .tm_clk({net[name + '.clk']}), .tm_stb({net[name + '.stb']}));")
+        elif t == "stim":
+            out = net.get(f"{name}.out", "")
+            w(f"    //-{num}- {inst_title(inst)}: простой таймер ({inst.get('width', 16)} бит), регистры с {base}")
+            w(f"    logic irq_{h};")
+            w(f"    stim_top #(.MEMORY_TYPE(DMEM_TYPE), .WIDTH({inst.get('width', 16)})) {h}")
+            w("                (.clk(clk_per), .rst(rst_per),")
+            w(f"                 {bus},")
+            w(f"                 .tim_out({out}), .irq(irq_{h}));" + ("" if out else "   //выход ШИМ не выведен"))
+        elif t == "uart":
+            div, real, err = uart_div(m, inst)
+            par = UART_PARITY[inst.get("parity", "none")]
+            rd = n - 1 - idx          #Строб чтения: rxdata забирает байт из FIFO
+            w(f"    //-{num}- {inst_title(inst)}: {inst.get('baud', 115200)} бит/с (div {div}, фактически {real:.0f}, ошибка {err:.2f} %), "
+              f"чётность {inst.get('parity', 'none')}, стоп-битов {inst.get('stop', 1)}, FIFO {inst.get('fifo', 16)}")
+            w(f"    //    регистры с {base}")
+            w(f"    logic irq_{h};")
+            w(f"    uart_top #(.MEMORY_TYPE(DMEM_TYPE), .DEPTH({inst.get('fifo', 16)}), .DIV_INIT({div}), "
+              f".STOP_INIT({inst.get('stop', 1)}), .PARITY_INIT({par})) {h}")
+            w("                (.clk(clk_per), .rst(rst_per),")
+            w(f"                 .Write({h}_Write), .Read(sRead[{rd}]), .Addr({h}_Addr), .WData({h}_WriteData), .RData({h}_ReadData),")
+            w(f"                 .tx({net[name + '.tx']}), .rx({net[name + '.rx']}), .irq(irq_{h}));")
         w("")
         num += 1
 
     # --- Прерывания: по умолчанию - в PLIC, по выбору - на локальную линию ---
     irqs = irq_map(m)
     nsrc = int(core.get("plicSources", 8))
-    plic = {n_: BLOCKS[k]["irq"] for k, (r, n_) in irqs.items() if r == "plic"}
-    loc = {n_: BLOCKS[k]["irq"] for k, (r, n_) in irqs.items() if r == "local"}
+    by_name = {i["name"]: i for i in insts(m)}
+    plic = {n_: f"irq_{hdl(by_name[k])}" for k, (r, n_) in irqs.items() if r == "plic"}
+    loc = {n_: f"irq_{hdl(by_name[k])}" for k, (r, n_) in irqs.items() if r == "local"}
     w(f"    //-{num}- Прерывания периферии: источники PLIC (MEI, векторный режим) и локальные линии LI0..LI15")
     for k, (r, n_) in irqs.items():
-        w(f"    //    {BLOCKS[k]['title']}: " + (f"источник PLIC {n_}" if r == "plic" else f"LI{n_} (mcause {16 + n_})"))
+        w(f"    //    {k}: " + (f"источник PLIC {n_}" if r == "plic" else f"LI{n_} (mcause {16 + n_})"))
     if not irqs:
         w("    //    устройств с прерываниями нет")
     src_bits = ", ".join(plic.get(i, "1'b0") for i in range(nsrc, 0, -1))
@@ -649,7 +766,6 @@ def gen_top(m, bases, cfg_rel):
 
 def gen_cst(m, dev, cfg_rel):
     sigs = [s for s in signals(m) if s["pin"] is not None]
-    d = m.get("ioDefaults", {})
     L = [
         "//Physical Constraints file",
         "//Part Number: " + m.get("device", dev["part"]),
@@ -670,9 +786,19 @@ def gen_cst(m, dev, cfg_rel):
     return "\n".join(L) + "\n"
 
 
+def cdef(name, value, comment=""):
+    """#define с выравниванием табуляцией, как в остальных заголовках прошивки."""
+    s = f"#define {name}"
+    tabs = max(1, (40 - len(s) + 3) // 4)
+    s += "\t" * tabs + value
+    if comment:
+        s += "\t\t//" + comment
+    return s
+
+
 def gen_soc_h(m, bases, cfg_rel):
     """fw/Core/Inc/soc.h - что прошивке нужно знать о собранной ПЛИС."""
-    core, b = m["core"], m["blocks"]
+    core = m["core"]
     im, dm = core.get("imem", {}), core.get("dmem", {})
     memb = lambda x: int(x.get("kb", 8)) * 1024 if x.get("type", "bsram") == "bsram" else int(x.get("synthWords", 256)) * 4
     L = []
@@ -682,65 +808,131 @@ def gen_soc_h(m, bases, cfg_rel):
     w(" * @file        soc.h")
     w(" * @device      AskoRV32")
     w(f" * @brief       ФАЙЛ СОЗДАН КОНФИГУРАТОРОМ ПЛИС (sw/socgen/socgen.py) из {cfg_rel} - не редактируйте вручную.")
-    w(" *              Частота, адреса устройств, прерывания периферии и настройки UART собранной ПЛИС.")
+    w(" *              Частота, устройства (адреса, указатели, настройки), прерывания периферии и имена")
+    w(" *              выводов GPIO собранной ПЛИС. Типы регистров - в заголовках драйверов (gpio.h, uart.h, plic.h...).")
     w(" *****************************************************************************************")
     w(" */")
     w("#ifndef __SOC_H")
     w("#define __SOC_H")
     w("")
     w("/* Ядро и память */")
-    w(f"#define SOC_CORE_PIPELINE\t\t{0 if core.get('coreType') == 'singlecycle' else 1}\t\t\t//1 - конвейерное, 0 - однотактное")
-    w(f"#define SOC_M_EXT\t\t\t\t{1 if core.get('mExt', True) else 0}\t\t\t//Расширение M (mul/div)")
-    w(f"#define SOC_DEBUG\t\t\t\t{1 if core.get('debug', True) else 0}\t\t\t//Отладчик JTAG")
-    w(f"#define SOC_IMEM_BYTES\t\t\t{memb(im)}U")
-    w(f"#define SOC_DMEM_BYTES\t\t\t{memb(dm)}U")
+    w(cdef("SOC_CORE_PIPELINE", str(0 if core.get('coreType') == 'singlecycle' else 1), "1 - конвейерное, 0 - однотактное"))
+    w(cdef("SOC_M_EXT", str(1 if core.get('mExt', True) else 0), "Расширение M (mul/div)"))
+    w(cdef("SOC_DEBUG", str(1 if core.get('debug', True) else 0), "Отладчик JTAG"))
+    w(cdef("SOC_IMEM_BYTES", f"{memb(im)}U"))
+    w(cdef("SOC_DMEM_BYTES", f"{memb(dm)}U"))
     w("")
-    w("/* Частота шины периферии (clk_dmem), Гц: от неё считают таймер STIM, UART и mtime в CLINT */")
-    w(f"#define SYSCLK_HZ\t\t\t\t{sysclk_hz(m)}U")
+    w("/* Частота шины периферии (clk_per), Гц: от неё считают таймер STIM, UART и mtime в CLINT */")
+    w(cdef("SYSCLK_HZ", f"{sysclk_hz(m)}U"))
     w("")
-    w("/* Устройства: XXX_PRESENT - блок есть в ПЛИС, XXX_BASE - адрес регистров */")
-    for k, meta in BLOCKS.items():
-        name = meta["title"]
-        if k in bases:
-            w(f"#define {name}_PRESENT\t\t\t1")
-            w(f"#define {name}_BASE\t\t\t\t(0x{bases[k] * 0x01000000:08X}U)")
-        else:
-            w(f"#define {name}_PRESENT\t\t\t0")
-    if "gpio" in bases:
-        w(f"#define GPIO_WIDTH\t\t\t\t{len(b['gpio'].get('lines', []))}U\t\t\t//Число линий")
-    if "stim" in bases:
-        w(f"#define STIM_WIDTH\t\t\t\t{b['stim'].get('width', 16)}U\t\t\t//Разрядность PR, PER, PUL, CNT")
-    if "uart" in bases:
-        u = b["uart"]
-        div, real, err = uart_div(m)
-        w(f"#define UART_BAUD\t\t\t\t{int(u.get('baud', 115200))}U\t\t//Скорость по умолчанию, бит/с (div {div}, ошибка {err:.2f} %)")
-        w(f"#define UART_PARITY_DEFAULT\t\t{UART_PARITY[u.get('parity', 'none')]}\t\t\t//0 - нет, 1 - even, 2 - odd")
-        w(f"#define UART_STOP_DEFAULT\t\t{int(u.get('stop', 1))}\t\t\t//Стоп-битов")
-        w(f"#define UART_FIFO_DEPTH\t\t\t{int(u.get('fifo', 16))}U\t\t\t//Глубина FIFO приёма и передачи")
+    w("/* Системные устройства процессора (cpu.sv): адреса и указатели; типы регистров - в clint.h и plic.h */")
+    w(cdef("CLINT_BASE", f"(0x{FIXED_REGIONS['CLINT'] * 0x01000000:08X}U)"))
+    w(cdef("CLINT", "((CLINT_TypeDef*) CLINT_BASE)"))
+    w(cdef("PLIC_BASE", f"(0x{FIXED_REGIONS['PLIC'] * 0x01000000:08X}U)"))
+    w(cdef("PLIC", "((PLIC_TypeDef*) PLIC_BASE)"))
+    w("")
+    w("/* Устройства. <ТИП>_PRESENT - есть ли в ПЛИС блоки типа, <ТИП>_COUNT - сколько их.")
+    w("   Для каждого блока: <ИМЯ>_BASE - адрес регистров, <ИМЯ> - указатель на регистры, настройки <ИМЯ>_xxx.")
+    w("   Драйверы (gpio.c, uart.c...) работают с первым блоком типа под именем типа (GPIO, UART...) */")
+    for t, meta in TYPES.items():
+        cnt = len(insts(m, t))
+        w(cdef(f"{meta['title']}_PRESENT", "1" if cnt else "0"))
+        w(cdef(f"{meta['title']}_COUNT", f"{cnt}U"))
+    for inst in insts(m):
+        t, N = inst["type"], inst["name"]
+        T = TYPES[t]["title"]
+        w("")
+        w(f"/* {inst_title(inst)} */")
+        w(cdef(f"{N}_BASE", f"(0x{bases[N] * 0x01000000:08X}U)"))
+        w(cdef(N, f"(({T}_TypeDef*) {N}_BASE)"))
+        params = []
+        if t == "gpio":
+            params.append(("WIDTH", f"{len(inst.get('lines', []))}U", "Число линий"))
+        if t == "stim":
+            params.append(("WIDTH", f"{inst.get('width', 16)}U", "Разрядность PR, PER, PUL, CNT"))
+        if t == "uart":
+            div, real, err = uart_div(m, inst)
+            params += [("BAUD", f"{int(inst.get('baud', 115200))}U", f"Скорость по умолчанию, бит/с (div {div}, ошибка {err:.2f} %)"),
+                       ("PARITY_DEFAULT", str(UART_PARITY[inst.get('parity', 'none')]), "0 - нет, 1 - even, 2 - odd"),
+                       ("STOP_DEFAULT", str(int(inst.get('stop', 1))), "Стоп-битов"),
+                       ("FIFO_DEPTH", f"{int(inst.get('fifo', 16))}U", "Глубина FIFO приёма и передачи")]
+        for suf, val, com in params:
+            w(cdef(f"{N}_{suf}", val, com))
+        #Первый блок типа под другим именем: имена типа для драйверов - его синонимы
+        if first_of_type(m, inst) and N != T:
+            w(cdef(f"{T}_BASE", f"{N}_BASE", "Драйверы: первый блок типа"))
+            w(cdef(T, N))
+            for suf, _, _ in params:
+                w(cdef(f"{T}_{suf}", f"{N}_{suf}"))
     w("")
     irqs = irq_map(m)
     w("/* Прерывания периферии. Источники PLIC (векторный режим, start.S): обработчик источника S -")
     w("   PLIC_SRCS_IRQHandler; ниже - понятные имена. Локальные линии: LIn_IRQHandler, номер LIn_IRQn */")
-    w(f"#define PLIC_NUM_SOURCES\t\t{int(core.get('plicSources', 8))}U")
+    w(cdef("PLIC_NUM_SOURCES", f"{int(core.get('plicSources', 8))}U"))
     plic = [(n_, k) for k, (r, n_) in irqs.items() if r == "plic"]
     w("typedef enum")
     w("{")
     if plic:
         for i, (n_, k) in enumerate(plic):
-            w(f"  PLIC_SRC_{BLOCKS[k]['title']} = {n_}{',' if i < len(plic) - 1 else ''}\t\t//{BLOCKS[k]['title']}")
+            w(f"  PLIC_SRC_{k} = {n_}{',' if i < len(plic) - 1 else ''}\t\t//{k}")
     else:
         w("  PLIC_SRC_NONE = 0")
     w("} PLIC_SRC_Type;")
     for n_, k in plic:
-        w(f"#define PLIC_{BLOCKS[k]['title']}_IRQHandler\tPLIC_SRC{n_}_IRQHandler")
+        w(cdef(f"PLIC_{k}_IRQHandler", f"PLIC_SRC{n_}_IRQHandler"))
     for k, (r, n_) in irqs.items():
         if r == "local":
-            t = BLOCKS[k]["title"]
-            w(f"#define {t}_IRQn\t\t\t\tLI{n_}_IRQn\t\t//{t} - локальная линия LI{n_}")
-            w(f"#define {t}_IRQHandler\t\t\tLI{n_}_IRQHandler")
+            w(cdef(f"{k}_IRQn", f"LI{n_}_IRQn", f"{k} - локальная линия LI{n_}"))
+            w(cdef(f"{k}_IRQHandler", f"LI{n_}_IRQHandler"))
+    w("")
+    #Выводы GPIO: имена цепей из конфигуратора
+    gp = gpio_pins(m)
+    w("/* Выводы GPIO: имя цепи из конфигуратора -> <ИМЯ>_PIN (номер линии) и <ИМЯ>_PORT (блок GPIO);")
+    w("   цепь LED[3] даёт имя LED3. Шина (LED[0], LED[1]...) на одном блоке: <ИМЯ>_MSK, <ИМЯ>_POS, <ИМЯ>_PORT.")
+    w("   Работа по имени - макросы GPIO_WRITE(LED3, GPIO_PIN_SET), GPIO_READ(...), GPIO_MODE(...) в gpio.h */")
+    if not gp:
+        w("/* выводов GPIO нет */")
+    for inst, i, pin, net, cn in gp:
+        w(cdef(f"{cn}_PIN", f"{i}U", f"вывод {pin}, цепь {net}"))
+        w(cdef(f"{cn}_PORT", inst["name"]))
+    buses = {}
+    for inst, i, pin, net, cn in gp:
+        mm = NET_RE.match(net)
+        if mm.group(2) is not None:
+            buses.setdefault(mm.group(1), []).append((inst["name"], i, int(mm.group(2))))
+    for bname, lst in buses.items():
+        if len({p for p, _, _ in lst}) != 1:
+            continue
+        mask = 0
+        for _, i, _ in lst:
+            mask |= 1 << i
+        pos = min(i for _, i, _ in lst)
+        ordered = all(i == pos + idx for _, i, idx in lst)
+        w(cdef(f"{bname.upper()}_MSK", f"0x{mask:08X}U", f"шина {bname}[{max(x for _, _, x in lst)}:0]" +
+               ("" if ordered else ", разряды шины не подряд по линиям")))
+        w(cdef(f"{bname.upper()}_POS", f"{pos}U"))
+        w(cdef(f"{bname.upper()}_PORT", lst[0][0]))
     w("")
     w("#endif /* __SOC_H */")
     return "\n".join(L) + "\n"
+
+
+def sync_sdc_clock(hw, net):
+    """Ограничение такта кварца в riscv.sdc ссылается на порт top.sv - его имя задаёт конфигуратор (цепь вывода
+    кварца). Генератор меняет в строке create_clock -name clk только имя порта; остальное правится вручную."""
+    sdc = hw / "src" / "riscv.sdc"
+    if not sdc.exists() or not net:
+        return None
+    t = sdc.read_bytes().decode("utf-8")
+    new, n = re.subn(r"(create_clock\s+-name\s+clk\s[^\n]*\[get_ports\s*\{)([^}]*)(\}\])",
+                     lambda mm: mm.group(1) + net + mm.group(3), t, count=1)
+    if not n:
+        print("Предупреждение: в riscv.sdc нет строки create_clock -name clk ... [get_ports {...}] - порт кварца не проверен")
+        return None
+    if new == t:
+        return False
+    sdc.write_bytes(new.encode("utf-8"))
+    return True
 
 
 def write_if_changed(path, text, enc="utf-8"):
@@ -774,7 +966,12 @@ def find_oss(arg):
     return None
 
 
-def run_tool(cmd, env, log, cwd):
+def progress(pct, text):
+    """Ход сборки для плагина Eclipse (строка не выводится в консоль, плагин показывает её полосой)."""
+    print(f"@@PROGRESS {int(pct)} {text}", flush=True)
+
+
+def run_tool(cmd, env, log, cwd, on_line=None):
     print("  $ " + " ".join(str(c) for c in cmd), flush=True)
     t0 = time.time()
     with open(log, "w", encoding="utf-8", errors="replace") as lf:
@@ -785,6 +982,8 @@ def run_tool(cmd, env, log, cwd):
             lf.write(line)
             tail.append(line.rstrip())
             tail = tail[-40:]
+            if on_line:
+                on_line(line)
             if re.search(r"^(ERROR|Error)|error:|Warning: .*(latch|multiple drivers)|Max frequency for clock", line):
                 print("    " + line.rstrip(), flush=True)
         p.wait()
@@ -839,14 +1038,23 @@ def build_oss(m, hw, cst, oss_arg, fmax_mhz):
         "synth_gowin -top top -run map_cells: -json top.json\n"
         "tee -o utilization.txt stat\n", encoding="utf-8", newline="\n")
     print("Синтез (yosys + slang):", flush=True)
+    progress(3, "Синтез (yosys)")
     run_tool([oss / "bin" / "yosys.exe", "-m", "slang", "-q", "-l", "yosys.log", "-s", "synth.ys"], env, out / "yosys.out", out)
     print("Размещение и трассировка (nextpnr-himbaechel):", flush=True)
+    progress(40, "Размещение (nextpnr)")
+
+    def pnr_line(line):
+        if re.search(r"Info: (Running main analytical placer|Running placer|Starting placement)", line):
+            progress(45, "Размещение (nextpnr)")
+        elif re.search(r"Info: (Routing|Running router|Router1|Router2)", line):
+            progress(70, "Трассировка (nextpnr)")
     run_tool([oss / "bin" / "nextpnr-himbaechel.exe", "--json", "top.json", "--write", "pnr.json",
               "--device", m.get("device", "GW1NR-LV9QN88PC6/I5"), "--vopt", "family=GW1N-9C",
               "--vopt", "cst=" + os.path.relpath(cst, out).replace("\\", "/"),
               "--freq", fmt_mhz(fmax_mhz), "--timing-allow-fail", "--report", "report.json"],
-             env, out / "nextpnr.log", out)
+             env, out / "nextpnr.log", out, pnr_line)
     print("Битовый поток (apicula gowin_pack):", flush=True)
+    progress(92, "Битовый поток (gowin_pack)")
     run_tool([oss / "bin" / "gowin_pack.exe", "-d", "GW1N-9C", "-o", "riscv.fs", "pnr.json"], env, out / "gowin_pack.log", out)
     fs = out / "riscv.fs"
     print(f"Готово: {os.path.relpath(fs, hw.parent)} ({fs.stat().st_size} Байт)")
@@ -859,6 +1067,13 @@ def build_oss(m, hw, cst, oss_arg, fmax_mhz):
         io = sum(util[k]["used"] for k in ("IOB", "IOBUF") if k in util)   #IOBUF (inout) apicula считает отдельно
         used.append(f"выводов {io}")
         print("  Ресурсы: " + ", ".join(used))
+        u = lambda k: util.get(k, {}).get("used", 0)
+        a = lambda k: util.get(k, {}).get("available", 0)
+        save_resources(hw, "apicula", {
+            "lut": [u("LUT4") + u("ALU"), a("LUT4")], "reg": [u("DFF"), a("DFF")], "bsram": [u("BSRAM"), a("BSRAM")],
+            "dsp": [u("MULT36X36") * 2 + u("MULT18X18"), a("MULT18X18") or 10], "io": [io, IO_USER_TOTAL],
+            "pll": [u("rPLL"), a("rPLL") or 2]},
+            {clk: v.get("achieved", 0) for clk, v in (r.get("fmax") or {}).items()})
         slow = []
         for clk, v in (r.get("fmax") or {}).items():
             ach, con = v.get("achieved", 0), v.get("constraint", 0)
@@ -882,6 +1097,18 @@ def build_oss(m, hw, cst, oss_arg, fmax_mhz):
 # ============================================================================================
 # Сборка в Gowin EDA (gw_sh - командная строка IDE, проект hw/riscv.gprj)
 # ============================================================================================
+IO_USER_TOTAL = 71         #Пользовательских выводов I/O у GW1NR-9 в корпусе QN88 (как в отчёте Gowin)
+
+
+def save_resources(hw, toolchain, items, fmax):
+    """Занятые ресурсы последней сборки - для панели ресурсов конфигуратора (hw/impl/socgen/resources.json)."""
+    d = hw / "impl" / "socgen"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "resources.json").write_text(json.dumps({
+        "toolchain": toolchain, "time": time.strftime("%Y-%m-%d %H:%M"), "items": items, "fmax": fmax},
+        ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def find_gowin(arg):
     """Каталог IDE Gowin (в нём bin/gw_sh.exe): ключ --gowin, GOWIN_HOME, типовые места установки."""
     cands = [arg, os.environ.get("GOWIN_HOME")]
@@ -920,6 +1147,25 @@ def check_sdc_period(hw, fout):
               f"задайте period не больше {1000 / fout:.3f} нс (рекомендуется цель на ~10 % выше рабочей)")
 
 
+def set_place_option(cfg, opt):
+    """Place_Option из .gwsoc (build.placeOption) - в настройку процесса Gowin EDA. Файл правится заменой
+    одного значения, остальное остаётся как его записала IDE."""
+    if opt in (None, ""):
+        return
+    opt = str(opt)
+    if not cfg.exists():
+        print(f"Предупреждение: нет {cfg.name} - Place_Option {opt} не задан")
+        return
+    t = cfg.read_text(encoding="utf-8")
+    new, n = re.subn(r'("Place_Option"\s*:\s*)"[^"]*"', lambda mm: f'{mm.group(1)}"{opt}"', t)
+    if not n:
+        print(f"Предупреждение: в {cfg.name} нет Place_Option - значение {opt} не задано")
+        return
+    if new != t:
+        cfg.write_text(new, encoding="utf-8", newline="")
+    print(f"  Place_Option = {opt} ({PLACE_OPTIONS.get(opt, '?')})")
+
+
 def build_gowin(m, hw, gowin_arg, fout):
     ide = find_gowin(gowin_arg)
     if not ide:
@@ -930,14 +1176,39 @@ def build_gowin(m, hw, gowin_arg, fout):
     check_sdc_period(hw, fout)
     impl = hw / "impl"
     impl.mkdir(exist_ok=True)
+    set_place_option(impl / "riscv_process_config.json", (m.get("build") or {}).get("placeOption"))
     tcl = impl / "socgen_build.tcl"
     tcl.write_text("# Создано socgen.py: сборка проекта Gowin EDA из командной строки\n"
                    "open_project riscv.gprj\nrun all\n", encoding="utf-8", newline="\n")
     fs = impl / "pnr" / "riscv.fs"
     t0 = time.time()
     print(f"Синтез, размещение, трассировка и битовый поток (Gowin EDA, {ide.parent.name}):", flush=True)
+    #Ход: синтез [x%] -> 5..45 %, размещение и трассировка [x%] -> 45..95 %, битовый поток и отчёты -> 95..100 %
+    st = {"pnr": False}
+
+    def gw_line(line):
+        mm = re.match(r"\[(\d+)%\]", line)
+        if line.startswith("Running parser"):
+            progress(2, "Разбор исходников")
+        elif "GowinSynthesis finish" in line:
+            st["pnr"] = True
+            progress(45, "Синтез завершён")
+        elif line.startswith("Running placement"):
+            st["pnr"] = True
+            progress(46, "Размещение")
+        elif line.startswith("Running routing"):
+            progress(70, "Трассировка")
+        elif line.startswith("Bitstream generation"):
+            progress(96, "Битовый поток")
+        elif mm:
+            x = int(mm.group(1))
+            if st["pnr"]:
+                progress(45 + x * 0.5, "Размещение" if x <= 50 else "Трассировка" if x < 95 else "Анализ таймингов")
+            else:
+                progress(5 + x * 0.4, "Синтез")
+
     try:
-        run_tool([ide / "bin" / "gw_sh.exe", os.path.relpath(tcl, hw)], dict(os.environ), impl / "socgen_gw_sh.log", hw)
+        run_tool([ide / "bin" / "gw_sh.exe", os.path.relpath(tcl, hw)], dict(os.environ), impl / "socgen_gw_sh.log", hw, gw_line)
     except ConfigError:
         pass   #Код возврата gw_sh ненадёжен - итог определяется по ошибкам в журнале и файлу .fs
     log = (impl / "socgen_gw_sh.log").read_text(encoding="utf-8", errors="replace")
@@ -946,14 +1217,19 @@ def build_gowin(m, hw, gowin_arg, fout):
         raise ConfigError(f"Gowin EDA: ошибок {len(errs)}, битовый поток не создан (журнал hw/impl/socgen_gw_sh.log)")
     print(f"Готово: {os.path.relpath(fs, hw.parent)} ({fs.stat().st_size} Байт)")
     rpt = impl / "pnr" / "riscv.rpt.txt"
+    res = {}
     if rpt.exists():
         r = rpt.read_text(encoding="utf-8", errors="replace")
         used = []
-        for k in ("Logic", "Register", "CLS", "BSRAM", "DSP", "I/O Port"):
+        for k, key in (("Logic", "lut"), ("Register", "reg"), ("CLS", "cls"), ("BSRAM", "bsram"), ("DSP", "dsp"),
+                       ("I/O Port", "io"), ("rPLL", "pll")):
             mm = re.search(rf"^\s*{re.escape(k)}\s*\|\s*(\d+)/(\d+)", r, re.M)
             if mm:
-                used.append(f"{k} {mm.group(1)}/{mm.group(2)}")
+                if key != "pll":
+                    used.append(f"{k} {mm.group(1)}/{mm.group(2)}")
+                res[key] = [int(mm.group(1)), int(mm.group(2))]
         print("  Ресурсы: " + ", ".join(used))
+    fmax = {}
     tr = impl / "pnr" / "riscv_tr_content.html"
     if tr.exists():
         t = html_text(tr)
@@ -961,6 +1237,7 @@ def build_gowin(m, hw, gowin_arg, fout):
         #отрицательный запас относительно цели - нормальное состояние
         core_ok = {}
         for name, con, ach in re.findall(r"\d+ (\S+) ([\d.]+)\(MHz\) ([\d.]+)\(MHz\) \d+ TOP", t):
+            fmax[name] = float(ach)
             need = fout if name == "clk_core" else float(con)
             bad = float(ach) < need
             core_ok[name] = not bad
@@ -971,6 +1248,8 @@ def build_gowin(m, hw, gowin_arg, fout):
             if name == "clk_core" and core_ok.get(name):
                 continue    #Нарушение только относительно цели выше рабочей частоты
             print(f"Предупреждение: отрицательный запас по {name}: TNS {v} нс, путей {n} - см. hw/impl/pnr/riscv.tr.html")
+    if res:
+        save_resources(hw, "gowin", res, fmax)
 
 
 # ============================================================================================
@@ -988,10 +1267,9 @@ def main():
 
     cfg = Path(a.config).resolve()
     m = json.loads(cfg.read_text(encoding="utf-8"))
-    for k, v in dict(core={}, clock={}, reset={}, blocks={}, pins={}, ioDefaults={}, paths={}).items():
+    for k, v in dict(core={}, clock={}, reset={}, pins={}, ioDefaults={}, paths={}).items():
         m.setdefault(k, v)
-    for k in BLOCKS:
-        m["blocks"].setdefault(k, {"enabled": False})
+    migrate(m)
     m["clock"].setdefault("pll", {"mode": "auto", "targetMHz": 27})
     dev = load_device()
 
@@ -1013,10 +1291,13 @@ def main():
     print(f"  rPLL: {fmt_mhz(float(m['clock']['xtalMHz']))} МГц -> {fmt_mhz(fout)} МГц "
           f"(IDIV {m['clock']['pll']['idiv']}, FBDIV {m['clock']['pll']['fbdiv']}, ODIV {m['clock']['pll']['odiv']}, VCO {fmt_mhz(vco)})")
     irqs = irq_map(m)
-    for k, s in bases.items():
+    for inst in insts(m):
+        k = inst["name"]
         r = irqs.get(k)
         irq = "" if not r else ("  прерывание: источник PLIC " + str(r[1]) if r[0] == "plic" else f"  прерывание: LI{r[1]}")
-        print(f"  {BLOCKS[k]['title']:<7} {slot_hex(s)}{irq}")
+        print(f"  {k:<8} {TYPES[inst['type']]['title']:<7} {slot_hex(bases[k])}{irq}")
+    if not insts(m):
+        print("  Пользовательской периферии нет")
     print(f"  Частота шины периферии: {sysclk_hz(m)} Гц")
     if a.check:
         print("Проверка пройдена")
@@ -1028,9 +1309,13 @@ def main():
                             (soc, gen_soc_h(m, bases, cfg_rel), "cp1251")):
         changed = write_if_changed(path, text, enc)
         print(f"  {os.path.relpath(path, hw.parent)}: {'обновлён' if changed else 'без изменений'}")
+    xnet = net_of(m, m["clock"].get("xtalPin"))
+    if sync_sdc_clock(hw, xnet):
+        print(f"  hw\\src\\riscv.sdc: такт кварца - порт {xnet}")
 
     if a.build:
         toolchain = a.toolchain or (m.get("build") or {}).get("toolchain", "gowin")
+        progress(1, "Генерация файлов")
         try:
             if toolchain == "apicula":
                 build_oss(m, hw, cst, a.oss, fout)
@@ -1039,6 +1324,7 @@ def main():
         except ConfigError as e:
             print("ОШИБКА СБОРКИ: " + str(e))
             return 2
+        progress(100, "Готово")
     return 0
 
 

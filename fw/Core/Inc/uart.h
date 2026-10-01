@@ -32,6 +32,35 @@
 
 #include "periphery.h"
 
+/* Регистры UART */
+typedef struct
+{
+  __IO uint32_t TXDATA;	//0x00: Запись - байт в FIFO передачи; чтение - бит 31: FIFO передачи полон
+  __I  uint32_t RXDATA;	//0x04: Чтение - байт из FIFO приёма (выбирается из FIFO); бит 31: FIFO был пуст
+  __IO uint32_t TXCTRL;	//0x08: [0] txen, [1] nstop (1 - два стоп-бита), [20:16] txcnt - порог txwm
+  __IO uint32_t RXCTRL;	//0x0C: [0] rxen, [20:16] rxcnt - порог rxwm
+  __IO uint32_t IE;		//0x10: Разрешение прерываний: [0] txwm, [1] rxwm, [2] err
+  __I  uint32_t IP;		//0x14: Ожидающие прерывания: [0] txwm (в FIFO tx меньше txcnt), [1] rxwm (в FIFO rx больше rxcnt), [2] err
+  __IO uint32_t DIV;		//0x18: Делитель скорости: скорость = SYSCLK_HZ / (DIV + 1)
+  __IO uint32_t CFG;		//0x1C: [0] бит чётности есть, [1] 1 - odd, 0 - even
+  __IO uint32_t ERR;		//0x20: Ошибки приёма, сброс записью 1: [0] кадр, [1] чётность, [2] переполнение FIFO приёма
+} UART_TypeDef;
+
+/* Биты регистров UART */
+#define UART_TXDATA_FULL			(1U << 31)
+#define UART_RXDATA_EMPTY			(1U << 31)
+#define UART_CTRL_EN				(1U << 0)	//txen / rxen
+#define UART_TXCTRL_NSTOP			(1U << 1)
+#define UART_CTRL_CNT_POS			16U			//Поле txcnt / rxcnt
+#define UART_IT_TXWM				(1U << 0)
+#define UART_IT_RXWM				(1U << 1)
+#define UART_IT_ERR					(1U << 2)
+#define UART_CFG_PE					(1U << 0)
+#define UART_CFG_PO					(1U << 1)
+#define UART_ERR_FRAME				(1U << 0)
+#define UART_ERR_PARITY				(1U << 1)
+#define UART_ERR_OVERRUN			(1U << 2)
+
 #if UART_PRESENT	//Блок есть в ПЛИС (soc.h)
 
 #include "core_riscv.h"

@@ -8,24 +8,41 @@
 </head>
 <body>
 <header class="bar">
-  <div class="bar-title">
-    <strong>askoRV32</strong>
-    <span class="muted" id="devname">GW1NR-LV9QN88P</span>
+  <div class="bar-left">
+    <div class="bar-title">
+      <strong>askoRV32</strong>
+      <span class="muted" id="devname">GW1NR-LV9QN88P</span>
+    </div>
+    <!-- Инструменты поля конфигуратора -->
+    <div class="bar-tools">
+      <button id="addBlock" class="icon" title="Добавить блок периферии из библиотеки">
+        <svg viewBox="0 0 20 20"><rect x="2.5" y="4.5" width="10" height="11" rx="1.5"/><path d="M5 2.5v2M8 2.5v2M11 2.5v2M5 15.5v2M8 15.5v2M11 15.5v2"/><path d="M16 7v6M13 10h6" class="accent"/></svg></button>
+      <span class="sep"></span>
+      <button id="zoomOut" class="icon" title="Уменьшить"><svg viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l4.5 4.5M6 8.5h5"/></svg></button>
+      <button id="zoomFit" class="icon" title="По ширине окна"><svg viewBox="0 0 20 20"><path d="M2.5 7V2.5H7M13 2.5h4.5V7M17.5 13v4.5H13M7 17.5H2.5V13"/><rect x="6.5" y="6.5" width="7" height="7" rx="1"/></svg></button>
+      <button id="zoomIn" class="icon" title="Увеличить"><svg viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l4.5 4.5M6 8.5h5M8.5 6v5"/></svg></button>
+    </div>
+    <div class="bar-status" id="status"></div>
   </div>
-  <div class="bar-tools">
-    <button id="zoomOut" title="Уменьшить">−</button>
-    <button id="zoomFit" title="По размеру окна">По окну</button>
-    <button id="zoomIn" title="Увеличить">+</button>
-    <span class="sep"></span>
-    <button id="ioDefaults" title="IO_TYPE, PULL_MODE, DRIVE, BANK_VCCIO для выводов без своих настроек">Стандарты I/O…</button>
-    <button id="save" title="Сохранить (Ctrl+S)">Сохранить</button>
-    <select id="toolchain" title="Чем собирать проект ПЛИС">
-      <option value="gowin">Gowin EDA</option>
-      <option value="apicula">apicula (открытый)</option>
-    </select>
-    <button id="build" class="primary" title="Сохранить, сгенерировать riscv.cst и top.sv, собрать битовый поток выбранным маршрутом">Собрать</button>
+  <!-- Сборка и ресурсы ПЛИС -->
+  <div class="bar-right">
+    <div class="bar-build">
+      <button id="ioDefaults" class="icon" title="Стандарты I/O: IO_TYPE, PULL_MODE, DRIVE, BANK_VCCIO для выводов без своих настроек">
+        <svg viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="8" rx="1.5"/><path d="M6 11v6M10 11v6M14 11v6"/><path d="M6 6.5h8"/></svg></button>
+      <button id="save" class="icon" title="Сохранить (Ctrl+S)">
+        <svg viewBox="0 0 20 20"><path d="M3 3h11.5L17 5.5V17H3z"/><rect x="6" y="3" width="7" height="4.5"/><rect x="5.5" y="11" width="9" height="6"/></svg></button>
+      <select id="toolchain" title="Чем собирать проект ПЛИС">
+        <option value="gowin">Gowin EDA</option>
+        <option value="apicula">apicula (открытый)</option>
+      </select>
+      <select id="placeOpt" title="Place_Option размещения Gowin EDA: 0 - быстрее компиляция, 1 - лучше трассируемость, 2 - лучше тайминги"></select>
+      <button id="build" class="primary build" title="Собрать: сохранить, сгенерировать top.sv, riscv.cst и soc.h, собрать битовый поток">
+        <svg viewBox="0 0 24 20"><g class="chipico"><rect x="1.5" y="13" width="13" height="5.5" rx="1"/><path d="M4 13v-1.5M7 13v-1.5M10 13v-1.5M13 13v-1.5"/></g><g class="hammer"><path d="M22 1.5l-7.5 7.5" class="handle"/><rect x="9.5" y="7.2" width="8" height="3.6" rx="1" transform="rotate(45 13.5 9)" class="head"/></g></svg>
+        <span>Собрать</span></button>
+    </div>
+    <div class="res" id="res" title="Ресурсы ПЛИС: свободно/всего"></div>
+    <div class="prog" id="prog" hidden><div class="prog-track"><div class="prog-bar"></div></div><span></span></div>
   </div>
-  <div class="bar-status" id="status"></div>
 </header>
 
 <main>
@@ -40,18 +57,15 @@
     </section>
   </div>
   <aside class="side">
-    <h2>Карта адресов</h2>
-    <table class="amap" id="amap"></table>
-    <h2>Проверка <span class="badge" id="issueCount"></span></h2>
-    <ul class="issues" id="issues"></ul>
-    <h2>Подсказки</h2>
-    <ul class="hints">
-      <li>Переключатель в углу блока включает и выключает его.</li>
-      <li>Двойной щелчок по включённому блоку открывает его настройки.</li>
-      <li>Двойной щелчок по выводу: назначение сигнала и стандарт I/O.</li>
-      <li>Двойной щелчок по имени цепи снаружи микросхемы: переименование.</li>
-      <li>Имя вида <code>led[3]</code> собирается в шину <code>led</code>.</li>
-    </ul>
+    <div class="side-top">
+      <div id="settings"></div>
+      <h2>Проверка <span class="badge" id="issueCount"></span></h2>
+      <ul class="issues" id="issues"></ul>
+    </div>
+    <div class="side-bottom">
+      <h2>Карта адресов</h2>
+      <table class="amap" id="amap"></table>
+    </div>
   </aside>
 </main>
 
@@ -63,6 +77,14 @@
       <button value="cancel" formnovalidate>Отмена</button>
       <button value="ok" class="primary" id="dlgOk">Применить</button>
     </div>
+  </form>
+</dialog>
+
+<dialog id="lib" class="wide">
+  <form method="dialog">
+    <h3 id="libTitle">Библиотека периферии</h3>
+    <div id="libBody"></div>
+    <div class="dlg-actions"><button value="close">Закрыть</button></div>
   </form>
 </dialog>
 

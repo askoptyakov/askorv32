@@ -13,6 +13,21 @@
 
 #include "periphery.h"
 
+/* Регистры CLINT; адрес и указатель CLINT - в soc.h */
+typedef struct
+{
+  __IO uint32_t MSIP;				//0x0000: Бит 0 - запрос программного прерывания
+  uint32_t      RESERVED0[4095];
+  __IO uint32_t MTIMECMP_LO;		//0x4000: Порог машинного таймера, младшее слово
+  __IO uint32_t MTIMECMP_HI;		//0x4004: Порог машинного таймера, старшее слово
+  uint32_t      RESERVED1[8188];
+  __IO uint32_t MTIME_LO;			//0xBFF8: Машинный таймер, младшее слово
+  __IO uint32_t MTIME_HI;			//0xBFFC: Машинный таймер, старшее слово
+} CLINT_TypeDef;
+
+/* Частота тактирования периферии (clk_dmem) SYSCLK_HZ - в soc.h (от неё считают STIM, UART и mtime) */
+#define MTIME_HZ				SYSCLK_HZ	//mtime увеличивается на каждом такте clk_dmem
+
 /* Текущее значение mtime (64 бит). Старшее слово читается дважды: при переносе между
    чтениями младшее слово перечитывается */
 static inline uint64_t CLINT_GetTime(void)

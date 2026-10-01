@@ -31,7 +31,7 @@
 #endif
 
 /* Полупериод мигания, мс */
-#define BLINK_HALF_PERIOD_MS 	500U
+#define BLINK_HALF_PERIOD_MS 	30U
 
 /*Прототипы функций*/
 unsigned int dig_transform(unsigned int digit);
@@ -40,7 +40,7 @@ unsigned int dig_transform(unsigned int digit);
 volatile unsigned int blink_count = 0;	//Число переключений светодиода
 
 __attribute__((unused)) static void LED_Toggle(void) {
-	GPIO->OUT ^= (1U << GPIO_LED0);
+	GPIO->OUT ^= (1U << LED0_PIN);
 	blink_count++;
 }
 
@@ -362,7 +362,7 @@ int main(void) {
 	}
 #elif EXAMPLE <= 2
 	GPIO_Init();
-	GPIO_PinMode(GPIO_LED0, GPIO_MODE_OUTPUT);
+	GPIO_PinMode(LED0_PIN, GPIO_MODE_OUTPUT);
 	Example_Init();
 
 	while(1) {
@@ -374,7 +374,7 @@ int main(void) {
 	}
 #else
 	GPIO_Init();
-	GPIO_PinMode(GPIO_LED0, GPIO_MODE_OUTPUT);
+	GPIO_PinMode(LED0_PIN, GPIO_MODE_OUTPUT);
 	Example_Run();
 #endif
 }
