@@ -41,15 +41,27 @@ const TYPES = {
   uart: { title: 'UART', ru: 'Приёмопередатчик', cat: 'iface', slot: 0x14, irq: true,
     about: 'Приёмопередатчик UART: FIFO 8–32 байта, чётность, 1–2 стоп-бита, прерывания по заполнению FIFO и по ошибке приёма.',
     defaults: () => ({ tx: null, rx: null, baud: 115200, parity: 'none', stop: 1, fifo: 16, irq: 'plic' }) },
+  spiflash: { title: 'SPIFLASH', ru: 'Флеш-память SPI', cat: 'iface', slot: 0x15, irq: false,
+    about: 'Контроллер внешней SPI-флеш: загрузка программы в IMEM/DMEM после сброса (образ записывает openFPGALoader), обмен с флеш из программы - хранение параметров. На Tang Nano 9K - микросхема P25Q32U, выводы 59..62.',
+    defaults: () => ({ sck: null, cs: null, mosi: null, miso: null, sizeMB: 4, div: 1, fpgaConfig: false, bootAddr: '0x100000' }),
+    boardPins: { sck: 59, cs: 60, mosi: 61, miso: 62 } },
 };
 const UART_BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
 const UART_PARITY = { none: 'нет', even: 'чётность (even)', odd: 'нечётность (odd)' };
 const FIFO_DEPTHS = [8, 16, 32];
+const FLASH_MB = [1, 2, 4, 8, 16];
+const BOOT_REGION = 0x10000;   //Область образа программы во флеш: 64 кБайт (как в socgen.py)
+const CFG_REGION = 0x80000, CFG_USER = 0x100000;   //Конфигурация ПЛИС во флеш (MSPI): битовый поток с 0 (как в socgen.py)
 const MEM_KB = [8, 16, 32];
 const BSRAM_TOTAL = 26;    //Блоков BSRAM (18 кбит, 2 кБайт данных) в GW1NR-9
 const IRQ_ROUTES = { plic: 'PLIC (по умолчанию)', local: 'локальная линия LI', none: 'не подключено' };
 //Place_Option Gowin EDA (build.placeOption; пусто - как записано в hw/impl/riscv_process_config.json)
 const PLACE_OPTIONS = [['', 'Place: как в проекте'], ['0', 'Place 0 - быстрее компиляция'], ['1', 'Place 1 - трассируемость'], ['2', 'Place 2 - тайминги']];
+//Loading Rate (build.loadingRate, МГц): частота чтения битового потока из флеш при AUTO BOOT и MSPI.
+//GW1N-9: 250 МГц / N (SUG100, табл. 4-3); пусто - как в hw/impl/riscv_process_config.json (по умолчанию 2.5 МГц)
+const LOADING_RATES = ['2.500', '5.435', '5.682', '5.952', '6.250', '6.579', '6.944', '7.353', '7.812', '8.333', '8.929', '9.615',
+  '10.417', '11.364', '12.500', '13.889', '15.625', '17.857', '20.833', '25.000', '31.250', '41.667', '62.500'];
+const LOADING_OPTIONS = [['', 'Загрузка: как в проекте'], ...LOADING_RATES.map(r => [r, `Загрузка ${+r} МГц` + (r === '2.500' ? ' (по умолчанию)' : '')])];
 const FIXED_REGIONS = [
   { name: 'IMEM',  slot: 0x00, note: 'память команд' },
   { name: 'CLINT', slot: 0x02, note: 'mtime, msip' },
@@ -67,6 +79,7 @@ const SV_KEYWORDS = new Set(['input', 'output', 'inout', 'wire', 'logic', 'reg',
 const RESERVED_NETS = new Set(['tck_pad_i', 'tms_pad_i', 'tdi_pad_i', 'tdo_pad_o',
   'clk_per', 'rst_per', 'bus_per_Write', 'bus_per_Read', 'bus_per_Addr', 'bus_per_WData', 'bus_per_RData', 'irq_local', 'irq_src',
   'sRead', 'top', 'cpu', 'permux', 'memmux', 'gpio_top', 'stim_top', 'tm1638_top', 'uart_top',
+  'spiflash_top', 'boot_hold', 'boot_Write', 'boot_Addr', 'boot_WData',
   'CORE_TYPE', 'M_EXT', 'DIV_BPC', 'IMEM_TYPE', 'BSRAM_IMEM_SIZE', 'SYNTH_IMEM_SIZE', 'IMEM_INIT_FILE',
   'DMEM_TYPE', 'BSRAM_DMEM_SIZE', 'SYNTH_DMEM_SIZE', 'DMEM_INIT_FILE', 'DEBUG_EN', 'PLIC_SOURCES',
   'FCLKIN', 'XTAL_KHZ', 'PLL_IDIV_SEL', 'PLL_FBDIV_SEL', 'PLL_ODIV_SEL', 'WIN_MASK', 'CLK_BASE_MHZ', 'CLK_DMEM_MHZ']);
@@ -122,6 +135,7 @@ function normalize(m) {
     const full = Object.assign(TYPES[i.type].defaults(), { base: 'auto' }, i);
     const o = { type: full.type, name: full.name, base: full.base };
     for (const k of Object.keys(full)) if (!(k in o)) o[k] = full[k];
+    if (o.type === 'spiflash') delete o.boot;   //Загрузка программы теперь следует из fpgaConfig (режим MSPI)
     return o;
   });
   m.ioDefaults = Object.assign({ ioType: 'LVCMOS18', pull: 'UP', drive: '8', vccio: '1.8' }, m.ioDefaults);
@@ -145,6 +159,8 @@ function instSignals(inst) {
                            { key: 'stb', label: 'STB', dir: 'output' }];
     case 'stim': return inst.out != null ? [{ key: 'out', label: 'PWM', dir: 'output' }] : [];
     case 'uart': return [{ key: 'tx', label: 'TX', dir: 'output' }, { key: 'rx', label: 'RX', dir: 'input' }];
+    case 'spiflash': return [{ key: 'sck', label: 'SCK', dir: 'output' }, { key: 'cs', label: 'CS#', dir: 'output' },
+                             { key: 'mosi', label: 'MOSI', dir: 'output' }, { key: 'miso', label: 'MISO', dir: 'input' }];
   }
   return [];
 }
@@ -255,6 +271,14 @@ function irqMap(m) {
   return res;
 }
 //Блоки BSRAM: IMEM и DMEM по 2 кБайт на блок, шрифт каждого TM1638 - один блок
+//Флеш блока SPIFLASH: частота SCK, объём, область образа программы и свободная область (как flash_info в socgen.py)
+function flashInfo(m, f) {
+  //Загрузчик программы включён только при хранении во внешней флеш (MSPI), как в socgen.py
+  const div = Number(f.div), size = Number(f.sizeMB) * 1048576, fpgaConfig = !!f.fpgaConfig, boot = fpgaConfig;
+  const bootAddr = parseBase(f.bootAddr) || 0, user = boot ? bootAddr + BOOT_REGION : (fpgaConfig ? CFG_USER : 0);
+  return { div, sck: sysclkHz(m) / (2 * (div + 1)), size, boot, bootAddr, fpgaConfig, user, userSize: Math.max(0, size - user) };
+}
+const hex6 = v => '0x' + (v >>> 0).toString(16).toUpperCase().padStart(6, '0');
 function bsramBlocks(m) {
   let used = 0;
   for (const k of ['imem', 'dmem']) if (m.core[k].type === 'bsram') used += Math.floor(Number(m.core[k].kb) / 2);
@@ -455,6 +479,17 @@ function validate(m) {
       if (!inst.lines.length) out.push({ lvl: 'err', text: `${inst.name}: нет ни одной линии - добавьте линию (+)`, inst: inst.name });
       if (inst.lines.length > 32) out.push({ lvl: 'err', text: `${inst.name}: не больше 32 линий`, inst: inst.name });
     }
+    if (inst.type === 'spiflash') {
+      const fi = flashInfo(m, inst);
+      if (!FLASH_MB.includes(Number(inst.sizeMB))) out.push({ lvl: 'err', text: `${inst.name}: объём флеш 1, 2, 4, 8 или 16 МБайт`, inst: inst.name });
+      if (!(fi.div >= 0 && fi.div <= 255)) out.push({ lvl: 'err', text: `${inst.name}: делитель SCK 0..255`, inst: inst.name });
+      if (fi.boot) {
+        const ba = parseBase(inst.bootAddr);
+        if (Number.isNaN(ba) || (ba || 0) % BOOT_REGION) out.push({ lvl: 'err', text: `${inst.name}: адрес образа программы кратен 0x10000 (64 кБайт)`, inst: inst.name });
+        else if (fi.bootAddr + BOOT_REGION > fi.size) out.push({ lvl: 'err', text: `${inst.name}: адрес образа ${hex6(fi.bootAddr)} вне флеш (${inst.sizeMB} МБайт)`, inst: inst.name });
+        else if (fi.bootAddr < CFG_REGION) out.push({ lvl: 'err', text: `${inst.name}: флеш хранит конфигурацию ПЛИС (с адреса 0) - образ программы не ниже ${hex6(CFG_REGION)}`, inst: inst.name });
+      }
+    }
     if (inst.type === 'uart' && !pll.errs.length) {
       const u = uartDiv(m, inst);
       if (u.div < 7 || u.div > 0xFFFF)
@@ -464,6 +499,8 @@ function validate(m) {
     }
   }
 
+  const cfgs = insts(m, 'spiflash').filter(f => f.fpgaConfig).map(f => f.name);
+  if (cfgs.length > 1) out.push({ lvl: 'err', text: `Конфигурацию ПЛИС может хранить только одна флеш (выводы MSPI): ${cfgs.join(', ')}`, inst: cfgs[1] });
   if (m.build.toolchain === 'apicula' && m.core.debug)
     out.push({ lvl: 'warn', text: 'apicula: отладчик JTAG в этой сборке будет выключен (GW_JTAG для GW1N-9C не поддерживается)' });
   if (m.build.toolchain === 'apicula' && !pll.errs.length && pll.fout > 31.5)
@@ -513,6 +550,8 @@ function render() {
   renderResources();
   document.getElementById('placeOpt').value = model.build.placeOption ?? '';
   document.getElementById('placeOpt').disabled = model.build.toolchain !== 'gowin';
+  document.getElementById('loadRate').value = model.build.loadingRate ?? '';
+  document.getElementById('loadRate').disabled = model.build.toolchain !== 'gowin';
 }
 
 //Подсветка выводов блока под указателем (или выбранного): остальные выводы приглушаются
@@ -809,6 +848,7 @@ function drawPeriph(svg, p, irqs, badPins, bad) {
                      () => select({ kind: 'inst', name: inst.name }), inst.name);
   el('text', { class: 'blk-ru', x: box.x + 9, y: box.y + 38 }, g, TYPES[inst.type].ru);
   if (irqs[inst.name]) el('text', { class: 'blk-irq', x: box.x + box.w - 9, y: box.y + 38, 'text-anchor': 'end' }, g, 'IRQ ' + irqText(irqs[inst.name]));
+  if (inst.type === 'spiflash' && inst.fpgaConfig) el('text', { class: 'blk-irq', x: box.x + box.w - 9, y: box.y + 38, 'text-anchor': 'end' }, g, 'BOOT');
   const y0 = box.y + 44;
   rows.forEach((r, i) => {
     const y = y0 + i * SG.row + 10;
@@ -950,7 +990,7 @@ function flashPin(n) {
   g.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
 }
 
-// --- Ресурсы ПЛИС (правый верхний угол): свободно / всего ---
+// --- Ресурсы ПЛИС (правый верхний угол): занято / всего ---
 //Логика, регистры, DSP и Fmax - по последней сборке (hw/impl/socgen/resources.json); BSRAM, выводы, PLL - по конфигурации
 let lastRes = null;
 const ICONS = {
@@ -979,10 +1019,10 @@ function renderResources() {
     const has = Array.isArray(it.v) && it.v[1] > 0;
     const used = has ? it.v[0] : 0, total = has ? it.v[1] : 0, free = total - used, pct = has ? used / total : 0;
     const cls = !has ? 'na' : pct > 1 ? 'bad' : pct > 0.9 ? 'bad' : pct > 0.75 ? 'warn' : '';
-    const tip = has ? `${it.name}\nсвободно ${free} из ${total} (занято ${used}, ${Math.round(pct * 100)} %)\n${it.src}`
+    const tip = has ? `${it.name}\nзанято ${used} из ${total} (${Math.round(pct * 100)} %, свободно ${free})\n${it.src}`
                     : `${it.name}\nпоявится после сборки`;
     return `<span class="res-item ${cls}" title="${esc(tip)}"><svg viewBox="0 0 16 16">${ICONS[it.k]}</svg>` +
-      `<b>${has ? `${free}/${total}` : '—'}</b><i style="width:${Math.min(100, Math.round(pct * 100))}%"></i></span>`;
+      `<b>${has ? `${used}/${total}` : '—'}</b><i style="width:${Math.min(100, Math.round(pct * 100))}%"></i></span>`;
   }).join('');
   const fmax = lastRes && lastRes.fmax ? lastRes.fmax.clk_core : null;
   if (fmax != null) {
@@ -1259,6 +1299,16 @@ function instForm(inst, v) {
   if (t.irq) h += `<label>Прерывание</label><div><select name="irq">${opts(Object.entries(IRQ_ROUTES), inst.irq || 'plic')}</select>
       <span class="muted"> ${irqText(irqs[inst.name])}</span></div>`;
   if (inst.type === 'stim') h += `<label>Разрядность</label><select name="width">${opts([[16, '16 бит'], [32, '32 бита']], inst.width)}</select>`;
+  if (inst.type === 'spiflash') {
+    const fi = flashInfo(model, inst), pe = pllOf(model).errs.length;
+    const divs = []; for (let d = 0; d <= 7; d++) divs.push([d, pe ? `DIV ${d}` : `${fmt(sysclkHz(model) / (2 * (d + 1)) / 1e6)} МГц (DIV ${d})`]);
+    if (fi.div > 7) divs.push([fi.div, `DIV ${fi.div}`]);
+    h += `<label>Объём флеш</label><select name="sizeMB">${opts(FLASH_MB.map(x => [x, x + ' МБайт']), inst.sizeMB)}</select>
+      <label>Частота SCK</label><select name="div">${opts(divs, inst.div)}</select>
+      <label>Конфигурация и программа</label><select name="fpgaConfig">${opts([['0', 'в SRAM или встроенной flash'], ['1', 'в этой флеш, загрузка по MSPI']], fi.fpgaConfig ? '1' : '0')}</select>
+      <label>Адрес образа</label><input type="text" class="mono" name="bootAddr" style="width:116px" value="${esc(inst.bootAddr)}" ${fi.boot ? '' : 'disabled'}>
+      <div class="full readout">${fi.fpgaConfig ? `ПЛИС: <b>0x000000</b>.. · ` : ''}${fi.boot ? `образ: <b>${hex6(fi.bootAddr)}</b>..${hex6(fi.bootAddr + BOOT_REGION - 1)} · ` : ''}свободно: <b>${hex6(fi.user)}</b>, ${Math.round(fi.userSize / 1024)} кБайт</div>`;
+  }
   if (inst.type === 'uart') {
     const u = uartDiv(model, inst), pe = pllOf(model).errs.length;
     const bad = u.div < 7 || u.div > 0xFFFF || u.err > 2;
@@ -1287,6 +1337,12 @@ function instForm(inst, v) {
   if (inst.type === 'uart') h += `<p class="note">Скорость, чётность и стоп-биты - значения после сброса (параметры uart_top и ${esc(inst.name)}_BAUD...
     в soc.h); прошивка может сменить их регистрами. На Tang Nano 9K к UART программатора BL702 идут выводы 17 (TX) и 18 (RX).</p>`;
   if (inst.type === 'tm1638') h += `<p class="note">Знакогенератор занимает 1 блок BSRAM; делители интерфейса считаются от частоты шины.</p>`;
+  if (inst.type === 'spiflash') h += `<p class="note">Конфигурация и программа хранятся одним из трёх способов. <b>SRAM</b> («riscv FPGA SRAM»)
+    и <b>встроенная flash</b> («riscv FPGA Flash», MODE1 = MODE0 = 0) - программа в битовом потоке, флеш - только для данных программы.
+    <b>Эта флеш, загрузка по MSPI</b> (MODE1 = 1: на Tang Nano 9K - подтяжка вывода 87 к 1.8 В; у GW2A - всегда) - битовый поток с адреса 0,
+    программа - образом с адреса образа; после сброса загрузчик копирует её в IMEM/DMEM. Пишет «riscv SPI-FLASH».
+    Свободная область - ${esc(inst.name)}_USER_ADDR в soc.h. На Tang Nano 9K флеш U3 (P25Q32U) - выводы 59 SCLK, 60 CS#, 61 MOSI, 62 MISO;
+    это выводы MSPI, генератор сам включает в Gowin EDA «MSPI как обычные I/O».</p>`;
   h += `<div class="pane-actions"><button type="button" data-act="readme">Описание модуля</button>
         <button type="button" class="danger" data-act="remove">Удалить блок</button></div>`;
   return h;
@@ -1308,7 +1364,14 @@ function wireInstForm(box, inst) {
   });
   q('base').addEventListener('change', e => { inst.base = e.target.value.trim().replace(/_/g, ''); changed(); });
   for (const k of ['irq', 'parity']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = e.target.value; changed(); });
-  for (const k of ['width', 'stop', 'fifo', 'baud']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
+  for (const k of ['width', 'stop', 'fifo', 'baud', 'sizeMB', 'div']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
+  if (q('fpgaConfig')) q('fpgaConfig').addEventListener('change', e => {
+    inst.fpgaConfig = e.target.value === '1';
+    //Битовый поток с адреса 0: образ программы сдвигается выше него (1 МБайт), если стоял ниже
+    if (inst.fpgaConfig && (parseBase(inst.bootAddr) || 0) < CFG_REGION) inst.bootAddr = '0x100000';
+    changed();
+  });
+  if (q('bootAddr')) q('bootAddr').addEventListener('change', e => { inst.bootAddr = e.target.value.trim().replace(/_/g, ''); changed(); });
   box.querySelectorAll('select[name^=pin_]').forEach(s => s.addEventListener('change', () => {
     const key = s.dataset.key, sig = findSig(`${inst.name}.${key}`) || { id: `${inst.name}.${key}`, inst, key, def: defNet(inst, key) };
     movePin(sig, s.value);
@@ -1450,6 +1513,11 @@ function addInstance(type) {
   const ordered = { type, name: inst.name, base: 'auto' };
   for (const k of Object.keys(inst)) if (!(k in ordered)) ordered[k] = inst[k];
   model.periph.push(ordered);
+  //Выводы платы по умолчанию (флеш Tang Nano 9K) - только свободные
+  const bp = TYPES[type].boardPins || {};
+  const busy = new Set(signals(model).filter(x => x.pin != null).map(x => x.pin));
+  for (const [k, n] of Object.entries(bp))
+    if (!busy.has(n) && !(model.core.debug && JTAG_PINS[n])) { ordered[k] = n; ensureNet(model, { pin: n, def: defNet(ordered, k) }); }
   document.getElementById('lib').close();
   sel = { kind: 'inst', name: ordered.name };
   changed();
@@ -1578,6 +1646,7 @@ window.gwsoc = {
     model.pins = pinsSorted(model.pins);
     model.version = 2;
     if (model.build.placeOption === '') delete model.build.placeOption;
+    if (model.build.loadingRate === '') delete model.build.loadingRate;
     return toJson(ordered(model)) + '\n';
   },
   saved() { dirty = false; setStatus('Сохранено', 'ok'); },
@@ -1616,6 +1685,11 @@ document.getElementById('placeOpt').addEventListener('change', e => {
   if (e.target.value === '') delete model.build.placeOption; else model.build.placeOption = e.target.value;
   changed();
 });
+document.getElementById('loadRate').addEventListener('change', e => {
+  if (!model) return;
+  if (e.target.value === '') delete model.build.loadingRate; else model.build.loadingRate = e.target.value;
+  changed();
+});
 document.getElementById('build').addEventListener('click', doBuild);
 document.getElementById('addBlock').addEventListener('click', () => model && openLibrary());
 document.getElementById('ioDefaults').addEventListener('click', () => model && ioDefaultsDialog());
@@ -1641,6 +1715,7 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); doSave(); }
 });
 document.getElementById('placeOpt').innerHTML = opts(PLACE_OPTIONS, '');
+document.getElementById('loadRate').innerHTML = opts(LOADING_OPTIONS, '');
 
 //Запуск: в Eclipse файл передаёт редактор (gwsoc.load), в браузере - параметр ?cfg=<url>
 window.addEventListener('DOMContentLoaded', () => {

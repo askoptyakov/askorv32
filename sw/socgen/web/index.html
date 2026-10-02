@@ -36,11 +36,12 @@
         <option value="apicula">apicula (открытый)</option>
       </select>
       <select id="placeOpt" title="Place_Option размещения Gowin EDA: 0 - быстрее компиляция, 1 - лучше трассируемость, 2 - лучше тайминги"></select>
+      <select id="loadRate" title="Loading Rate Gowin EDA: частота чтения битового потока из флеш при включении питания (встроенная flash - AUTO BOOT, внешняя - MSPI). 2.5 МГц по умолчанию - около 1.4 с; 25 МГц - около 0.15 с. Для SRAM не важна. Только Gowin EDA: apicula всегда 2.5 МГц"></select>
       <button id="build" class="primary build" title="Собрать: сохранить, сгенерировать top.sv, riscv.cst и soc.h, собрать битовый поток">
         <svg viewBox="0 0 24 20"><g class="chipico"><rect x="1.5" y="13" width="13" height="5.5" rx="1"/><path d="M4 13v-1.5M7 13v-1.5M10 13v-1.5M13 13v-1.5"/></g><g class="hammer"><path d="M22 1.5l-7.5 7.5" class="handle"/><rect x="9.5" y="7.2" width="8" height="3.6" rx="1" transform="rotate(45 13.5 9)" class="head"/></g></svg>
         <span>Собрать</span></button>
     </div>
-    <div class="res" id="res" title="Ресурсы ПЛИС: свободно/всего"></div>
+    <div class="res" id="res" title="Ресурсы ПЛИС: занято/всего"></div>
     <div class="prog" id="prog" hidden><div class="prog-track"><div class="prog-bar"></div></div><span></span></div>
   </div>
 </header>

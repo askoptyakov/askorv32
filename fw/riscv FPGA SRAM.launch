@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <launchConfiguration type="org.eclipse.ui.externaltools.ProgramLaunchConfigurationType">
-    <!-- Загрузка ПЛИС в SRAM (до выключения питания) через openFPGALoader на драйвере WinUSB,
-         см. hw/info/debug.md, «Прошивка и отладка без смены драйвера». Перед загрузкой проект
-         собирается, затем sw/fpgaload/fpgaload.py: проверка, что отладка (OpenOCD) остановлена,
-         mergetool на свежем битстриме Gowin (hw/impl/pnr/riscv.fs), openFPGALoader -->
+    <!-- Конфигурация и программа - в SRAM ПЛИС (до выключения питания) через openFPGALoader на драйвере WinUSB,
+         при любых выводах MODE. См. hw/info/debug.md, «Прошивка и отладка без смены драйвера». Сборка проекта,
+         затем sw/fpgaload/fpgaload.py sram: проверка, что отладка (OpenOCD) остановлена, mergetool вливает
+         программу в свежий битстрим Gowin (hw/impl/pnr/riscv.fs), загрузка -->
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_LOCATION" value="${env_var:ComSpec}"/>
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_TOOL_ARGUMENTS" value="/c py -u ..\..\sw\fpgaload\fpgaload.py sram"/>
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_WORKING_DIRECTORY" value="${project_loc:riscv}/Debug"/>

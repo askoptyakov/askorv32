@@ -1,0 +1,80 @@
+diff --git a/src/gowin.cpp b/src/gowin.cpp
+index a4fed7a..0352906 100644
+--- a/src/gowin.cpp
++++ b/src/gowin.cpp
+@@ -891,6 +891,34 @@ bool Gowin::eraseFLASH()
+ 	}
+ }
+ 
++/* Erase embedded flash only (GW1N, --bulk-erase without --external-flash):
++ * same sequence as programFlash() without writing, then reload
++ */
++bool Gowin::eraseEmbeddedFlash()
++{
++	_jtag->setClkFreq(2500000);
++
++	send_command(CONFIG_DISABLE);
++	send_command(0);
++	_jtag->set_state(Jtag::TEST_LOGIC_RESET);
++	uint32_t state = readStatusReg();
++	if ((state & (STATUS_GOWIN_VLD | STATUS_POR)) == 0) {
++		displayReadReg("Either GOWIN_VLD or POR should be set, aborting", state);
++		return false;
++	}
++
++	if (!eraseSRAM())
++		return false;
++	if (!enableCfg())
++		return false;
++	if (!eraseFLASH())
++		return false;
++	if (!disableCfg())
++		return false;
++	reset();
++	return true;
++}
++
+ void Gowin::sendClkUs(unsigned us)
+ {
+ 	uint64_t clocks = _jtag->getClkFreq();
+diff --git a/src/gowin.hpp b/src/gowin.hpp
+index 55aaa8c..bed89c5 100644
+--- a/src/gowin.hpp
++++ b/src/gowin.hpp
+@@ -42,9 +42,9 @@ class Gowin: public Device, SPIInterface {
+ 				return SPIInterface::unprotect_flash();
+ 			printError("unprotect flash not supported"); return false;}
+ 		bool bulk_erase_flash() override {
+-			if (is_gw5a || is_gw2a)
++			if (is_gw5a || is_gw2a || _external_flash)
+ 				return SPIInterface::bulk_erase_flash();
+-			printError("bulk erase flash not supported"); return false;}
++			return eraseEmbeddedFlash();}
+ 		bool dumpFlash(uint32_t base_addr, uint32_t len) override;
+ 		int spi_put(uint8_t cmd, const uint8_t *tx, uint8_t *rx,
+ 			uint32_t len) override;
+@@ -109,6 +109,7 @@ class Gowin: public Device, SPIInterface {
+ 		bool pollFlag(uint32_t mask, uint32_t value);
+ 		bool eraseSRAM();
+ 		bool eraseFLASH();
++		bool eraseEmbeddedFlash();
+ 		void programFlash();
+ 		void programExtFlash(unsigned int offset, bool unprotect_flash);
+ 		void programSRAM();
+diff --git a/src/main.cpp b/src/main.cpp
+index d073ba3..65cfe31 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -606,7 +606,11 @@ int main(int argc, char **argv)
+ 
+ 	/* bulk erase SPI flash */
+ 	if (args.bulk_erase_flash && args.bit_file.empty()) {
+-		fpga->bulk_erase_flash();
++		if (!fpga->bulk_erase_flash()) {
++			delete(fpga);
++			delete(jtag);
++			return EXIT_FAILURE;
++		}
+ 	}
+ 
+ 	/* protect SPI flash */

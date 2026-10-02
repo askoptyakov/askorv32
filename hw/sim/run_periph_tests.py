@@ -2,7 +2,7 @@
 Тесты периферии askoRV32: каждое устройство - отдельно от ядра, через шину регистров.
 
 Устройство лежит в своей папке hw/src/periph/<устройство>/ вместе с тестом tb_<имя>.sv и описанием
-README.md. Тест собирается из всех .sv-файлов папки устройства, шаблона hw/src/periph/periph_regs.sv
+README.md. Тест собирается из всех .sv-файлов папки устройства (и её подпапки sim/ - модели), шаблона hw/src/periph/periph_regs.sv
 и общей части hw/src/periph/periph_tb.svh (ведущий шины, проверки) и печатает одну строку
 "RESULT PASS|FAIL <устройство> ...".
 
@@ -34,7 +34,8 @@ def devices():
 
 def run_device(name, d, vcd):
     tbs = sorted(d.glob("tb_*.sv"))
-    srcs = [f for f in sorted(d.glob("*.sv")) if not f.name.startswith("tb_")]
+    #Модели для тестов (например, микросхема флеш) - в подпапке sim/ устройства, в проект ПЛИС не входят
+    srcs = [f for f in sorted(d.glob("*.sv")) if not f.name.startswith("tb_")] + sorted((d / "sim").glob("*.sv"))
     BUILD_DIR.mkdir(exist_ok=True)
     results = []
     for tb in tbs:

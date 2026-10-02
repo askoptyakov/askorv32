@@ -20,6 +20,8 @@
 //периферии»): на него уходят обращения к окну 0x1xxx_xxxx.
 //  0x0000_0000 IMEM (своя шина команд)   0x0200_0000 CLINT   0x0C00_0000 PLIC   0x1000_0000 DMEM
 //  0x1100_0000..0x1FFF_FFFF - порт bus_per (пользовательская периферия; 0x1F00_0000 - устройства тестбенча)
+//Загрузчик программы из внешней флеш (контроллер SPI-флеш в top.sv, hw/src/periph/spiflash) подключается
+//к порту boot_*: пока он копирует программу в IMEM и DMEM, ядро держится в сбросе.
 //Верхний уровень платы top.sv создаёт конфигуратор ПЛИС (sw/socgen) из fw/riscv.gwsoc: он
 //переопределяет параметры cpu и подключает периферию. Тесты ядра (hw/sim) моделируют cpu без
 //top.sv, поэтому от конфигурации платы не зависят. Этот файл правится вручную, top.sv - нет.
@@ -59,7 +61,12 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
              input  logic [31:0] bus_per_RData,     //Данные чтения: при DMEM_TYPE = 1 - на следующем такте
              //Прерывания пользовательской периферии
              input  logic [15:0]           irq_local,   //Локальные LI0..LI15 (mcause 16..31)
-             input  logic [PLIC_SOURCES:1] irq_src      //Источники PLIC 1..PLIC_SOURCES (-> MEI, mcause 11)
+             input  logic [PLIC_SOURCES:1] irq_src,     //Источники PLIC 1..PLIC_SOURCES (-> MEI, mcause 11)
+             //Загрузчик программы (контроллер SPI-флеш, periph/spiflash): пока boot_hold = 1, ядро в сбросе,
+             //а загрузчик пишет словами в IMEM (0x00xx_xxxx) и DMEM (0x10xx_xxxx). Без загрузчика - нули
+             input  logic                  boot_hold,
+             input  logic [ 3:0]           boot_Write,  //Стробы записи (такт clk_per)
+             input  logic [31:0]           boot_Addr, boot_WData
 );
     //#0 Настройка тактирования
     //DESCRIPTION: Для однотактного ядра при использовании BSAM делаем псевдооднотактный процессор
@@ -98,9 +105,11 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     assign rst_sync = ~rst_sync_n;
 
     //#2 Подключаем ядро процессора
-        //Сброс системы: кнопка или модуль отладки (ndmreset). Модуль отладки сбрасывает только кнопка
-    logic ndmreset, rst_sys;
-    assign rst_sys = rst_sync | ndmreset;
+        //Сброс системы: кнопка или модуль отладки (ndmreset). Модуль отладки сбрасывает только кнопка.
+        //Ядро, кроме того, держится в сбросе, пока загрузчик копирует программу из флеш (boot_hold)
+    logic ndmreset, rst_sys, rst_core;
+    assign rst_sys  = rst_sync | ndmreset;
+    assign rst_core = rst_sys | boot_hold;
     assign clk_per = clk_dmem;
     assign rst_per = rst_sys;
         //Интерфейс памяти команд
@@ -133,7 +142,7 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
 
     core #(CORE_TYPE, IMEM_TYPE, DMEM_TYPE, M_EXT, DIV_BPC)
            riscv
-          (.clk(clk_core), .rst(rst_sys),                                                        //Системные
+          (.clk(clk_core), .rst(rst_core),                                                       //Системные
            .imem_data(imem_data), .imem_re(imem_re), .imem_rst(imem_rst), .imem_addr(imem_addr), //Интерфейс памяти команд
            .dmem_ReadData(dmem_ReadData), .dmem_Write(dmem_Write), .dmem_Read(dmem_Read),        //Интерфейс памяти данных
            .dmem_Addr(dmem_Addr), .dmem_WriteData(dmem_WriteData),
@@ -158,7 +167,7 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
         dm dm (.clk(clk_core), .rst(rst_sync),
                .dmi_req_tgl(dmi_req_tgl), .dmi_addr(dmi_addr), .dmi_wdata(dmi_wdata), .dmi_op(dmi_op),
                .dmi_ack_tgl(dmi_ack_tgl), .dmi_rdata(dmi_rdata),
-               .ndmreset(ndmreset), .sys_rst(rst_sys),
+               .ndmreset(ndmreset), .sys_rst(rst_core),
                .haltreq(dbg_haltreq), .resumereq(dbg_resumereq), .halted(dbg_halted),
                .gpr_addr(dbg_gpr_addr), .gpr_we(dbg_gpr_we), .gpr_rdata(dbg_gpr_rdata),
                .csr_addr(dbg_csr_addr), .csr_we(dbg_csr_we), .csr_rdata(dbg_csr_rdata), .reg_wdata(dbg_wdata),
@@ -175,11 +184,22 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
         //Адреса 0x00xxxxxx - память инструкций, остальные - шина данных
     assign sb_imem = sb_active && (sb_addr[31:24] == 8'h00);
 
+    //#2.2 Внешние ведущие памяти: модуль отладки (ядро остановлено) и загрузчик (ядро в сбросе). Одновременно
+    //они не работают, поэтому сводятся в один ведущий ext_* до выбора «ядро или внешний»: путь от ядра к
+    //памяти проходит тот же один мультиплексор, что и без загрузчика
+    logic        ext_imem;
+    logic [ 3:0] ext_wstrb;
+    logic [31:0] ext_addr, ext_wdata;
+    assign ext_imem  = sb_imem | (boot_hold && (|boot_Write) && boot_Addr[31:24] == 8'h00);
+    assign ext_wstrb = boot_hold ? boot_Write : sb_wstrb;
+    assign ext_addr  = boot_hold ? boot_Addr  : sb_addr;
+    assign ext_wdata = boot_hold ? boot_WData : sb_wdata;
+
     //#3 Подключаем память инструкций
     mem #(IMEM_TYPE, SYNTH_IMEM_SIZE, BSRAM_IMEM_SIZE, IMEM_INIT_FILE) imem
-          (.clk(clk_imem), .reset(rst_sys | (imem_rst & ~sb_imem)), .re(imem_re | sb_imem),
-           .wstrb(sb_imem ? sb_wstrb : 4'b0000),
-           .a(sb_imem ? sb_addr : imem_addr), .wd(sb_wdata),
+          (.clk(clk_imem), .reset(rst_sys | (imem_rst & ~ext_imem)), .re(imem_re | ext_imem),
+           .wstrb(ext_imem ? ext_wstrb : 4'b0000),
+           .a(ext_imem ? ext_addr : imem_addr), .wd(ext_wdata),
            .rd(imem_data));
 
     //#4 Ведущий шины данных (ядро или модуль отладки)
@@ -189,15 +209,18 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     //а адрес IMEM (0x00xxxxxx) не попадает ни в одно устройство memmux. Копия на такт позже halted:
     //при останове DM начинает обращение через несколько тактов, после продолжения первая загрузка
     //или запись ядра доходит до стадии M не раньше чем через 3 такта.
+    //Загрузчик (boot_hold) владеет шиной так же, по регистру: его первая запись - через сотни тактов
+    //после подъёма boot_hold, а ядро выходит из сброса уже после конца загрузки.
+    //Запись загрузчика в IMEM (0x00xxxxxx) на шине данных никуда не попадает, как и у модуля отладки
     logic        bus_sb;
     logic [ 3:0] bus_Write;
     logic        bus_Read;
     logic [31:0] bus_Addr, bus_WData;
-    always_ff @(posedge clk_core) bus_sb <= DEBUG_EN & dbg_halted;
-    assign bus_Write = bus_sb ? sb_wstrb : dmem_Write;
-    assign bus_Read  = bus_sb ? sb_read  : dmem_Read;
-    assign bus_Addr  = bus_sb ? sb_addr  : dmem_Addr;
-    assign bus_WData = bus_sb ? sb_wdata : dmem_WriteData;
+    always_ff @(posedge clk_core) bus_sb <= (DEBUG_EN & dbg_halted) | boot_hold;
+    assign bus_Write = bus_sb ? ext_wstrb             : dmem_Write;
+    assign bus_Read  = bus_sb ? sb_read & ~boot_hold  : dmem_Read;
+    assign bus_Addr  = bus_sb ? ext_addr              : dmem_Addr;
+    assign bus_WData = bus_sb ? ext_wdata             : dmem_WriteData;
 
     //#5 Системная шина: DMEM, CLINT, PLIC и порт пользовательской периферии. Окна по 16 МБайт, приоритет
     //у младшего номера. Порту периферии отдано окно 0x1xxx_xxxx (проверка старших 4 бит): в него попадает

@@ -12,7 +12,7 @@ module top #(
              parameter int DIV_BPC           = 2, //бит частного за такт: 1, 2, 4
                 //Память команд и данных
              parameter bit IMEM_TYPE         = 1, //1 - BSRAM, 0 - синтезированная
-             parameter int BSRAM_IMEM_SIZE   = 32, //кБайт: 8/16/32
+             parameter int BSRAM_IMEM_SIZE   = 16, //кБайт: 8/16/32
              parameter int SYNTH_IMEM_SIZE   = 256, //слов по 4 Байт
              parameter IMEM_INIT_FILE        = "mem_init/i.mem",
              parameter bit DMEM_TYPE         = 1, //1 - BSRAM, 0 - синтезированная
@@ -43,9 +43,14 @@ module top #(
     inout wire   [2:0]  GPIO,                 //выводы 25, 26, 27
     //STIM
     output wire         STIM_OUT,             //вывод 68
-    //UART0 (UART)
+    //UART
     output wire         UART_TX,              //вывод 17
-    input wire          UART_RX               //вывод 18
+    input wire          UART_RX,              //вывод 18
+    //SPIFLASH
+    output wire         FLASH_SCK,            //вывод 59
+    output wire         FLASH_CS,             //вывод 60
+    output wire         FLASH_MOSI,           //вывод 61
+    input wire          FLASH_MISO            //вывод 62
 `ifndef GWSOC_NO_JTAG_PINS
     //Выводы JTAG ПЛИС: для примитива GW_JTAG (отладчик), назначения в .cst не требуются
    ,input  logic        tck_pad_i, tms_pad_i, tdi_pad_i,
@@ -60,11 +65,12 @@ module top #(
     //#1 Карта адресов пользовательской периферии: у каждого устройства окно 16 МБайт (маска 0xFF00_0000).
     //Системные окна - в cpu.sv: IMEM 0x0000_0000, CLINT 0x0200_0000, PLIC 0x0C00_0000, DMEM 0x1000_0000;
     //0x1F00_0000 - устройства тестбенча. Всё вне системных окон cpu отдаёт на порт bus_per
-    localparam logic [31:0] GPIO_BASE   = 32'h1100_0000;
-    localparam logic [31:0] TM1638_BASE = 32'h1200_0000;
-    localparam logic [31:0] STIM_BASE   = 32'h1300_0000;
-    localparam logic [31:0] UART0_BASE  = 32'h1400_0000;
-    localparam logic [31:0] WIN_MASK    = 32'hFF00_0000;
+    localparam logic [31:0] GPIO_BASE     = 32'h1100_0000;
+    localparam logic [31:0] TM1638_BASE   = 32'h1200_0000;
+    localparam logic [31:0] STIM_BASE     = 32'h1300_0000;
+    localparam logic [31:0] UART_BASE     = 32'h1400_0000;
+    localparam logic [31:0] SPIFLASH_BASE = 32'h1500_0000;
+    localparam logic [31:0] WIN_MASK      = 32'hFF00_0000;
 
     //Частота шины периферии (clk_per), МГц, целая часть: для делителей периферии (TM1638).
     //Однотактное ядро с BSRAM делит базовую частоту на 3. Прошивке то же значение задаёт SYSCLK_HZ.
@@ -79,6 +85,9 @@ module top #(
     logic [31:0] bus_per_Addr, bus_per_WData, bus_per_RData;
     logic [15:0] irq_local;
     logic [PLIC_SOURCES:1] irq_src;
+    logic        boot_hold;                  //Загрузчик программы из SPI-флеш: ядро в сбросе, пока он пишет память
+    logic [ 3:0] boot_Write;
+    logic [31:0] boot_Addr, boot_WData;
 
     cpu #(.CORE_TYPE(CORE_TYPE), .M_EXT(M_EXT), .DIV_BPC(DIV_BPC),
           .IMEM_TYPE(IMEM_TYPE), .BSRAM_IMEM_SIZE(BSRAM_IMEM_SIZE), .SYNTH_IMEM_SIZE(SYNTH_IMEM_SIZE), .IMEM_INIT_FILE(IMEM_INIT_FILE),
@@ -89,26 +98,28 @@ module top #(
              .tck_pad_i(tck_pad_i), .tms_pad_i(tms_pad_i), .tdi_pad_i(tdi_pad_i), .tdo_pad_o(tdo_pad_o),
              .clk_per(clk_per), .rst_per(rst_per),
              .bus_per_Write(bus_per_Write), .bus_per_Read(bus_per_Read), .bus_per_Addr(bus_per_Addr), .bus_per_WData(bus_per_WData), .bus_per_RData(bus_per_RData),
-             .irq_local(irq_local), .irq_src(irq_src));
+             .irq_local(irq_local), .irq_src(irq_src),
+             .boot_hold(boot_hold), .boot_Write(boot_Write), .boot_Addr(boot_Addr), .boot_WData(boot_WData));
+    //Программу после сброса копирует из флеш SPIFLASH (порт boot_*)
 
     //#3 Шина пользовательской периферии (memmux): ведомые перечислены от старшего номера к младшему
-    logic [ 3:0] gpio_Write, tm1638_Write, stim_Write, uart0_Write;
-    logic [31:0] gpio_Addr, tm1638_Addr, stim_Addr, uart0_Addr;
-    logic [31:0] gpio_WriteData, tm1638_WriteData, stim_WriteData, uart0_WriteData;
-    logic [31:0] gpio_ReadData, tm1638_ReadData, stim_ReadData, uart0_ReadData;
-    logic [ 3:0] sRead;
+    logic [ 3:0] gpio_Write, tm1638_Write, stim_Write, uart_Write, spiflash_Write;
+    logic [31:0] gpio_Addr, tm1638_Addr, stim_Addr, uart_Addr, spiflash_Addr;
+    logic [31:0] gpio_WriteData, tm1638_WriteData, stim_WriteData, uart_WriteData, spiflash_WriteData;
+    logic [31:0] gpio_ReadData, tm1638_ReadData, stim_ReadData, uart_ReadData, spiflash_ReadData;
+    logic [ 4:0] sRead;
 
-    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(4),
-              .MATCH_ADDR ({GPIO_BASE, TM1638_BASE, STIM_BASE, UART0_BASE}),
-              .MATCH_MASK ({4{WIN_MASK}}))
+    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(5),
+              .MATCH_ADDR ({GPIO_BASE, TM1638_BASE, STIM_BASE, UART_BASE, SPIFLASH_BASE}),
+              .MATCH_MASK ({5{WIN_MASK}}))
             permux
              (.clk(clk_per), .rst(rst_per),
               .mWrite(bus_per_Write), .mRead(bus_per_Read), .mAddr(bus_per_Addr), .mWData(bus_per_WData), .mRData(bus_per_RData),
-              .sWrite({gpio_Write, tm1638_Write, stim_Write, uart0_Write}),
+              .sWrite({gpio_Write, tm1638_Write, stim_Write, uart_Write, spiflash_Write}),
               .sRead (sRead),
-              .sAddr ({gpio_Addr, tm1638_Addr, stim_Addr, uart0_Addr}),
-              .sWData({gpio_WriteData, tm1638_WriteData, stim_WriteData, uart0_WriteData}),
-              .sRData({gpio_ReadData, tm1638_ReadData, stim_ReadData, uart0_ReadData}));
+              .sAddr ({gpio_Addr, tm1638_Addr, stim_Addr, uart_Addr, spiflash_Addr}),
+              .sWData({gpio_WriteData, tm1638_WriteData, stim_WriteData, uart_WriteData, spiflash_WriteData}),
+              .sRData({gpio_ReadData, tm1638_ReadData, stim_ReadData, uart_ReadData, spiflash_ReadData}));
 
     //-1- GPIO: 6 лин., регистры с 32'h1100_0000 (линия 0 - младший разряд)
     gpio_top #(.MEMORY_TYPE(DMEM_TYPE), .WIDTH(6)) gpio
@@ -129,17 +140,25 @@ module top #(
                  .Write(stim_Write), .Addr(stim_Addr), .WData(stim_WriteData), .RData(stim_ReadData),
                  .tim_out(STIM_OUT), .irq(irq_stim));
 
-    //-4- UART0 (UART): 115200 бит/с (div 390, фактически 115090, ошибка 0.10 %), чётность none, стоп-битов 1, FIFO 16
+    //-4- UART: 115200 бит/с (div 390, фактически 115090, ошибка 0.10 %), чётность none, стоп-битов 1, FIFO 16
     //    регистры с 32'h1400_0000
-    logic irq_uart0;
-    uart_top #(.MEMORY_TYPE(DMEM_TYPE), .DEPTH(16), .DIV_INIT(390), .STOP_INIT(1), .PARITY_INIT(0)) uart0
+    logic irq_uart;
+    uart_top #(.MEMORY_TYPE(DMEM_TYPE), .DEPTH(16), .DIV_INIT(390), .STOP_INIT(1), .PARITY_INIT(0)) uart
                 (.clk(clk_per), .rst(rst_per),
-                 .Write(uart0_Write), .Read(sRead[0]), .Addr(uart0_Addr), .WData(uart0_WriteData), .RData(uart0_ReadData),
-                 .tx(UART_TX), .rx(UART_RX), .irq(irq_uart0));
+                 .Write(uart_Write), .Read(sRead[1]), .Addr(uart_Addr), .WData(uart_WriteData), .RData(uart_ReadData),
+                 .tx(UART_TX), .rx(UART_RX), .irq(irq_uart));
 
-    //-5- Прерывания периферии: источники PLIC (MEI, векторный режим) и локальные линии LI0..LI15
+    //-5- SPIFLASH: SPI-флеш 4 МБайт, SCK 11.25 МГц (DIV 1), загрузка программы с адреса 0x100000, конфигурация ПЛИС с адреса 0 (MSPI)
+    //    регистры с 32'h1500_0000
+    spiflash_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(1), .BOOT_EN(1), .BOOT_ADDR(24'h100000)) spiflash
+                (.clk(clk_per), .rst(rst_per),
+                 .Write(spiflash_Write), .Read(sRead[0]), .Addr(spiflash_Addr), .WData(spiflash_WriteData), .RData(spiflash_ReadData),
+                 .spi_sck(FLASH_SCK), .spi_cs_n(FLASH_CS), .spi_mosi(FLASH_MOSI), .spi_miso(FLASH_MISO),
+                 .boot_hold(boot_hold), .boot_Write(boot_Write), .boot_Addr(boot_Addr), .boot_WData(boot_WData));
+
+    //-6- Прерывания периферии: источники PLIC (MEI, векторный режим) и локальные линии LI0..LI15
     //    STIM: источник PLIC 1
-    //    UART0: источник PLIC 2
-    assign irq_src   = {1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, irq_uart0, irq_stim};   //старший разряд - источник 8, младший - источник 1
+    //    UART: источник PLIC 2
+    assign irq_src   = {1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, irq_uart, irq_stim};   //старший разряд - источник 8, младший - источник 1
     assign irq_local = 16'd0;
 endmodule

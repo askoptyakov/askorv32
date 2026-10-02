@@ -86,7 +86,7 @@
 
     task automatic wait_halted(input string what);
         logic [31:0] st;
-        for (int i = 0; i < 50; i++) begin
+        for (int i = 0; i < 400; i++) begin                  //С загрузкой из флеш (--boot) сброс длится до ~2 мс
             dmi_rd(DM_DMSTATUS, st);
             if (st[9]) return;
         end

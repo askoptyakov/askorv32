@@ -135,7 +135,11 @@ public class GwsocEditor extends EditorPart {
             case "ready" -> loadIntoPage();
             case "dirty" -> setDirty(true);
             case "save" -> { if (arg != null) writeFile(arg); }
-            case "build" -> { if (arg != null && writeFile(arg)) runBuild(); }
+            case "build" -> {
+                //Файл не сохранился - сборки не будет: странице сразу конец сборки, иначе шкала ждёт бесконечно
+                if (arg != null && writeFile(arg)) runBuild();
+                else browser.execute("window.gwsoc && gwsoc.buildDone(false);");
+            }
             case "readme" -> { if (arg != null) sendReadme(arg); }
             default -> { }
         }
@@ -191,7 +195,10 @@ public class GwsocEditor extends EditorPart {
     private boolean writeFile(String json) {
         try {
             ignoreChange = true;
-            file.setContents(new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8)), IResource.KEEP_HISTORY, null);
+            //Файл могли изменить вне Eclipse (генератор, другой редактор): без обновления рабочая область считает его
+            //не синхронизированным с диском, и setContents отказывает. Сохраняется то, что в конфигураторе (FORCE)
+            file.refreshLocal(IResource.DEPTH_ZERO, null);
+            file.setContents(new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8)), IResource.FORCE | IResource.KEEP_HISTORY, null);
             setDirty(false);
             browser.execute("gwsoc.saved();");
             return true;

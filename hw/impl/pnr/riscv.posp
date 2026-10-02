@@ -1,22 +1,23 @@
-//Copyright (C)2014-2024 Gowin Semiconductor Corporation.
+//Copyright (C)2014-2025 Gowin Semiconductor Corporation.
 //All rights reserved.
 //File Title: Post-Place file
-//Tool Version: V1.9.9.03 Education (64-bit)
+//Tool Version: V1.9.11.03 Education
 //Part Number: GW1NR-LV9QN88PC6/I5
 //Device: GW1NR-9
 //Device Version: C
-//Created Time: Wed Mar  5 09:54:42 2025
+//Created Time: Fri Oct  2 11:41:10 2026
 
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_0_s PLACE_BSRAM_R10[0]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_3_s PLACE_BSRAM_R28[1]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_4_s PLACE_BSRAM_R28[2]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_1_s PLACE_BSRAM_R10[1]
-gw_gao_inst_0/u_la0_top/u_ao_mem_ctrl/mem_mem_0_2_s PLACE_BSRAM_R28[0]
-dmem/cluster[0].sector[3].bsram PLACE_BSRAM_R10[4]
-dmem/cluster[0].sector[2].bsram PLACE_BSRAM_R10[3]
-dmem/cluster[0].sector[0].bsram PLACE_BSRAM_R10[5]
-dmem/cluster[0].sector[1].bsram PLACE_BSRAM_R10[2]
-imem/cluster[0].sector[1].bsram PLACE_BSRAM_R10[6]
-imem/cluster[0].sector[2].bsram PLACE_BSRAM_R10[7]
-imem/cluster[0].sector[3].bsram PLACE_BSRAM_R28[4]
-imem/cluster[0].sector[0].bsram PLACE_BSRAM_R28[3]
+cpu/riscv/g_mul.mdu_mul/prod_65_s1 PLACE_DSP_R19[2] //R19C20
+cpu/imem/cluster[1].sector[0].bsram PLACE_BSRAM_R10[4]
+cpu/imem/cluster[0].sector[0].bsram PLACE_BSRAM_R10[5]
+tm1638/tm1638_board_controller/font/font_seg_0_s PLACE_BSRAM_R10[0]
+cpu/imem/cluster[1].sector[2].bsram PLACE_BSRAM_R28[5]
+cpu/imem/cluster[0].sector[2].bsram PLACE_BSRAM_R28[6]
+cpu/dmem/cluster[0].sector[1].bsram PLACE_BSRAM_R28[4]
+cpu/dmem/cluster[0].sector[2].bsram PLACE_BSRAM_R28[7]
+cpu/dmem/cluster[0].sector[0].bsram PLACE_BSRAM_R10[3]
+cpu/dmem/cluster[0].sector[3].bsram PLACE_BSRAM_R10[6]
+cpu/imem/cluster[0].sector[3].bsram PLACE_BSRAM_R10[2]
+cpu/imem/cluster[1].sector[3].bsram PLACE_BSRAM_R10[1]
+cpu/imem/cluster[0].sector[1].bsram PLACE_BSRAM_R10[7]
+cpu/imem/cluster[1].sector[1].bsram PLACE_BSRAM_R10[8]

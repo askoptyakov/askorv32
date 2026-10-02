@@ -7,6 +7,7 @@
     py hw/sim/run_tests.py sra --core single --vcd   # + временные диаграммы для GTKWave
     py hw/sim/run_tests.py --rf-garbage              # регистры при старте - мусор, как на плате
     py hw/sim/run_tests.py --gen               # сначала перегенерировать tests/rv32i/*.S
+    py hw/sim/run_tests.py --boot              # программа - во внешней SPI-флеш, в память её копирует загрузчик
 
 Инструменты ищутся в PATH, затем в стандартных папках установки (см. sdk/SETUP.md).
 Пути можно задать переменными окружения RISCV_PREFIX (например
@@ -23,6 +24,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "sw" / "bootimage"))
+sys.dont_write_bytecode = True
+import bootimage                         # noqa: E402  образ для загрузки из SPI-флеш (--boot)
 
 SIM_DIR = Path(__file__).resolve().parent
 HW_DIR = SIM_DIR.parent
@@ -35,7 +39,9 @@ BUILD_DIR = SIM_DIR / "build"
 RTL = [HW_DIR / "src" / f for f in ("cpu.sv", "core.sv", "mdu.sv", "mem.sv", "clock.sv", "sys/mux.sv",
                                      "sys/clint.sv", "sys/plic.sv", "debug/dm.sv", "debug/dtm_gowin.sv",
                                      "debug/fpgacapzero/jtag_tap_gowin.v", "debug/fpgacapzero/dff_reg_sync.v",
-                                     "debug/fpgacapzero/dff_sync.v")] + [SIM_DIR / "gw_jtag_model.sv"]
+                                     "debug/fpgacapzero/dff_sync.v",
+                                     "periph/periph_regs.sv", "periph/spiflash/spiflash.sv",
+                                     "periph/spiflash/sim/spiflash_model.sv")] + [SIM_DIR / "gw_jtag_model.sv"]
 TB = SIM_DIR / "tb_core.sv"
 MEM_BYTES = 8 * 1024
 CORES = {"single": 1, "pipeline": 0}  # значение параметра CORE_TYPE
@@ -126,6 +132,9 @@ def build_program(name, prefix, imem_kb=8, text_base=0):
             return None, f"{label}: {len(blob)} байт больше {size}"
     (out / "imem.hex").write_text(to_hex_words(imem))
     (out / "dmem.hex").write_text(to_hex_words(dmem))
+    #Образ для загрузки из SPI-флеш (--boot): байты в hex, по одному в строке (модель флеш читает $readmemh)
+    segs = [(0x0000_0000, imem)] + ([(0x1000_0000, dmem)] if dmem else [])
+    (out / "flash.hex").write_text("".join(f"{b:02x}\n" for b in bootimage.build(segs)))
     names = parse_names((out / "names.bin").read_bytes())
     #Программа для сценария отладки: адреса меток и параметры запуска
     extra = []
@@ -141,9 +150,9 @@ def build_program(name, prefix, imem_kb=8, text_base=0):
 # ----------------------------------------------------------------------------------------
 # Моделирование
 # ----------------------------------------------------------------------------------------
-def compile_tb(core, prim_sim, imem_kb=8, dmem_kb=8):
-    vvp = BUILD_DIR / f"tb_core_{core}_i{imem_kb}_d{dmem_kb}.vvp"
-    r = run([need("iverilog"), "-g2012", "-o", vvp, "-s", "tb_core", f"-I{SIM_DIR}",
+def compile_tb(core, prim_sim, imem_kb=8, dmem_kb=8, boot=False):
+    vvp = BUILD_DIR / f"tb_core_{core}_i{imem_kb}_d{dmem_kb}{'_boot' if boot else ''}.vvp"
+    r = run([need("iverilog"), "-g2012", "-o", vvp, "-s", "tb_core", f"-I{SIM_DIR}", *(["-DTB_BOOT"] if boot else []),
              f"-Ptb_core.CORE_TYPE={CORES[core]}", f"-Ptb_core.IMEM_KB={imem_kb}",
              f"-Ptb_core.DMEM_KB={dmem_kb}", *[f"-DTB_{m}_{kb}K" for m, kb in (("IMEM", imem_kb), ("DMEM", dmem_kb)) if kb > 8],
              TB, *RTL, prim_sim])
@@ -154,10 +163,12 @@ def compile_tb(core, prim_sim, imem_kb=8, dmem_kb=8):
     return vvp
 
 
-def simulate(vvp, name, core, vcd, rf_garbage=False):
+def simulate(vvp, name, core, vcd, rf_garbage=False, boot=False):
     d = BUILD_DIR / name
     args = [need("vvp"), "-n", vvp, f"+prog={name}", f"+imem={(d / 'imem.hex').as_posix()}",
             f"+dmem={(d / 'dmem.hex').as_posix()}", f"+names={(d / 'names.txt').as_posix()}"]
+    if boot:
+        args.append(f"+flash={(d / 'flash.hex').as_posix()}")
     args += (d / "args.txt").read_text().split()
     if rf_garbage:
         args.append("+rf_garbage")
@@ -185,6 +196,8 @@ def main():
                     help="размер памяти инструкций BSRAM (как BSRAM_IMEM_SIZE в top.sv)")
     ap.add_argument("--text-base", type=lambda x: int(x, 0), default=0,
                     help="адрес начала кода тестов, например 0x1f00 - код пересекает границу кластеров BSRAM")
+    ap.add_argument("--boot", action="store_true",
+                    help="программа - образом во внешней SPI-флеш: копирует загрузчик контроллера spiflash_top")
     ap.add_argument("-j", "--jobs", type=int, default=os.cpu_count() or 4)
     a = ap.parse_args()
 
@@ -212,13 +225,13 @@ def main():
             progs[name] = info
 
     # 2. Компиляция тестбенча и прогон
-    vvps = {c: compile_tb(c, prim_sim, a.imem_kb) for c in cores}
+    vvps = {c: compile_tb(c, prim_sim, a.imem_kb, boot=a.boot) for c in cores}
     jobs = [(n, c) for n in names for c in cores]
     with ThreadPoolExecutor(a.jobs) as ex:
-        results = dict(zip(jobs, ex.map(lambda j: simulate(vvps[j[1]], j[0], j[1], a.vcd, a.rf_garbage), jobs)))
+        results = dict(zip(jobs, ex.map(lambda j: simulate(vvps[j[1]], j[0], j[1], a.vcd, a.rf_garbage, a.boot), jobs)))
 
     # 3. Отчёт
-    print(f"\nТесты RV32I, память BSRAM (IMEM {a.imem_kb} кБайт, код с 0x{a.text_base:x}). Ядра: {', '.join(cores)}\n")
+    print(f"\nТесты RV32I, память BSRAM (IMEM {a.imem_kb} кБайт, код с 0x{a.text_base:x}){', из SPI-флеш' if a.boot else ''}. Ядра: {', '.join(cores)}\n")
     head = f"{'Инструкция':<11}{'Тестов':>7}  " + "".join(f"{c:<22}" for c in cores)
     print(head)
     print("-" * len(head))

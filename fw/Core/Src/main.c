@@ -10,7 +10,8 @@
  *                3 - UART, опрос: обмен значениями с ПК в обе стороны, вывод на TM1638;
  *                4 - UART на прерываниях (кольцевые буферы) и счётчик секунд по прерыванию STIM;
  *                5 - прерывание UART по наполнению FIFO приёма: пакеты по 8 байт;
- *                6 - TM1638: бегущая строка на кириллице, номер нажатой кнопки.
+ *                6 - TM1638: бегущая строка на кириллице, номер нажатой кнопки;
+ *                7 - внешняя SPI-флеш: откуда загружена программа, ID флеш, счётчик запусков во флеш.
  *              Прерывания периферии идут через PLIC в векторном режиме: номера источников и имена
  *              обработчиков (PLIC_STIM_IRQHandler, PLIC_UART_IRQHandler) - в soc.h от конфигуратора.
  *              UART: терминал на ПК - 115200 8-N-1 (по умолчанию из конфигуратора), кодировка UTF-8.
@@ -25,9 +26,10 @@
 #include "clint.h"
 #include "plic.h"
 #include "uart.h"
+#include "spiflash.h"
 
 #ifndef EXAMPLE
-#define EXAMPLE 1
+#define EXAMPLE 7
 #endif
 
 /* Полупериод мигания, мс */
@@ -330,6 +332,64 @@ static void Example_Run(void) {
 		delay_ms(300);
 		if (msg[++pos] == '.') pos++;
 		if (msg[pos + 8] == '\0') pos = 0;
+	}
+}
+#endif
+
+#if EXAMPLE == 7
+/*
+ * Пример 7: внешняя SPI-флеш (блок SPIFLASH). В UART - итог загрузчика (программа из флеш или из
+ * битового потока ПЛИС), JEDEC ID флеш и счётчик запусков. Счётчик - образец хранения параметров:
+ * лежит в свободной области флеш (SPIFLASH_USER_ADDR из soc.h) с признаком и контрольным словом;
+ * при каждом старте (питание, кнопка S2, сброс отладчиком) читается, увеличивается и записывается:
+ * стирание сектора 4 кБайт, затем запись. Светодиод LED0 мигает.
+ */
+typedef struct
+{
+	uint32_t magic;			//PARAMS_MAGIC - запись есть
+	uint32_t boots;			//Число запусков
+	uint32_t check;			//~boots - запись цела
+} Params;
+#define PARAMS_MAGIC	0x314D5250U		//"PRM1"
+
+static void Example_Run(void) {
+	static const char *const boot_txt[] = {"загрузчик выключен", "программа из флеш",
+		"образа во флеш нет - программа из битового потока ПЛИС", "образ испорчен (контрольная сумма)",
+		"образ испорчен (разметка)"};
+	Params p;
+	SPIFLASH_Status st;
+	SPIFLASH_BootResult b;
+
+	UART_InitDefault();
+	SPIFLASH_InitDefault();
+	UART_PutText("\r\n== askoRV32: внешняя SPI-флеш ==\r\nЗагрузка: ");
+	b = SPIFLASH_BootStatus();
+	UART_PutText(b <= SPIFLASH_BOOT_FORMAT ? boot_txt[b] : "?");
+	if (b == SPIFLASH_BOOT_OK) {
+		UART_PutText(", образ ");
+		UART_PutDec((int32_t)(SPIFLASH_BootWords() * 4U));
+		UART_PutText(" Байт");
+	}
+	UART_PutText("\r\nJEDEC ID: 0x");
+	UART_PutHex(SPIFLASH_ReadID(), 6);
+
+	/* Счётчик запусков в свободной области флеш */
+	SPIFLASH_Read(SPIFLASH_USER_ADDR, &p, sizeof p);
+	if (p.magic != PARAMS_MAGIC || p.check != ~p.boots) {	//Флеш стёрта или запись испорчена
+		p.magic = PARAMS_MAGIC;
+		p.boots = 0U;
+	}
+	p.boots++;
+	p.check = ~p.boots;
+	st = SPIFLASH_EraseSector(SPIFLASH_USER_ADDR);
+	if (st == SPIFLASH_OK) st = SPIFLASH_Write(SPIFLASH_USER_ADDR, &p, sizeof p);
+	UART_PutText("\r\nЗапусков: ");
+	UART_PutDec((int32_t)p.boots);
+	UART_PutText(st == SPIFLASH_OK ? " (записано во флеш)\r\n" : " (ошибка записи во флеш)\r\n");
+
+	while (1) {
+		LED_Toggle();
+		delay_ms(500);
 	}
 }
 #endif

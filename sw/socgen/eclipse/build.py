@@ -44,8 +44,8 @@ def props_escape(text):
     return "".join(c if ord(c) < 0x80 else f"\\u{ord(c):04x}" for c in text)
 
 
-def png_icon(path):
-    """Значок 16x16: микросхема с выводами (без сторонних библиотек)."""
+def png_icon(path, arrow=False):
+    """Значок 16x16: микросхема с выводами (без сторонних библиотек); arrow - со стрелкой записи (программатор)."""
     W = H = 16
     px = [[(0, 0, 0, 0)] * W for _ in range(H)]
     body, pin, dot = (43, 47, 54, 255), (160, 166, 176, 255), (14, 159, 142, 255)
@@ -56,9 +56,17 @@ def png_icon(path):
         for t in (0, 1, 2):
             px[k][t] = px[k][15 - t] = px[t][k] = px[15 - t][k] = pin
             px[k + 1][t] = px[k + 1][15 - t] = px[t][k + 1] = px[15 - t][k + 1] = pin
-    for y in range(5, 8):
-        for x in range(5, 8):
-            px[y][x] = dot
+    if arrow:
+        #Стрелка вниз во всю микросхему: «запись в ПЛИС»
+        for y in range(4, 9):
+            px[y][7] = px[y][8] = dot
+        for i, y in enumerate(range(8, 12)):
+            for x in range(4 + i, 12 - i):
+                px[y][x] = dot
+    else:
+        for y in range(5, 8):
+            for x in range(5, 8):
+                px[y][x] = dot
     raw = b"".join(b"\x00" + b"".join(bytes(p) for p in row) for row in px)
     chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
     path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", W, H, 8, 6, 0, 0, 0)) +
@@ -105,6 +113,7 @@ def main():
     (stage / "plugin.properties").write_text(props_escape((HERE / "plugin.properties").read_text(encoding="utf-8")),
                                              encoding="latin-1", newline="\n")
     png_icon(stage / "icons" / "chip.png")
+    png_icon(stage / "icons" / "prog.png", arrow=True)
     shutil.copytree(WEB, stage / "web")
 
     src = BUILD / "repo_src"

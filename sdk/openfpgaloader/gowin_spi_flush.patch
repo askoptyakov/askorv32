@@ -1,0 +1,79 @@
+diff --git a/src/ftdiJtagMPSSE.cpp b/src/ftdiJtagMPSSE.cpp
+index 14f0023..d0e6d72 100644
+--- a/src/ftdiJtagMPSSE.cpp
++++ b/src/ftdiJtagMPSSE.cpp
+@@ -66,6 +66,8 @@ FtdiJtagMPSSE::~FtdiJtagMPSSE()
+ 			"Loopback failed, expect problems on later runs %d\n", read);
+ }
+ 
++bool ofl_defer_tdi_flush = false;
++
+ void FtdiJtagMPSSE::init_internal(const mpsse_bit_config &cable)
+ {
+ 	display("iProduct : %s\n", _iproduct);
+@@ -369,7 +371,7 @@ int FtdiJtagMPSSE::writeTDI(const uint8_t *tdi, uint8_t *tdo, uint32_t len, bool
+ 		} else if (_ch552WA) {
+ 			mpsse_write();
+ 			ftdi_read_data(_ftdi, c, 1);
+-		} else {
++		} else if (!ofl_defer_tdi_flush) {
+ 			mpsse_write();
+ 		}
+ 	}
+diff --git a/src/ftdiJtagMPSSE.hpp b/src/ftdiJtagMPSSE.hpp
+index 2fd531c..09dcacd 100644
+--- a/src/ftdiJtagMPSSE.hpp
++++ b/src/ftdiJtagMPSSE.hpp
+@@ -17,6 +17,11 @@
+ #include "ftdipp_mpsse.hpp"
+ #include "jtagInterface.hpp"
+ 
++/* askoRV32: when true, writeTDI does not flush the MPSSE buffer after leaving Shift-xR
++ * without read-back; the buffer is sent when full or on explicit flush(). Used by
++ * Gowin::spi_put (GW1N external flash bit-bang writes) */
++extern bool ofl_defer_tdi_flush;
++
+ /*!
+  * \file FtdiJtagMPSSE.hpp
+  * \class FtdiJtagMPSSE
+diff --git a/src/gowin.cpp b/src/gowin.cpp
+index 1383494..a4fed7a 100644
+--- a/src/gowin.cpp
++++ b/src/gowin.cpp
+@@ -4,6 +4,8 @@
+  */
+ 
+ #include <stdint.h>
++
++extern bool ofl_defer_tdi_flush;   /* askoRV32: see ftdiJtagMPSSE.hpp */
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -1058,6 +1060,9 @@ int Gowin::spi_put(const uint8_t *tx, uint8_t *rx, uint32_t len)
+ 		spi_gowin_write(&t, NULL, 8);
+ 		_jtag->flush();
+ 
++		/* askoRV32: without read-back the bits are queued and sent in large USB packets
++		 * (one transaction per bit made GW1N external flash writes ~0.75 kB/s) */
++		ofl_defer_tdi_flush = (rx == NULL);
+ 		/* send bit/bit full tx content (or set di to 0 when NULL) */
+ 		for (unsigned l = 0; l < len; ++l) {
+ 			if (rx)
+@@ -1070,7 +1075,8 @@ int Gowin::spi_put(const uint8_t *tx, uint8_t *rx, uint32_t len)
+ 				spi_gowin_write(&t, NULL, 8);
+ 				t |= _spi_sck;
+ 				spi_gowin_write(&t, (rx) ? &r : NULL, 8);
+-				_jtag->flush();
++				if (rx)
++					_jtag->flush();
+ 				/* if read reconstruct bytes */
+ 				if (rx && (r & _spi_do))
+ 					rx[l] |= bm;
+@@ -1080,6 +1086,7 @@ int Gowin::spi_put(const uint8_t *tx, uint8_t *rx, uint32_t len)
+ 		t &= ~_spi_sck;
+ 		t |= _spi_cs;
+ 		spi_gowin_write(&t, NULL, 8);
++		ofl_defer_tdi_flush = false;
+ 		_jtag->flush();
+ 	}
+ 	return 0;

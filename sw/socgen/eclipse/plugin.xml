@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?eclipse version="3.4"?>
-<!-- Конфигуратор ПЛИС askoRV32: редактор файлов .gwsoc и команда открытия из проекта -->
+<!-- Конфигуратор ПЛИС askoRV32: редактор файлов .gwsoc, команда открытия из проекта и окно программатора ПЛИС -->
 <plugin>
    <extension point="org.eclipse.ui.editors">
       <editor
@@ -20,6 +20,12 @@
             description="%openCommandDesc"
             defaultHandler="ru.askorv32.gwsoc.OpenConfiguratorHandler">
       </command>
+      <command
+            id="ru.askorv32.gwsoc.programmer"
+            name="%programmerCommand"
+            description="%programmerCommandDesc"
+            defaultHandler="ru.askorv32.gwsoc.ProgrammerHandler">
+      </command>
    </extension>
 
    <extension point="org.eclipse.ui.menus">
@@ -34,11 +40,21 @@
                </with>
             </visibleWhen>
          </command>
+         <command commandId="ru.askorv32.gwsoc.programmer" icon="icons/prog.png" style="push">
+            <visibleWhen checkEnabled="false">
+               <with variable="activeMenuSelection">
+                  <iterate ifEmpty="false" operator="or">
+                     <adapt type="org.eclipse.core.resources.IProject"/>
+                  </iterate>
+               </with>
+            </visibleWhen>
+         </command>
       </menuContribution>
       <!-- Кнопка на главной панели инструментов -->
       <menuContribution locationURI="toolbar:org.eclipse.ui.main.toolbar?after=additions">
          <toolbar id="ru.askorv32.gwsoc.toolbar">
             <command commandId="ru.askorv32.gwsoc.open" icon="icons/chip.png" tooltip="%openCommandDesc" style="push"/>
+            <command commandId="ru.askorv32.gwsoc.programmer" icon="icons/prog.png" tooltip="%programmerCommandDesc" style="push"/>
          </toolbar>
       </menuContribution>
    </extension>

@@ -48,7 +48,7 @@ public class OpenConfiguratorHandler extends AbstractHandler {
         return null;
     }
 
-    private static IProject projectOf(ISelection sel) {
+    static IProject projectOf(ISelection sel) {
         if (sel instanceof IStructuredSelection ss && !ss.isEmpty()) {
             IResource r = Adapters.adapt(ss.getFirstElement(), IResource.class);
             if (r != null) return r.getProject();
@@ -56,7 +56,7 @@ public class OpenConfiguratorHandler extends AbstractHandler {
         return null;
     }
 
-    private static IFile findConfig(IProject project) {
+    static IFile findConfig(IProject project) {
         try {
             for (IResource r : project.members())
                 if (r instanceof IFile f && "gwsoc".equalsIgnoreCase(f.getFileExtension())) return f;

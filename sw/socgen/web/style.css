@@ -208,7 +208,7 @@ input.bad { border-color: var(--error); }
 .seg button { border: 0; border-radius: 0; padding: 4px 12px; }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.on { background: var(--accent); color: #fff; }
-#placeOpt:disabled { opacity: .5; }
+#placeOpt:disabled, #loadRate:disabled { opacity: .5; }
 .legend i.line { width: 22px; height: 0; border: 0; border-top: 3px solid var(--c-bus); border-radius: 0; }
 .legend i.line.clk { border-top: 2px dashed var(--c-clock); }
 

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<launchConfiguration type="org.eclipse.ui.externaltools.ProgramLaunchConfigurationType">
+    <!-- Конфигурация и программа - во внешнюю SPI-флеш платы (U3), загрузка по MSPI (вывод MODE1 = 1: на Tang Nano 9K -
+         подтяжка вывода 87 к 1.8 В). Через openFPGALoader на драйвере WinUSB (исправленный, sdk/openfpgaloader).
+         Сборка проекта, затем sw/fpgaload/fpgaload.py spiflash: проверка, что отладка (OpenOCD) остановлена,
+         битовый поток hw/impl/pnr/riscv.fs с адреса 0 (около 3 мин; пропускается, если не менялся), образ
+         программы из Debug/riscv.elf с адреса образа (около 5 с), перезапуск ПЛИС из внешней флеш - загрузчик
+         блока SPIFLASH копирует программу в память. В конфигураторе должно быть выбрано хранение во внешней флеш.
+         См. hw/src/periph/spiflash/README.md -->
+    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_LOCATION" value="${env_var:ComSpec}"/>
+    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_TOOL_ARGUMENTS" value="/c py -u ..\..\sw\fpgaload\fpgaload.py spiflash"/>
+    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_WORKING_DIRECTORY" value="${project_loc:riscv}/Debug"/>
+    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_LAUNCH_CONFIGURATION_BUILD_SCOPE" value="${projects:riscv}"/>
+    <booleanAttribute key="org.eclipse.ui.externaltools.ATTR_INCLUDE_REFERENCED_PROJECTS" value="false"/>
+    <booleanAttribute key="org.eclipse.ui.externaltools.ATTR_SHOW_CONSOLE" value="true"/>
+    <booleanAttribute key="org.eclipse.debug.ui.ATTR_LAUNCH_IN_BACKGROUND" value="true"/>
+    <!-- fpgaload печатает в UTF-8 -->
+    <stringAttribute key="org.eclipse.debug.ui.ATTR_CONSOLE_ENCODING" value="UTF-8"/>
+    <listAttribute key="org.eclipse.debug.ui.favoriteGroups">
+        <listEntry value="org.eclipse.ui.externaltools.launchGroup"/>
+    </listAttribute>
+</launchConfiguration>

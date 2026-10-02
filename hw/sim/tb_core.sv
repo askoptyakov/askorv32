@@ -31,6 +31,12 @@
 //                   сброс записью 1). Период - PER + 1 тактов шины; запрос - LI0 и источник 1 PLIC
 //+dbgtest - сценарий отладки через JTAG (tb_debug.svh) параллельно с программой
 //
+//Загрузка из SPI-флеш (макрос TB_BOOT, run_tests.py --boot): на порту bus_per с адреса 0x1E00_0000 -
+//контроллер spiflash_top с моделью флеш (periph/spiflash/sim). Программа не кладётся в BSRAM, а
+//записывается образом во флеш (+flash=<файл байтов hex>); после сброса загрузчик копирует её в IMEM
+//и DMEM и только потом отпускает ядро. Сброс с остановом отладчика (+dbgtest) тоже идёт через загрузку.
+//Такты (cycles) считаются с выхода ядра из сброса.
+//
 //Результат - одна строка "RESULT PASS|FAIL|INCOMPLETE|TIMEOUT ..." для run_tests.py.
 //==============================================================================================
 module tb_core;
@@ -55,9 +61,12 @@ module tb_core;
     wire  [ 3:0] bus_per_Write;
     wire         bus_per_Read;
     wire  [31:0] bus_per_Addr, bus_per_WData;
-    logic [31:0] bus_per_RData = 32'd0;
+    wire  [31:0] bus_per_RData;
     wire  [15:0] irq_local;
     wire  [ 8:1] irq_src;
+    wire         boot_hold;
+    wire  [ 3:0] boot_Write;
+    wire  [31:0] boot_Addr, boot_WData;
 
     cpu #(.CORE_TYPE(CORE_TYPE),
           .IMEM_TYPE(1'b1), .BSRAM_IMEM_SIZE(IMEM_KB),
@@ -66,12 +75,13 @@ module tb_core;
              .tck_pad_i(tck), .tms_pad_i(tms), .tdi_pad_i(tdi), .tdo_pad_o(tdo),
              .clk_per(clk_per), .rst_per(rst_per),
              .bus_per_Write(bus_per_Write), .bus_per_Read(bus_per_Read), .bus_per_Addr(bus_per_Addr), .bus_per_WData(bus_per_WData), .bus_per_RData(bus_per_RData),
-             .irq_local(irq_local), .irq_src(irq_src));
+             .irq_local(irq_local), .irq_src(irq_src),
+             .boot_hold(boot_hold), .boot_Write(boot_Write), .boot_Addr(boot_Addr), .boot_WData(boot_WData));
 
     //Внутренние сигналы cpu.sv, на которые опирается тестбенч
     wire        clk_core = dut.clk_core;
     wire        clk_dmem = dut.clk_dmem;
-    wire        rst      = dut.rst_sync;
+    wire        rst      = dut.rst_core;                  //Ядро в сбросе (кнопка, отладчик, загрузчик)
     wire [ 3:0] dmem_Write     = dut.dmem_Write;
     wire [31:0] dmem_Addr      = dut.dmem_Addr;
     wire [31:0] dmem_WriteData = dut.dmem_WriteData;
@@ -105,14 +115,41 @@ module tb_core;
             tim_irq <= tim_uif & tim_cr[4];                     //Запрос через регистр, как у STIM
         end
     //Данные чтения - на следующем такте (правила шины регистров)
+    logic [31:0] tb_RData;
     always @(posedge clk_per)
         case (bus_per_Addr)
-            SIM_TIM + 32'h04: bus_per_RData <= 32'(tim_cr);
-            SIM_TIM + 32'h08: bus_per_RData <= 32'(tim_per);
-            SIM_TIM + 32'h10: bus_per_RData <= 32'(tim_cnt);
-            SIM_TIM + 32'h14: bus_per_RData <= 32'(tim_uif);
-            default:          bus_per_RData <= 32'd0;
+            SIM_TIM + 32'h04: tb_RData <= 32'(tim_cr);
+            SIM_TIM + 32'h08: tb_RData <= 32'(tim_per);
+            SIM_TIM + 32'h10: tb_RData <= 32'(tim_cnt);
+            SIM_TIM + 32'h14: tb_RData <= 32'(tim_uif);
+            default:          tb_RData <= 32'd0;
         endcase
+
+    //#1.2 Контроллер SPI-флеш с загрузчиком (TB_BOOT): окно 0x1E00_0000
+`ifdef TB_BOOT
+    localparam logic [31:0] SIM_FLASH = 32'h1E00_0000;
+    wire        sf_sel = bus_per_Addr[31:24] == SIM_FLASH[31:24];
+    logic       sf_sel_q;
+    wire [31:0] sf_RData;
+    wire        sf_sck, sf_cs_n, sf_mosi, sf_miso;
+    pullup (sf_miso);
+    always @(posedge clk_per) sf_sel_q <= sf_sel;
+    spiflash_top #(.MEMORY_TYPE(1'b1), .DIV_INIT(0), .BOOT_EN(1'b1), .BOOT_ADDR(24'h00_0000), .WAKE_CLKS(64)) sflash
+        (.clk(clk_per), .rst(rst_per),
+         .Write(sf_sel ? bus_per_Write : 4'b0000), .Read(bus_per_Read & sf_sel), .Addr(bus_per_Addr), .WData(bus_per_WData),
+         .RData(sf_RData),
+         .spi_sck(sf_sck), .spi_cs_n(sf_cs_n), .spi_mosi(sf_mosi), .spi_miso(sf_miso),
+         .boot_hold(boot_hold), .boot_Write(boot_Write), .boot_Addr(boot_Addr), .boot_WData(boot_WData));
+    spiflash_model #(.MEM_BYTES(1 << 17)) flash (.cs_n(sf_cs_n), .sck(sf_sck), .mosi(sf_mosi), .miso(sf_miso));
+    initial begin
+        string fimg;
+        if ($value$plusargs("flash=%s", fimg)) flash.load(fimg, 0);
+    end
+    assign bus_per_RData = sf_sel_q ? sf_RData : tb_RData;
+`else
+    assign {boot_hold, boot_Write, boot_Addr, boot_WData} = '0;
+    assign bus_per_RData = tb_RData;
+`endif
     assign irq_local = {15'd0, tim_irq};                          //LI0 (mcause 16)
     assign irq_src   = {sim_plic_src[8:2], tim_irq};              //Источник 1 - таймер, 2..8 - программа
 
@@ -183,6 +220,7 @@ module tb_core;
         end
 
         #1;
+`ifndef TB_BOOT                                         //При загрузке из флеш память пуста - программу копирует загрузчик
         `LOAD_CLUSTER(dut.imem, imem_img, 0)
 `ifdef TB_IMEM_16K
         `LOAD_CLUSTER(dut.imem, imem_img, 1)
@@ -196,6 +234,7 @@ module tb_core;
 `endif
 `ifdef TB_DMEM_32K
         `LOAD_CLUSTER(dut.dmem, dmem_img, 1) `LOAD_CLUSTER(dut.dmem, dmem_img, 2) `LOAD_CLUSTER(dut.dmem, dmem_img, 3)
+`endif
 `endif
         #1;
 
@@ -262,6 +301,14 @@ module tb_core;
 
     task automatic finish_test(input logic [31:0] code);
         int n;
+`ifdef TB_BOOT
+        //Программа должна была прийти из флеш: итог загрузчика - «загружено»
+        if (sflash.boot_st != 3'd1) begin
+            $display("RESULT FAIL %0s %0s test=0 name=boot got=0x%08h expected=0x00000001 cycles=%0d",
+                     prog, core_name, sflash.boot_st, cycles);
+            $finish;
+        end
+`endif
         if (code == 32'd1) begin
             if (arg_actual == max_test)
                 $display("RESULT PASS %0s %0s tests=%0d cycles=%0d", prog, core_name, arg_actual, cycles);

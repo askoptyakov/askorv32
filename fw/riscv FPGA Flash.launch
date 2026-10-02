@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <launchConfiguration type="org.eclipse.ui.externaltools.ProgramLaunchConfigurationType">
-    <!-- Запись ПЛИС во встроенную flash (ПЛИС стартует с неё при включении) через openFPGALoader
-         на драйвере WinUSB, около 12 с; см. hw/info/debug.md, «Прошивка и отладка без смены драйвера».
-         Как и riscv FPGA SRAM: сборка проекта, затем sw/fpgaload/fpgaload.py (проверка, что отладка
-         остановлена, mergetool на свежем битстриме Gowin, запись) -->
+    <!-- Конфигурация и программа - во встроенную flash ПЛИС (режим AUTO BOOT: выводы MODE1 = MODE0 = 0, как на
+         заводской Tang Nano 9K), через openFPGALoader на драйвере WinUSB, около 12 с; ПЛИС стартует с неё при
+         включении. См. hw/info/debug.md, «Прошивка и отладка без смены драйвера». Сборка проекта, затем
+         sw/fpgaload/fpgaload.py flash: проверка, что отладка (OpenOCD) остановлена, mergetool вливает программу в
+         свежий битстрим Gowin, запись. Если в конфигураторе выбрано хранение во внешней флеш (MSPI) -
+         отказ: используйте riscv SPI-FLASH -->
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_LOCATION" value="${env_var:ComSpec}"/>
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_TOOL_ARGUMENTS" value="/c py -u ..\..\sw\fpgaload\fpgaload.py flash"/>
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_WORKING_DIRECTORY" value="${project_loc:riscv}/Debug"/>

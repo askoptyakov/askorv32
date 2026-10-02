@@ -24,7 +24,7 @@
     { "type": "stim", "name": "STIM", "base": "auto", "width": 16, "out": 68, "irq": "plic" },
     {
       "type": "uart",
-      "name": "UART0",
+      "name": "UART",
       "base": "auto",
       "tx": 17,
       "rx": 18,
@@ -33,6 +33,20 @@
       "stop": 1,
       "fifo": 16,
       "irq": "plic"
+    },
+    {
+      "type": "spiflash",
+      "name": "SPIFLASH",
+      "base": "auto",
+      "sck": 59,
+      "cs": 60,
+      "mosi": 61,
+      "miso": 62,
+      "sizeMB": 4,
+      "div": 1,
+      "boot": true,
+      "bootAddr": "0x100000",
+      "fpgaConfig": true
     }
   ],
   "ioDefaults": { "ioType": "LVCMOS18", "pull": "UP", "drive": "8", "vccio": "1.8" },
@@ -56,7 +70,11 @@
     "26": { "net": "GPIO[1]" },
     "27": { "net": "GPIO[2]" },
     "52": { "net": "CLOCK" },
+    "59": { "net": "FLASH_SCK" },
+    "60": { "net": "FLASH_CS" },
+    "61": { "net": "FLASH_MOSI" },
+    "62": { "net": "FLASH_MISO" },
     "68": { "net": "STIM_OUT" }
   },
-  "build": { "toolchain": "gowin", "placeOption": "0" }
+  "build": { "toolchain": "gowin", "placeOption": "0", "loadingRate": "25.000" }
 }

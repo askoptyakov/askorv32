@@ -208,16 +208,24 @@ openocd -c "set JTAG_ONLY 1" -f askorv32_tangnano9k.cfg -c "init; irscan gw1nr9.
 | Конфигурация | Что делает | Время |
 |--------------|-----------|-------|
 | `riscv FPGA SRAM` | загружает ПЛИС в SRAM, до выключения питания | ~3 с |
-| `riscv FPGA Flash` | записывает ПЛИС во встроенную flash, ПЛИС стартует с неё при включении | ~12 с |
+| `riscv FPGA Flash` | записывает ПЛИС во встроенную flash, ПЛИС стартует с неё при включении (выводы MODE1 = MODE0 = 0) | ~12 с |
+| `riscv SPI-FLASH` | записывает битовый поток и программу во внешнюю SPI-флеш, ПЛИС стартует с неё (режим MSPI, MODE1 = 1; блок SPIFLASH «Конфигурация и программа — в этой флеш») | ~3 с, с изменённой ПЛИС ~3 мин |
 
-Обе перед загрузкой собирают проект `riscv` и запускают `sw/fpgaload/fpgaload.py sram|flash`. Скрипт:
+Все три перед загрузкой собирают проект `riscv` и запускают `sw/fpgaload/fpgaload.py sram|flash|spiflash` (способы хранения — [hw/src/periph/spiflash/README.md](../hw/src/periph/spiflash/README.md#три-способа-хранения-конфигурации-и-программы)). openFPGALoader берётся исправленный, из `sdk/openfpgaloader/bin` (запись внешней флеш GW1N в ~3.5 раза быстрее, работает очистка `--bulk-erase`, см. [sdk/openfpgaloader/README.md](openfpgaloader/README.md)); если его нет — из OSS CAD Suite. Пересобрать его можно в MSYS2 (`C:\msys64`, пакеты и команда — в том же README). Скрипт:
 1. Проверяет, что отладка остановлена. Если запущен `openocd.exe`, выводит «Программатор занят…» и выходит, не обращаясь к плате. Одновременная работа с программатором сбивает USB-соединение OpenOCD (консоль без конца заполняется `LIBUSB_ERROR_IO`) и срывает загрузку.
 2. Запускает `mergetool`: программа (`Debug/riscv.bin`) вливается в последний битстрим Gowin (`hw/impl/pnr/riscv.fs`). Отдельный запуск нужен потому, что сборка Eclipse вызывает `mergetool` только при изменении `riscv.elf`, и после пересборки одной ПЛИС в `Debug/riscv.fs` остался бы старый дизайн.
 3. Загружает `Debug/riscv.fs` командой `openFPGALoader -b tangnano9k [-f] riscv.fs`. OSS CAD Suite ищется в `C:\oss-cad-suite` или в переменной `OSS_CAD_SUITE`, его `bin` и `lib` скрипт сам добавляет в `PATH`.
 
+**Окно «Программатор ПЛИС»** (плагин конфигуратора, п. 11) — то же без *External Tools*, в духе Gowin Programmer: кнопка со значком микросхемы со стрелкой на панели инструментов или команда **Программатор ПЛИС** в контекстном меню проекта. В окне:
+- **Запись конфигурации и программы** — SRAM, встроенная flash или внешняя SPI-флеш (недоступный при текущей сборке ПЛИС вариант выключен: встроенная flash — при «Конфигурация и программа — в этой флеш (MSPI)», внешняя флеш — при другой настройке блока SPIFLASH); флажки «Собрать программу перед записью» и «записать битовый поток, даже если он не менялся» (`--force`); кнопка **Прошить**;
+- **Очистка** — **Очистить встроенную flash** (`fpgaload.py erase-flash`, ~1 с) и **Очистить SPI-флеш** (`erase-spiflash`: вся внешняя флеш — битовый поток, образ, рабочие параметры; ~1 с) — каждая с подтверждением;
+- полоса хода, состояние, время работы и кнопка **Остановить**; вывод — в консоли «askoRV32 - программатор ПЛИС».
+
+Окно немодальное: Eclipse во время записи доступен, закрытие окна запись не прерывает.
+
 **Подключение готовых конфигураций:**
 1. Обновить проект (**F5** на `riscv`).
-2. **Run → External Tools → External Tools Configurations…**: в группе **Program** появятся `riscv FPGA SRAM` и `riscv FPGA Flash`.
+2. **Run → External Tools → External Tools Configurations…**: в группе **Program** появятся `riscv FPGA SRAM`, `riscv FPGA Flash` и `riscv SPI-FLASH`.
 3. Они уже в избранном: запускаются из выпадающего списка кнопки **External Tools** на панели инструментов (зелёная стрелка с чемоданчиком). Если кнопки нет: **Window → Perspective → Customize Perspective… → Action Set Availability → External Tools**.
 4. Вывод `mergetool` и openFPGALoader — во вкладке *Console*. Успешная загрузка заканчивается строкой `CRC check: Success`.
 5. Чтобы полоса прогресса openFPGALoader обновлялась в одной строке, а не печаталась каждый раз новой: **Window → Preferences → Run/Debug → Console** → отметить **Interpret ASCII control characters** и **Interpret Carriage Return (\r) as control character**. openFPGALoader возвращается в начало строки символом `\r`, а без этих флажков консоль Eclipse считает его переводом строки. Кроме того, когда вывод идёт не в терминал, openFPGALoader сам добавляет перевод строки после каждого обновления. Поэтому `fpgaload.py` пропускает его вывод через фильтр `sw/conprogress/conprogress.py`: он убирает перевод строки между обновлениями одной полосы (строки с одной подписью до двоеточия, например `write Flash:`), остальной вывод не меняет. Нужен Python (п. 2, команда `py`).
@@ -251,7 +259,7 @@ openocd -c "set JTAG_ONLY 1" -f askorv32_tangnano9k.cfg -c "init; irscan gw1nr9.
 
 1. Собрать архив (нужен только установленный Eclipse): `py sw/socgen/eclipse/build.py` → `sw/socgen/eclipse/build/askorv32-gwsoc-repo.zip`.
 2. Eclipse: **Help → Install New Software → Add… → Archive…** → выбрать этот zip → отметить **askoRV32** → **снять** флажок внизу **Contact all update sites during install to find required software** (иначе p2 заодно тянет посторонние пакеты, например `jcl.over.slf4j`, и падает с «An error occurred while collecting items to be installed») → **Next** → **Finish**. На вопрос о неподписанном содержимом ответить **Install Anyway**, затем перезапустить Eclipse.
-3. В проекте `riscv` появится файл `riscv.gwsoc` (двойной щелчок открывает конфигуратор), в контекстном меню проекта и на панели инструментов - команда **Конфигуратор ПЛИС**.
+3. В проекте `riscv` появится файл `riscv.gwsoc` (двойной щелчок открывает конфигуратор), в контекстном меню проекта и на панели инструментов - команды **Конфигуратор ПЛИС** и **Программатор ПЛИС** (запись и очистка памяти ПЛИС, п. 8.5).
 4. Обновление: собрать архив заново и повторить установку (**Help → Install New Software** предложит новую версию).
 
 Подробнее - [sw/socgen/README.md](../sw/socgen/README.md).

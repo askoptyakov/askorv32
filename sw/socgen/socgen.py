@@ -44,15 +44,30 @@ TYPES = {
     "tm1638": dict(title="TM1638", slot=0x12, cat="custom", irq=False, module="tm1638_top"),
     "stim":   dict(title="STIM",   slot=0x13, cat="custom", irq=True,  module="stim_top"),
     "uart":   dict(title="UART",   slot=0x14, cat="iface",  irq=True,  module="uart_top"),
+    "spiflash": dict(title="SPIFLASH", slot=0x15, cat="iface", irq=False, module="spiflash_top"),
 }
 UART_BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600]
 UART_PARITY = {"none": 0, "even": 1, "odd": 2}
 FIFO_DEPTHS = [8, 16, 32]
+FLASH_MB = [1, 2, 4, 8, 16]
+BOOT_REGION = 0x10000      #Область образа программы во флеш: 64 кБайт (IMEM + DMEM не больше 48 кБайт)
+#Флеш хранит и конфигурацию ПЛИС (режим MSPI, вывод MODE1 = 1): битовый поток - с адреса 0. Для GW1NR-9 он
+#442 кБайт (hw/impl/pnr/riscv.bin), поэтому образ программы и данные - не ниже 0x80000; без загрузки
+#программы свободная область начинается с 1 МБайт
+CFG_REGION = 0x80000
+CFG_USER = 0x100000
+#Выводы двойного назначения, занятые как обычные I/O: флажок настройки процесса Gowin EDA
+#(hw/impl/riscv_process_config.json) и ключ gowin_pack. Признак - функция вывода (cfg в device.js)
+DUAL_PURPOSE = {"MSPI": (("MCLK", "MCS_N", "MO", "MI"), "--mspi_as_gpio")}
 MEM_KB = [8, 16, 32]
 BSRAM_TOTAL = 26           #Блоков BSRAM (18 кбит, 2 кБайт данных) в GW1NR-9
 FIXED_REGIONS = {"IMEM": 0x00, "CLINT": 0x02, "PLIC": 0x0C, "DMEM": 0x10, "SIM": 0x1F}
 AUTO_FIRST, AUTO_LAST = 0x11, 0x1E
 PLACE_OPTIONS = {"0": "быстрее компиляция", "1": "лучше трассируемость", "2": "лучше тайминги"}
+#Loading Rate - частота чтения битового потока из флеш при AUTO BOOT и MSPI (build.loadingRate, МГц).
+#GW1N-9: 250 МГц / N (SUG100, табл. 4-3), по умолчанию 2.5 МГц. В настройке процесса Gowin EDA -
+#DOWNLOAD_SPEED: "default" или "250/N"; apicula (gowin_pack) частоту не задаёт - всегда 2.5 МГц
+LOADING_RATES = {f"{250 / n:.3f}": n for n in [100] + list(range(46, 3, -2))}
 
 NET_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_$]*)(?:\[(\d+)\])?$")
 NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,23}$")
@@ -63,6 +78,7 @@ SV_KEYWORDS = {"input", "output", "inout", "wire", "logic", "reg", "module", "en
 RESERVED_NETS = {"tck_pad_i", "tms_pad_i", "tdi_pad_i", "tdo_pad_o", "clk_per", "rst_per", "bus_per_Write",
                  "bus_per_Read", "bus_per_Addr", "bus_per_WData", "bus_per_RData", "irq_local", "irq_src",
                  "sRead", "top", "cpu", "permux", "memmux", "gpio_top", "stim_top", "tm1638_top", "uart_top",
+                 "spiflash_top", "boot_hold", "boot_Write", "boot_Addr", "boot_WData",
                  "CORE_TYPE", "M_EXT", "DIV_BPC", "IMEM_TYPE", "BSRAM_IMEM_SIZE", "SYNTH_IMEM_SIZE", "IMEM_INIT_FILE",
                  "DMEM_TYPE", "BSRAM_DMEM_SIZE", "SYNTH_DMEM_SIZE", "DMEM_INIT_FILE", "DEBUG_EN", "PLIC_SOURCES",
                  "FCLKIN", "XTAL_KHZ", "PLL_IDIV_SEL", "PLL_FBDIV_SEL", "PLL_ODIV_SEL", "WIN_MASK", "CLK_BASE_MHZ",
@@ -137,6 +153,9 @@ def inst_signals(inst):
         return [("out", "выход ШИМ", "output", False)] if inst.get("out") is not None else []
     if t == "uart":
         return [("tx", "TX", "output", True), ("rx", "RX", "input", True)]
+    if t == "spiflash":
+        return [("sck", "SCK", "output", True), ("cs", "CS#", "output", True),
+                ("mosi", "MOSI", "output", True), ("miso", "MISO", "input", True)]
     return []
 
 
@@ -285,6 +304,38 @@ def uart_div(m, u):
     div = max(0, round(f / baud) - 1)
     real = f / (div + 1)
     return div, real, abs(real - baud) / baud * 100
+
+
+def flash_info(m, f):
+    """Флеш экземпляра SPIFLASH: делитель и частота SCK (Гц), объём, загрузка, область образа и свободная область."""
+    div = int(f.get("div", 1))
+    size = int(f.get("sizeMB", 4)) * 1024 * 1024
+    #Три способа хранения ПЛИС и программы: SRAM, встроенная flash (программа в битовом потоке, загрузчик
+    #выключен) и внешняя флеш (MSPI: битовый поток и образ программы во флеш, загрузчик включён)
+    cfg = bool(f.get("fpgaConfig", False))
+    boot = cfg
+    baddr = parse_base(f.get("bootAddr", "0x000000")) or 0
+    user = baddr + BOOT_REGION if boot else (CFG_USER if cfg else 0)
+    return dict(div=div, sck=sysclk_hz(m) / (2 * (div + 1)), size=size, boot=boot, bootAddr=baddr,
+                fpgaConfig=cfg, user=user, userSize=max(0, size - user))
+
+
+def config_flash(m):
+    """Экземпляр SPIFLASH, во флеш которого лежит и конфигурация ПЛИС (режим MSPI), или None."""
+    return next((f for f in insts(m, "spiflash") if f.get("fpgaConfig", False)), None)
+
+
+def boot_flash(m):
+    """Экземпляр SPIFLASH, который загружает программу (порт boot_* процессора), или None: тот, во флеш
+    которого лежат конфигурация ПЛИС и программа (режим MSPI)."""
+    return next((f for f in insts(m, "spiflash") if f.get("fpgaConfig", False)), None)
+
+
+def dual_purpose(m, dev):
+    """Флажки выводов двойного назначения для текущей раскладки: {"MSPI": True/False}."""
+    used = [dev["byNum"][s["pin"]] for s in signals(m) if s["pin"] in dev["byNum"]]
+    return {flag: any(set(p.get("cfg", "").split("/")) & set(funcs) for p in used)
+            for flag, (funcs, _) in DUAL_PURPOSE.items()}
 
 
 def bsram_blocks(m):
@@ -484,9 +535,31 @@ def validate(m, dev):
             elif err > 1.0:
                 warns.append(f"{n}: ошибка скорости {err:.2f} % (фактически {real:.0f} бит/с)")
 
+        if inst["type"] == "spiflash":
+            if int(inst.get("sizeMB", 4)) not in FLASH_MB:
+                errors.append(f"{n}: объём флеш 1, 2, 4, 8 или 16 МБайт")
+            if not 0 <= int(inst.get("div", 1)) <= 255:
+                errors.append(f"{n}: делитель SCK 0..255")
+            fi = flash_info(m, inst)
+            if fi["boot"]:
+                ba = parse_base(inst.get("bootAddr", "0x000000"))
+                if ba is None:
+                    ba = 0
+                if ba < 0 or ba % BOOT_REGION:
+                    errors.append(f"{n}: адрес образа программы кратен 0x10000 (64 кБайт)")
+                elif ba + BOOT_REGION > fi["size"]:
+                    errors.append(f"{n}: адрес образа программы 0x{ba:06X} вне флеш ({fi['size'] // 1048576} МБайт)")
+                elif ba < CFG_REGION:
+                    errors.append(f"{n}: флеш хранит конфигурацию ПЛИС (с адреса 0) - образ программы не ниже 0x{CFG_REGION:06X}")
+    if len([i for i in insts(m, "spiflash") if i.get("fpgaConfig", False)]) > 1:
+        errors.append("Конфигурацию ПЛИС может хранить только одна флеш (выводы MSPI)")
+
     po = str((m.get("build") or {}).get("placeOption", ""))
     if po and po not in PLACE_OPTIONS:
         errors.append(f"Place_Option: 0, 1 или 2 (сейчас «{po}»)")
+    lr = str((m.get("build") or {}).get("loadingRate", ""))
+    if lr and lr not in LOADING_RATES:
+        errors.append(f"Loading Rate: одно из значений 250 МГц / N ({', '.join(LOADING_RATES)} МГц), сейчас «{lr}»")
 
     xp = m["clock"].get("xtalPin")
     if xp in dev["byNum"] and not re.search(r"GCLK|PLL_T_IN", dev["byNum"][xp].get("cfg", "")):
@@ -658,6 +731,9 @@ def gen_top(m, bases, cfg_rel):
     w("    logic [31:0] bus_per_Addr, bus_per_WData, bus_per_RData;")
     w("    logic [15:0] irq_local;")
     w("    logic [PLIC_SOURCES:1] irq_src;")
+    w("    logic        boot_hold;                  //Загрузчик программы из SPI-флеш: ядро в сбросе, пока он пишет память")
+    w("    logic [ 3:0] boot_Write;")
+    w("    logic [31:0] boot_Addr, boot_WData;")
     w("")
     w("    cpu #(.CORE_TYPE(CORE_TYPE), .M_EXT(M_EXT), .DIV_BPC(DIV_BPC),")
     w("          .IMEM_TYPE(IMEM_TYPE), .BSRAM_IMEM_SIZE(BSRAM_IMEM_SIZE), .SYNTH_IMEM_SIZE(SYNTH_IMEM_SIZE), .IMEM_INIT_FILE(IMEM_INIT_FILE),")
@@ -668,7 +744,14 @@ def gen_top(m, bases, cfg_rel):
     w("             .tck_pad_i(tck_pad_i), .tms_pad_i(tms_pad_i), .tdi_pad_i(tdi_pad_i), .tdo_pad_o(tdo_pad_o),")
     w("             .clk_per(clk_per), .rst_per(rst_per),")
     w("             .bus_per_Write(bus_per_Write), .bus_per_Read(bus_per_Read), .bus_per_Addr(bus_per_Addr), .bus_per_WData(bus_per_WData), .bus_per_RData(bus_per_RData),")
-    w("             .irq_local(irq_local), .irq_src(irq_src));")
+    w("             .irq_local(irq_local), .irq_src(irq_src),")
+    w("             .boot_hold(boot_hold), .boot_Write(boot_Write), .boot_Addr(boot_Addr), .boot_WData(boot_WData));")
+    bf = boot_flash(m)
+    if bf:
+        w(f"    //Программу после сброса копирует из флеш {bf['name']} (порт boot_*)")
+    else:
+        w("    //Загрузчика программы нет: память команд и данных - из битового потока ПЛИС")
+        w("    assign {boot_hold, boot_Write, boot_Addr, boot_WData} = '0;")
     w("")
 
     # --- Шина пользовательской периферии ---
@@ -739,6 +822,24 @@ def gen_top(m, bases, cfg_rel):
             w("                (.clk(clk_per), .rst(rst_per),")
             w(f"                 .Write({h}_Write), .Read(sRead[{rd}]), .Addr({h}_Addr), .WData({h}_WriteData), .RData({h}_ReadData),")
             w(f"                 .tx({net[name + '.tx']}), .rx({net[name + '.rx']}), .irq(irq_{h}));")
+        elif t == "spiflash":
+            fi = flash_info(m, inst)
+            rd = n - 1 - idx          #Строб чтения: в режиме rdauto чтение DATA запускает обмен
+            boot = fi["boot"]
+            w(f"    //-{num}- {inst_title(inst)}: SPI-флеш {fi['size'] // 1048576} МБайт, SCK {fmt_mhz(round(fi['sck'] / 1e3) / 1e3)} МГц (DIV {fi['div']}), "
+              + (f"загрузка программы с адреса 0x{fi['bootAddr']:06X}" if boot else "без загрузки программы")
+              + (", конфигурация ПЛИС с адреса 0 (MSPI)" if fi["fpgaConfig"] else ""))
+            w(f"    //    регистры с {base}")
+            w(f"    spiflash_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT({fi['div']}), .BOOT_EN({1 if boot else 0}), "
+              f".BOOT_ADDR(24'h{fi['bootAddr']:06X})) {h}")
+            w("                (.clk(clk_per), .rst(rst_per),")
+            w(f"                 .Write({h}_Write), .Read(sRead[{rd}]), .Addr({h}_Addr), .WData({h}_WriteData), .RData({h}_ReadData),")
+            w(f"                 .spi_sck({net[name + '.sck']}), .spi_cs_n({net[name + '.cs']}), "
+              f".spi_mosi({net[name + '.mosi']}), .spi_miso({net[name + '.miso']}),")
+            if boot:
+                w("                 .boot_hold(boot_hold), .boot_Write(boot_Write), .boot_Addr(boot_Addr), .boot_WData(boot_WData));")
+            else:
+                w("                 .boot_hold(), .boot_Write(), .boot_Addr(), .boot_WData());")
         w("")
         num += 1
 
@@ -856,6 +957,17 @@ def gen_soc_h(m, bases, cfg_rel):
                        ("PARITY_DEFAULT", str(UART_PARITY[inst.get('parity', 'none')]), "0 - нет, 1 - even, 2 - odd"),
                        ("STOP_DEFAULT", str(int(inst.get('stop', 1))), "Стоп-битов"),
                        ("FIFO_DEPTH", f"{int(inst.get('fifo', 16))}U", "Глубина FIFO приёма и передачи")]
+        if t == "spiflash":
+            fi = flash_info(m, inst)
+            params += [("SIZE", f"0x{fi['size']:08X}U", "Объём флеш, Байт"),
+                       ("DIV_DEFAULT", f"{fi['div']}U", "Делитель SCK после сброса"),
+                       ("SCK_HZ", f"{round(fi['sck'])}U", "Частота SCK при DIV_DEFAULT, Гц"),
+                       ("FPGA_CONFIG", "1" if fi["fpgaConfig"] else "0", "Флеш хранит конфигурацию ПЛИС с адреса 0 (MSPI)"),
+                       ("BOOT", "1" if fi["boot"] else "0", "Загрузчик программы (= FPGA_CONFIG)"),
+                       ("BOOT_ADDR", f"0x{fi['bootAddr']:08X}U", "Образ программы во флеш"),
+                       ("BOOT_SIZE", f"0x{BOOT_REGION if fi['boot'] else 0:08X}U", "Область образа (параметры туда не писать)"),
+                       ("USER_ADDR", f"0x{fi['user']:08X}U", "Свободная область флеш: начало (ниже - конфигурация ПЛИС и образ)"),
+                       ("USER_SIZE", f"0x{fi['userSize']:08X}U", "Свободная область флеш: размер")]
         for suf, val, com in params:
             w(cdef(f"{N}_{suf}", val, com))
         #Первый блок типа под другим именем: имена типа для драйверов - его синонимы
@@ -1055,7 +1167,11 @@ def build_oss(m, hw, cst, oss_arg, fmax_mhz):
              env, out / "nextpnr.log", out, pnr_line)
     print("Битовый поток (apicula gowin_pack):", flush=True)
     progress(92, "Битовый поток (gowin_pack)")
-    run_tool([oss / "bin" / "gowin_pack.exe", "-d", "GW1N-9C", "-o", "riscv.fs", "pnr.json"], env, out / "gowin_pack.log", out)
+    dp = [DUAL_PURPOSE[k][1] for k, on in dual_purpose(m, load_device()).items() if on]
+    lr = str((m.get("build") or {}).get("loadingRate", ""))
+    if lr and LOADING_RATES[lr] != 100:
+        print(f"Предупреждение: apicula не задаёт Loading Rate - битовый поток читается из флеш на 2.5 МГц, не {lr} МГц")
+    run_tool([oss / "bin" / "gowin_pack.exe", "-d", "GW1N-9C", *dp, "-o", "riscv.fs", "pnr.json"], env, out / "gowin_pack.log", out)
     fs = out / "riscv.fs"
     print(f"Готово: {os.path.relpath(fs, hw.parent)} ({fs.stat().st_size} Байт)")
     rep = out / "report.json"
@@ -1166,6 +1282,40 @@ def set_place_option(cfg, opt):
     print(f"  Place_Option = {opt} ({PLACE_OPTIONS.get(opt, '?')})")
 
 
+def set_loading_rate(cfg, mhz):
+    """Loading Rate из .gwsoc (build.loadingRate, МГц) - в настройку процесса Gowin EDA (DOWNLOAD_SPEED).
+    Пусто - как записано в проекте."""
+    if mhz in (None, ""):
+        return
+    n = LOADING_RATES[str(mhz)]
+    val = "default" if n == 100 else f"250/{n}"
+    if not cfg.exists():
+        print(f"Предупреждение: нет {cfg.name} - Loading Rate {mhz} МГц не задан")
+        return
+    t = cfg.read_text(encoding="utf-8")
+    new, k = re.subn(r'("DOWNLOAD_SPEED"\s*:\s*)"[^"]*"', lambda mm: f'{mm.group(1)}"{val}"', t)
+    if not k:
+        print(f"Предупреждение: в {cfg.name} нет DOWNLOAD_SPEED - Loading Rate {mhz} МГц не задан")
+        return
+    if new != t:
+        cfg.write_text(new, encoding="utf-8", newline="")
+    print(f"  Loading Rate = {mhz} МГц (DOWNLOAD_SPEED {val}): чтение битового потока из флеш при включении")
+
+
+def set_dual_purpose(cfg, flags):
+    """Выводы двойного назначения (MSPI - флеш на выводах 59..62) - флажки в настройке процесса Gowin EDA.
+    Файл правится заменой значений, как Place_Option."""
+    if not cfg.exists():
+        return
+    t = cfg.read_text(encoding="utf-8")
+    new = t
+    for flag, on in flags.items():
+        new = re.sub(rf'("{flag}"\s*:\s*)(true|false)', lambda mm: mm.group(1) + ("true" if on else "false"), new)
+    if new != t:
+        cfg.write_text(new, encoding="utf-8", newline="")
+    print("  Выводы двойного назначения: " + ", ".join(f"{k} {'- обычные I/O' if v else 'не используются'}" for k, v in flags.items()))
+
+
 def build_gowin(m, hw, gowin_arg, fout):
     ide = find_gowin(gowin_arg)
     if not ide:
@@ -1177,6 +1327,8 @@ def build_gowin(m, hw, gowin_arg, fout):
     impl = hw / "impl"
     impl.mkdir(exist_ok=True)
     set_place_option(impl / "riscv_process_config.json", (m.get("build") or {}).get("placeOption"))
+    set_dual_purpose(impl / "riscv_process_config.json", dual_purpose(m, load_device()))
+    set_loading_rate(impl / "riscv_process_config.json", (m.get("build") or {}).get("loadingRate"))
     tcl = impl / "socgen_build.tcl"
     tcl.write_text("# Создано socgen.py: сборка проекта Gowin EDA из командной строки\n"
                    "open_project riscv.gprj\nrun all\n", encoding="utf-8", newline="\n")

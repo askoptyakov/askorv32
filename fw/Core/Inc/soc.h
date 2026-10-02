@@ -14,7 +14,7 @@
 #define SOC_CORE_PIPELINE				1		//1 - конвейерное, 0 - однотактное
 #define SOC_M_EXT						1		//Расширение M (mul/div)
 #define SOC_DEBUG						1		//Отладчик JTAG
-#define SOC_IMEM_BYTES					32768U
+#define SOC_IMEM_BYTES					16384U
 #define SOC_DMEM_BYTES					8192U
 
 /* Частота шины периферии (clk_per), Гц: от неё считают таймер STIM, UART и mtime в CLINT */
@@ -37,6 +37,8 @@
 #define STIM_COUNT						1U
 #define UART_PRESENT					1
 #define UART_COUNT						1U
+#define SPIFLASH_PRESENT				1
+#define SPIFLASH_COUNT					1U
 
 /* GPIO */
 #define GPIO_BASE						(0x11000000U)
@@ -52,19 +54,26 @@
 #define STIM							((STIM_TypeDef*) STIM_BASE)
 #define STIM_WIDTH						16U		//Разрядность PR, PER, PUL, CNT
 
-/* UART0 (UART) */
-#define UART0_BASE						(0x14000000U)
-#define UART0							((UART_TypeDef*) UART0_BASE)
-#define UART0_BAUD						115200U		//Скорость по умолчанию, бит/с (div 390, ошибка 0.10 %)
-#define UART0_PARITY_DEFAULT			0		//0 - нет, 1 - even, 2 - odd
-#define UART0_STOP_DEFAULT				1		//Стоп-битов
-#define UART0_FIFO_DEPTH				16U		//Глубина FIFO приёма и передачи
-#define UART_BASE						UART0_BASE		//Драйверы: первый блок типа
-#define UART							UART0
-#define UART_BAUD						UART0_BAUD
-#define UART_PARITY_DEFAULT				UART0_PARITY_DEFAULT
-#define UART_STOP_DEFAULT				UART0_STOP_DEFAULT
-#define UART_FIFO_DEPTH					UART0_FIFO_DEPTH
+/* UART */
+#define UART_BASE						(0x14000000U)
+#define UART							((UART_TypeDef*) UART_BASE)
+#define UART_BAUD						115200U		//Скорость по умолчанию, бит/с (div 390, ошибка 0.10 %)
+#define UART_PARITY_DEFAULT				0		//0 - нет, 1 - even, 2 - odd
+#define UART_STOP_DEFAULT				1		//Стоп-битов
+#define UART_FIFO_DEPTH					16U		//Глубина FIFO приёма и передачи
+
+/* SPIFLASH */
+#define SPIFLASH_BASE					(0x15000000U)
+#define SPIFLASH						((SPIFLASH_TypeDef*) SPIFLASH_BASE)
+#define SPIFLASH_SIZE					0x00400000U		//Объём флеш, Байт
+#define SPIFLASH_DIV_DEFAULT			1U		//Делитель SCK после сброса
+#define SPIFLASH_SCK_HZ					11250000U		//Частота SCK при DIV_DEFAULT, Гц
+#define SPIFLASH_FPGA_CONFIG			1		//Флеш хранит конфигурацию ПЛИС с адреса 0 (MSPI)
+#define SPIFLASH_BOOT					1		//Загрузчик программы (= FPGA_CONFIG)
+#define SPIFLASH_BOOT_ADDR				0x00100000U		//Образ программы во флеш
+#define SPIFLASH_BOOT_SIZE				0x00010000U		//Область образа (параметры туда не писать)
+#define SPIFLASH_USER_ADDR				0x00110000U		//Свободная область флеш: начало (ниже - конфигурация ПЛИС и образ)
+#define SPIFLASH_USER_SIZE				0x002F0000U		//Свободная область флеш: размер
 
 /* Прерывания периферии. Источники PLIC (векторный режим, start.S): обработчик источника S -
    PLIC_SRCS_IRQHandler; ниже - понятные имена. Локальные линии: LIn_IRQHandler, номер LIn_IRQn */
@@ -72,10 +81,10 @@
 typedef enum
 {
   PLIC_SRC_STIM = 1,		//STIM
-  PLIC_SRC_UART0 = 2		//UART0
+  PLIC_SRC_UART = 2		//UART
 } PLIC_SRC_Type;
 #define PLIC_STIM_IRQHandler			PLIC_SRC1_IRQHandler
-#define PLIC_UART0_IRQHandler			PLIC_SRC2_IRQHandler
+#define PLIC_UART_IRQHandler			PLIC_SRC2_IRQHandler
 
 /* Выводы GPIO: имя цепи из конфигуратора -> <ИМЯ>_PIN (номер линии) и <ИМЯ>_PORT (блок GPIO);
    цепь LED[3] даёт имя LED3. Шина (LED[0], LED[1]...) на одном блоке: <ИМЯ>_MSK, <ИМЯ>_POS, <ИМЯ>_PORT.
