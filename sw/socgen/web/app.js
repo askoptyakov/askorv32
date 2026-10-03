@@ -76,7 +76,18 @@ const TYPES = {
     defaults: () => ({ ab: null, ba: null, bc: null, cb: null, ca: null, ac: null,
                        vs1: null, vs2: null, vs3: null, vs4: null, vs5: null, vs6: null,
                        grid: null, sawHz: 500000, delayTicks: 400, pulseTicks: 150, sim: true, irq: 'plic' }) },
+  adc121: { title: 'ADC121', ru: 'АЦП ADC121S051', cat: 'custom', slot: 0x17, irq: true,
+    about: 'Аналоговые измерения: АЦП ADC121S051 (12 бит, до ~300 тыс. отсчётов/с) на плате ADC_V (напряжение ±600 В) или ADC_C (ток) через цифровые изоляторы. Блок сам опрашивает АЦП, проверяет кадр, усредняет 2^N отсчётов; период отсчётов, прерывания, пересчёт кода в вольты/амперы - коэффициент и смещение в настройках.',
+    defaults: () => ({ cs: null, sclk: null, sdo: null, board: 'adc_v', mode: 'dc', sclkHz: 6000000, css: 2, csInv: false,
+                       avgShift: 8, scaleUv: 323242, offset: 0, irq: 'plic' }) },
 };
+//АЦП ADC121S051: платы и пересчёт кода (как ADC121_BOARDS в socgen.py). ADC_V, DC: 323242 мкВ на код - issue Artel-Inc/temporary#3
+const ADC121_BOARDS = {
+  adc_v: { title: 'ADC_V - напряжение', unit: 'В', scale: 323242, offset: { dc: 0, ac: 2045 } },
+  adc_c: { title: 'ADC_C - ток', unit: 'А', scale: 1000, offset: { dc: 0, ac: 2048 } },
+  raw:   { title: 'без пересчёта (код)', unit: 'код', scale: 1000000, offset: { dc: 0, ac: 0 } },
+};
+const ADC121_SCLK_MIN = 3.2e6, ADC121_SCLK_MAX = 8e6, ADC121_DELAY_NS = 80;
 //СИФУ: входы платы синхронизации NSB и выходы на тиристоры (как SIFU_SYNC, SIFU_GATES в socgen.py)
 const SIFU_SYNC = ['ab', 'ba', 'bc', 'cb', 'ca', 'ac'];
 const SIFU_GATES = ['vs1', 'vs2', 'vs3', 'vs4', 'vs5', 'vs6'];
@@ -112,7 +123,7 @@ const SV_KEYWORDS = new Set(['input', 'output', 'inout', 'wire', 'logic', 'reg',
 const RESERVED_NETS = new Set(['tck_pad_i', 'tms_pad_i', 'tdi_pad_i', 'tdo_pad_o',
   'clk_per', 'rst_per', 'bus_per_Write', 'bus_per_Read', 'bus_per_Addr', 'bus_per_WData', 'bus_per_RData', 'irq_local', 'irq_src',
   'sRead', 'top', 'cpu', 'permux', 'memmux', 'gpio_top', 'stim_top', 'tm1638_top', 'uart_top',
-  'spiflash_top', 'sifu_top', 'boot_hold', 'boot_Write', 'boot_Addr', 'boot_WData',
+  'spiflash_top', 'sifu_top', 'adc121_top', 'boot_hold', 'boot_Write', 'boot_Addr', 'boot_WData',
   'CORE_TYPE', 'M_EXT', 'DIV_BPC', 'RF_TYPE', 'IMEM_TYPE', 'BSRAM_IMEM_SIZE', 'SYNTH_IMEM_SIZE', 'IMEM_INIT_FILE',
   'DMEM_TYPE', 'BSRAM_DMEM_SIZE', 'SYNTH_DMEM_SIZE', 'DMEM_INIT_FILE', 'DEBUG_EN', 'PLIC_SOURCES',
   'FCLKIN', 'PLL_DEVICE', 'XTAL_KHZ', 'PLL_IDIV_SEL', 'PLL_FBDIV_SEL', 'PLL_ODIV_SEL', 'WIN_MASK', 'CLK_BASE_MHZ', 'CLK_DMEM_MHZ']);
@@ -194,6 +205,8 @@ function instSignals(inst) {
     case 'uart': return [{ key: 'tx', label: 'TX', dir: 'output' }, { key: 'rx', label: 'RX', dir: 'input' }];
     case 'spiflash': return [{ key: 'sck', label: 'SCK', dir: 'output' }, { key: 'cs', label: 'CS#', dir: 'output' },
                              { key: 'mosi', label: 'MOSI', dir: 'output' }, { key: 'miso', label: 'MISO', dir: 'input' }];
+    case 'adc121': return [{ key: 'cs', label: 'CS', dir: 'output' }, { key: 'sclk', label: 'SCLK', dir: 'output' },
+                           { key: 'sdo', label: 'SDO', dir: 'input' }];
     case 'sifu': return [...SIFU_SYNC.map(k => ({ key: k, label: k.toUpperCase(), dir: 'input' })),
                          ...SIFU_GATES.map(k => ({ key: k, label: k.toUpperCase(), dir: 'output' })),
                          ...(inst.grid != null ? [{ key: 'grid', label: 'GRID', dir: 'output' }] : [])];
@@ -293,6 +306,15 @@ function uartDiv(m, u) {
   const f = sysclkHz(m), baud = Number(u.baud);
   const div = Math.max(0, Math.round(f / baud) - 1), real = f / (div + 1);
   return { div, real, err: Math.abs(real - baud) / baud * 100 };
+}
+//АЦП ADC121: делитель SCLK, частота отсчётов, запас на задержку DOUT (как adc121_info в socgen.py)
+function adc121Info(m, a) {
+  const f = sysclkHz(m), sclk = Number(a.sclkHz);
+  const div = sclk > 0 ? Math.max(0, Math.min(255, Math.round(f / (2 * sclk)) - 1)) : 255, real = f / (2 * (div + 1));
+  const css = Number(a.css), rate = f / ((32 + css + 2) * (div + 1) + 1), budget = (2 * (div + 1) - 3) / f * 1e9;
+  const board = ADC121_BOARDS[a.board] || ADC121_BOARDS.raw, avgsh = Number(a.avgShift);
+  return { div, sclk: real, rate, budget, css, avgsh, avgRate: rate / Math.pow(2, avgsh), board,
+           scale: Number(a.scaleUv), offset: Number(a.offset) };
 }
 //СИФУ: делитель тика ГПН, частота пилы, тиков на полупериод 50 Гц, наибольший угол (как sifu_info в socgen.py)
 function sifuInfo(m, s) {
@@ -537,6 +559,16 @@ function validate(m) {
         else if (fi.bootAddr + BOOT_REGION > fi.size) out.push({ lvl: 'err', text: `${inst.name}: адрес образа ${hex6(fi.bootAddr)} вне флеш (${inst.sizeMB} МБайт)`, inst: inst.name });
         else if (fi.bootAddr < CFG_REGION) out.push({ lvl: 'err', text: `${inst.name}: флеш хранит конфигурацию ПЛИС (с адреса 0) - образ программы не ниже ${hex6(CFG_REGION)}`, inst: inst.name });
       }
+    }
+    if (inst.type === 'adc121' && !pll.errs.length) {
+      const ai = adc121Info(m, inst);
+      if (!(ai.avgsh >= 0 && ai.avgsh <= 12)) out.push({ lvl: 'err', text: `${inst.name}: усреднение - 2^0..2^12 отсчётов`, inst: inst.name });
+      if (!(ai.css >= 1 && ai.css <= 15)) out.push({ lvl: 'err', text: `${inst.name}: от CS до SCLK - 1..15 полупериодов`, inst: inst.name });
+      if (!(ai.offset >= 0 && ai.offset <= 4095)) out.push({ lvl: 'err', text: `${inst.name}: смещение - 0..4095 кодов`, inst: inst.name });
+      if (ai.sclk < ADC121_SCLK_MIN || ai.sclk > ADC121_SCLK_MAX)
+        out.push({ lvl: 'warn', text: `${inst.name}: SCLK ${(ai.sclk / 1e6).toFixed(2)} МГц вне 3.2..8 МГц ADC121S051 (DIV ${ai.div})`, inst: inst.name });
+      if (ai.budget < ADC121_DELAY_NS)
+        out.push({ lvl: 'err', text: `${inst.name}: при SCLK ${(ai.sclk / 1e6).toFixed(2)} МГц на задержку DOUT остаётся ${Math.round(ai.budget)} нс (нужно не меньше ${ADC121_DELAY_NS}) - уменьшите частоту SCLK`, inst: inst.name });
     }
     if (inst.type === 'sifu' && !pll.errs.length) {
       const si = sifuInfo(m, inst);
@@ -1424,6 +1456,24 @@ function instForm(inst, v) {
       <label>Адрес образа</label><input type="text" class="mono" name="bootAddr" style="width:116px" value="${esc(inst.bootAddr)}" ${fi.boot ? '' : 'disabled'}>
       <div class="full readout">${fi.fpgaConfig ? `ПЛИС: <b>0x000000</b>.. · ` : ''}${fi.boot ? `образ: <b>${hex6(fi.bootAddr)}</b>..${hex6(fi.bootAddr + BOOT_REGION - 1)} · ` : ''}свободно: <b>${hex6(fi.user)}</b>, ${Math.round(fi.userSize / 1024)} кБайт</div>`;
   }
+  if (inst.type === 'adc121') {
+    const ai = adc121Info(model, inst), pe = pllOf(model).errs.length;
+    const avgOpts = []; for (let k = 0; k <= 12; k++) avgOpts.push([k, `${Math.pow(2, k)} отсч.`]);
+    const bad = ai.budget < ADC121_DELAY_NS || ai.sclk < ADC121_SCLK_MIN || ai.sclk > ADC121_SCLK_MAX;
+    h += `<label>Плата</label><select name="adcBoard">${opts(Object.entries(ADC121_BOARDS).map(([k, b]) => [k, b.title]), inst.board)}</select>
+      <label>Режим платы</label><select name="adcMode">${opts([['dc', 'DC (без смещения)'], ['ac', 'AC (смещение 1.65 В)']], inst.mode)}</select>
+      <label>SCLK, МГц</label><input type="number" name="sclkMHz" min="1" max="12" step="any" value="${inst.sclkHz / 1e6}" style="width:90px">
+      <label>Среднее</label><select name="avgShift">${opts(avgOpts, inst.avgShift)}</select>
+      <label>CS → SCLK, полупериодов</label><input type="number" name="css" min="1" max="15" value="${inst.css}" style="width:90px"
+        title="Выдержка от спада CS до первого такта SCLK: запас на медленный оптрон в цепи CS">
+      <label>Вывод CS</label><select name="csInv">${opts([['0', 'прямой (CS# = 0 - кадр)'], ['1', 'инвертированный']], inst.csInv ? '1' : '0')}</select>
+      <label>Масштаб, мк${esc(ai.board.unit)}/код</label><input type="number" name="scaleUv" value="${inst.scaleUv}" style="width:110px">
+      <label>Смещение, код</label><input type="number" name="offset" min="0" max="4095" value="${inst.offset}" style="width:90px">
+      <div class="full readout">${pe ? '<span class="bad">нет частоты rPLL</span>' :
+        `DIV = <b>${ai.div}</b> · SCLK <b class="${bad ? 'bad' : 'good'}">${fmt(ai.sclk / 1e6)} МГц</b> · до <b>${Math.round(ai.rate / 1000)}</b> тыс. отсч./с,
+         средних ${Math.round(ai.avgRate)} в с<br>запас на задержку DOUT ${Math.round(ai.budget)} нс · 1 код = ${fmt(ai.scale / 1e6)} ${esc(ai.board.unit)},
+         полная шкала ${fmt((4095 - ai.offset) * ai.scale / 1e6)} ${esc(ai.board.unit)}`}</div>`;
+  }
   if (inst.type === 'sifu') {
     const si = sifuInfo(model, inst), pe = pllOf(model).errs.length;
     const bad = si.alphaMax < 0 || si.alphaMaxDeg < 120 || si.half >= 8192;
@@ -1469,6 +1519,10 @@ function instForm(inst, v) {
     в soc.h); прошивка может сменить их регистрами. UART программатора платы: Tang Nano 9K (BL702) - выводы 17 (TX) и 18 (RX),
     Tang Primer 20K (BL616 на Dock) - M11 (TX) и T13 (RX).</p>`;
   if (inst.type === 'tm1638') h += `<p class="note">Знакогенератор занимает 1 блок BSRAM; делители интерфейса считаются от частоты шины.</p>`;
+  if (inst.type === 'adc121') h += `<p class="note">Плата ADC_V: CS, SCLK, SDO - через цифровые изоляторы (3.3 В). Пересчёт:
+    величина = (код - смещение) · масштаб. ADC_V, режим DC (исходная плата, 5 × 360 кОм) - 323242 мкВ/код по issue Artel-Inc/temporary#3;
+    ниже ~40 В плата нелинейна (код у нуля - около 68). Режим AC - смещение около 2045. Второй блок (ADC_C) добавляется так же, со своими выводами.
+    В Си: ${esc(inst.name)}_SCALE_U, ${esc(inst.name)}_OFFSET, ADC121_CAL(${esc(inst.name)}).</p>`;
   if (inst.type === 'sifu') h += `<p class="note">Входы AB…AC - выходы платы синхронизации NSB (OUT_AB…OUT_AC, 0 - оптрон открыт). Высокий уровень NSB -
     около 1,8 В (делитель 47k/27k от 5 В): на Tang Nano 9K - банк 3 (1,8 В, выводы 79–86), для банков 3,3 В нужен другой делитель NSB.
     Выходы VS1…VS6 - на драйверы тиристоров в порядке включения: VS1, VS3, VS5 - катодная группа фаз A, B, C; VS4, VS6, VS2 - анодная.
@@ -1502,6 +1556,20 @@ function wireInstForm(box, inst) {
   q('base').addEventListener('change', e => { inst.base = e.target.value.trim().replace(/_/g, ''); changed(); });
   for (const k of ['irq', 'parity']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = e.target.value; changed(); });
   for (const k of ['width', 'stop', 'fifo', 'baud', 'sizeMB', 'div', 'delayTicks', 'pulseTicks']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
+  if (q('adcBoard')) q('adcBoard').addEventListener('change', e => {
+    inst.board = e.target.value;
+    const b = ADC121_BOARDS[inst.board];
+    inst.scaleUv = b.scale; inst.offset = b.offset[inst.mode] || 0;          //Пересчёт платы по умолчанию
+    changed();
+  });
+  if (q('adcMode')) q('adcMode').addEventListener('change', e => {
+    inst.mode = e.target.value;
+    inst.offset = (ADC121_BOARDS[inst.board] || ADC121_BOARDS.raw).offset[inst.mode] || 0;
+    changed();
+  });
+  if (q('sclkMHz')) q('sclkMHz').addEventListener('change', e => { inst.sclkHz = Math.round(Number(e.target.value) * 1e6); changed(); });
+  if (q('csInv')) q('csInv').addEventListener('change', e => { inst.csInv = e.target.value === '1'; changed(); });
+  for (const k of ['avgShift', 'css', 'scaleUv', 'offset']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
   if (q('sim')) q('sim').addEventListener('change', e => { inst.sim = e.target.value === '1'; changed(); });
   if (q('sawKHz')) q('sawKHz').addEventListener('change', e => { inst.sawHz = Math.round(Number(e.target.value) * 1000); changed(); });
   if (q('fpgaConfig')) q('fpgaConfig').addEventListener('change', e => {

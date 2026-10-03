@@ -52,6 +52,7 @@ TYPES = {
     "uart":   dict(title="UART",   slot=0x14, cat="iface",  irq=True,  module="uart_top"),
     "spiflash": dict(title="SPIFLASH", slot=0x15, cat="iface", irq=False, module="spiflash_top"),
     "sifu":   dict(title="SIFU",   slot=0x16, cat="custom", irq=True,  module="sifu_top"),
+    "adc121": dict(title="ADC121", slot=0x17, cat="custom", irq=True,  module="adc121_top"),
 }
 UART_BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600]
 UART_PARITY = {"none": 0, "even": 1, "odd": 2}
@@ -62,6 +63,14 @@ FLASH_MB = [1, 2, 4, 8, 16]
 SIFU_SYNC = ["ab", "ba", "bc", "cb", "ca", "ac"]
 SIFU_GATES = [f"vs{k}" for k in range(1, 7)]
 SIFU_SAW_MAX = 4095
+#АЦП ADC121S051 (adc121): платы ADC_V (напряжение) и ADC_C (ток). Пересчёт кода: (код - offset) * scale
+#мк-единиц (мкВ, мкА). ADC_V, режим DC, исходная плата (5 x 360 кОм): 323242 мкВ на код - issue
+#Artel-Inc/temporary#3 (3.31 В * 400 / 4096); режим AC: смещение 1.652 В = код 2045
+ADC121_BOARDS = {"adc_v": dict(title="ADC_V", unit="V", scale=323242, offset={"dc": 0, "ac": 2045}),
+                 "adc_c": dict(title="ADC_C", unit="A", scale=1000, offset={"dc": 0, "ac": 2048}),
+                 "raw":   dict(title="код АЦП", unit="code", scale=1000000, offset={"dc": 0, "ac": 0})}
+ADC121_SCLK_MIN, ADC121_SCLK_MAX = 3.2e6, 8.0e6     #ADC121S051 по листу данных
+ADC121_DELAY_NS = 80                               #Задержка DOUT: изоляторы туда-обратно и выход АЦП (с запасом)
 BOOT_REGION = 0x10000      #Область образа программы во флеш: 64 кБайт (IMEM + DMEM не больше 48 кБайт)
 #Флеш хранит и конфигурацию ПЛИС (режим MSPI): битовый поток - с адреса 0, его размер - cfgRegion кристалла
 #(GW1NR-9 - 442 кБайт, образ программы не ниже 0x80000; GW2A-18 - 882 кБайт, не ниже 0x100000).
@@ -85,7 +94,7 @@ SV_KEYWORDS = {"input", "output", "inout", "wire", "logic", "reg", "module", "en
 RESERVED_NETS = {"tck_pad_i", "tms_pad_i", "tdi_pad_i", "tdo_pad_o", "clk_per", "rst_per", "bus_per_Write",
                  "bus_per_Read", "bus_per_Addr", "bus_per_WData", "bus_per_RData", "irq_local", "irq_src",
                  "sRead", "top", "cpu", "permux", "memmux", "gpio_top", "stim_top", "tm1638_top", "uart_top",
-                 "spiflash_top", "sifu_top", "boot_hold", "boot_Write", "boot_Addr", "boot_WData",
+                 "spiflash_top", "sifu_top", "adc121_top", "boot_hold", "boot_Write", "boot_Addr", "boot_WData",
                  "CORE_TYPE", "M_EXT", "DIV_BPC", "RF_TYPE", "IMEM_TYPE", "BSRAM_IMEM_SIZE", "SYNTH_IMEM_SIZE", "IMEM_INIT_FILE",
                  "DMEM_TYPE", "BSRAM_DMEM_SIZE", "SYNTH_DMEM_SIZE", "DMEM_INIT_FILE", "DEBUG_EN", "PLIC_SOURCES",
                  "FCLKIN", "PLL_DEVICE", "XTAL_KHZ", "PLL_IDIV_SEL", "PLL_FBDIV_SEL", "PLL_ODIV_SEL", "WIN_MASK", "CLK_BASE_MHZ",
@@ -182,6 +191,8 @@ def inst_signals(inst):
     if t == "spiflash":
         return [("sck", "SCK", "output", True), ("cs", "CS#", "output", True),
                 ("mosi", "MOSI", "output", True), ("miso", "MISO", "input", True)]
+    if t == "adc121":
+        return [("cs", "CS", "output", True), ("sclk", "SCLK", "output", True), ("sdo", "SDO", "input", True)]
     if t == "sifu":
         return ([(k, k.upper(), "input", True) for k in SIFU_SYNC] +
                 [(k, k.upper(), "output", True) for k in SIFU_GATES] +
@@ -382,6 +393,26 @@ def sifu_info(m, s):
     return dict(div=div, saw=real, half=half, delay=delay, pulse=pulse, alphaMax=amax,
                 alphaMaxDeg=deg(amax), pulseUs=pulse / real * 1e6 if real else 0.0, pulseDeg=deg(pulse),
                 delayDeg=deg(delay))
+
+
+def adc121_info(m, a):
+    """АЦП ADC121: делитель SCLK и его частота, частота отсчётов, запас на задержку DOUT, среднее,
+    пересчёт кода (масштаб в мк-единицах на код, смещение в кодах, единица)."""
+    f = sysclk_hz(m)
+    sclk = float(a.get("sclkHz", 6000000))
+    div = max(0, min(255, round(f / (2 * sclk)) - 1)) if sclk > 0 else 255
+    real = f / (2 * (div + 1))
+    css = int(a.get("css", 2))
+    rate = f / ((32 + css + 2) * (div + 1) + 1)          #Кадр: 32 + CSS + QUIET (2) полупериодов и такт запуска
+    budget_ns = (2 * (div + 1) - 3) / f * 1e9            #Период SCLK минус синхронизатор и выходной регистр
+    board = ADC121_BOARDS.get(a.get("board", "adc_v"), ADC121_BOARDS["raw"])
+    mode = a.get("mode", "dc")
+    scale = int(a.get("scaleUv", board["scale"]))
+    offset = int(a.get("offset", board["offset"].get(mode, 0)))
+    avgsh = int(a.get("avgShift", 8))
+    return dict(div=div, sclk=real, rate=rate, budget=budget_ns, css=css, csInv=bool(a.get("csInv", False)),
+                avgsh=avgsh, avgRate=rate / (1 << avgsh) if 0 <= avgsh <= 12 else 0, board=board, mode=mode,
+                scale=scale, offset=offset, unit=board["unit"])
 
 
 def config_flash(m):
@@ -635,6 +666,23 @@ def validate(m, dev):
                 elif ba < dev["cfgRegion"]:
                     errors.append(f"{n}: флеш хранит конфигурацию ПЛИС {dev['series']} (с адреса 0) - "
                                   f"образ программы не ниже 0x{dev['cfgRegion']:06X}")
+        if inst["type"] == "adc121":
+            ai = adc121_info(m, inst)
+            if inst.get("board", "adc_v") not in ADC121_BOARDS:
+                errors.append(f"{n}: плата - {', '.join(ADC121_BOARDS)}")
+            if inst.get("mode", "dc") not in ("dc", "ac"):
+                errors.append(f"{n}: режим dc или ac")
+            if not 0 <= ai["avgsh"] <= 12:
+                errors.append(f"{n}: усреднение - 2^0..2^12 отсчётов")
+            if not 1 <= ai["css"] <= 15:
+                errors.append(f"{n}: от CS до SCLK - 1..15 полупериодов")
+            if not 0 <= ai["offset"] <= 4095:
+                errors.append(f"{n}: смещение - 0..4095 кодов")
+            if not ADC121_SCLK_MIN <= ai["sclk"] <= ADC121_SCLK_MAX:
+                warns.append(f"{n}: SCLK {ai['sclk'] / 1e6:.2f} МГц вне 3.2..8 МГц ADC121S051 (DIV {ai['div']})")
+            if ai["budget"] < ADC121_DELAY_NS:
+                errors.append(f"{n}: при SCLK {ai['sclk'] / 1e6:.2f} МГц на задержку DOUT остаётся {ai['budget']:.0f} нс "
+                              f"(изоляторы и АЦП ~60 нс, нужно не меньше {ADC121_DELAY_NS}) - уменьшите частоту SCLK")
         if inst["type"] == "sifu":
             si = sifu_info(m, inst)
             if not 0 <= si["div"] <= 0xFFFF:
@@ -941,6 +989,19 @@ def gen_top(m, bases, cfg_rel):
                 w("                 .boot_hold(boot_hold), .boot_Write(boot_Write), .boot_Addr(boot_Addr), .boot_WData(boot_WData));")
             else:
                 w("                 .boot_hold(), .boot_Write(), .boot_Addr(), .boot_WData());")
+        elif t == "adc121":
+            ai = adc121_info(m, inst)
+            w(f"    //-{num}- {inst_title(inst)}: АЦП ADC121S051, плата {ai['board']['title']} ({ai['mode'].upper()}), "
+              f"SCLK {fmt_mhz(round(ai['sclk'] / 1e3) / 1e3)} МГц (DIV {ai['div']}), до {ai['rate'] / 1e3:.0f} тыс. отсчётов/с, "
+              f"среднее по {1 << ai['avgsh']}")
+            w(f"    //    регистры с {base}")
+            w(f"    logic irq_{h};")
+            w(f"    adc121_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(8'd{ai['div']}), .AVGSH_INIT(4'd{ai['avgsh']}), "
+              f".CSS_INIT(4'd{ai['css']}), .CSINV_INIT(1'b{1 if ai['csInv'] else 0})) {h}")
+            w("                (.clk(clk_per), .rst(rst_per),")
+            w(f"                 {bus},")
+            w(f"                 .adc_cs_n({net[name + '.cs']}), .adc_sclk({net[name + '.sclk']}), .adc_sdo({net[name + '.sdo']}),")
+            w(f"                 .irq(irq_{h}));")
         elif t == "sifu":
             si = sifu_info(m, inst)
             w(f"    //-{num}- {inst_title(inst)}: СИФУ трёхфазного мостового выпрямителя, тик ГПН {fmt_mhz(round(si['saw']) / 1e3)} кГц "
@@ -1090,6 +1151,17 @@ def gen_soc_h(m, bases, cfg_rel):
                        ("BOOT_SIZE", f"0x{BOOT_REGION if fi['boot'] else 0:08X}U", "Область образа (параметры туда не писать)"),
                        ("USER_ADDR", f"0x{fi['user']:08X}U", "Свободная область флеш: начало (ниже - конфигурация ПЛИС и образ)"),
                        ("USER_SIZE", f"0x{fi['userSize']:08X}U", "Свободная область флеш: размер")]
+        if t == "adc121":
+            ai = adc121_info(m, inst)
+            params += [("DIV_DEFAULT", f"{ai['div']}U", "Делитель SCLK после сброса: SCLK = SYSCLK_HZ / (2 * (DIV + 1))"),
+                       ("SCLK_HZ", f"{round(ai['sclk'])}U", "Частота SCLK при DIV_DEFAULT, Гц"),
+                       ("RATE_HZ", f"{round(ai['rate'])}U", "Отсчётов в секунду при непрерывной работе (PER = 0)"),
+                       ("AVGSH_DEFAULT", f"{ai['avgsh']}U", "Среднее по 2^AVGSH отсчётам"),
+                       ("BOARD", json.dumps(ai['board']['title'], ensure_ascii=False), "Плата"),
+                       ("MODE_AC", "1" if ai['mode'] == "ac" else "0", "Режим платы: 1 - AC (смещение), 0 - DC"),
+                       ("SCALE_U", f"{ai['scale']}", f"Мк-единиц ({ai['unit']}) на код: величина = (код - OFFSET) * SCALE_U / 1e6"),
+                       ("OFFSET", f"{ai['offset']}", "Код при нулевом входе"),
+                       ("UNIT", json.dumps(ai['unit']), "Единица величины")]
         if t == "sifu":
             si = sifu_info(m, inst)
             params += [("DIV_DEFAULT", f"{si['div']}U", "Делитель тика ГПН после сброса: SYSCLK_HZ / (DIV + 1)"),

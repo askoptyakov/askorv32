@@ -46,6 +46,8 @@
 #define SPIFLASH_COUNT					1U
 #define SIFU_PRESENT					1
 #define SIFU_COUNT						1U
+#define ADC121_PRESENT					1
+#define ADC121_COUNT					1U
 
 /* GPIO */
 #define GPIO_BASE						(0x11000000U)
@@ -91,6 +93,30 @@
 #define SIFU_WIDTH_DEFAULT				150U		//Длительность импульса после сброса, тиков
 #define SIFU_SIM						1		//Есть имитатор сети (CR.SIM, SIMCFG)
 
+/* ADC_V (ADC121) */
+#define ADC_V_BASE						(0x17000000U)
+#define ADC_V							((ADC121_TypeDef*) ADC_V_BASE)
+#define ADC_V_DIV_DEFAULT				3U		//Делитель SCLK после сброса: SCLK = SYSCLK_HZ / (2 * (DIV + 1))
+#define ADC_V_SCLK_HZ					5625000U		//Частота SCLK при DIV_DEFAULT, Гц
+#define ADC_V_RATE_HZ					310345U		//Отсчётов в секунду при непрерывной работе (PER = 0)
+#define ADC_V_AVGSH_DEFAULT				8U		//Среднее по 2^AVGSH отсчётам
+#define ADC_V_BOARD						"ADC_V"		//Плата
+#define ADC_V_MODE_AC					0		//Режим платы: 1 - AC (смещение), 0 - DC
+#define ADC_V_SCALE_U					222181		//Мк-единиц (V) на код: величина = (код - OFFSET) * SCALE_U / 1e6
+#define ADC_V_OFFSET					0		//Код при нулевом входе
+#define ADC_V_UNIT						"V"		//Единица величины
+#define ADC121_BASE						ADC_V_BASE		//Драйверы: первый блок типа
+#define ADC121							ADC_V
+#define ADC121_DIV_DEFAULT				ADC_V_DIV_DEFAULT
+#define ADC121_SCLK_HZ					ADC_V_SCLK_HZ
+#define ADC121_RATE_HZ					ADC_V_RATE_HZ
+#define ADC121_AVGSH_DEFAULT			ADC_V_AVGSH_DEFAULT
+#define ADC121_BOARD					ADC_V_BOARD
+#define ADC121_MODE_AC					ADC_V_MODE_AC
+#define ADC121_SCALE_U					ADC_V_SCALE_U
+#define ADC121_OFFSET					ADC_V_OFFSET
+#define ADC121_UNIT						ADC_V_UNIT
+
 /* Прерывания периферии. Источники PLIC (векторный режим, start.S): обработчик источника S -
    PLIC_SRCS_IRQHandler; ниже - понятные имена. Локальные линии: LIn_IRQHandler, номер LIn_IRQn */
 #define PLIC_NUM_SOURCES				8U
@@ -98,11 +124,13 @@ typedef enum
 {
   PLIC_SRC_STIM = 1,		//STIM
   PLIC_SRC_UART = 2,		//UART
-  PLIC_SRC_SIFU = 3		//SIFU
+  PLIC_SRC_SIFU = 3,		//SIFU
+  PLIC_SRC_ADC_V = 4		//ADC_V
 } PLIC_SRC_Type;
 #define PLIC_STIM_IRQHandler			PLIC_SRC1_IRQHandler
 #define PLIC_UART_IRQHandler			PLIC_SRC2_IRQHandler
 #define PLIC_SIFU_IRQHandler			PLIC_SRC3_IRQHandler
+#define PLIC_ADC_V_IRQHandler			PLIC_SRC4_IRQHandler
 
 /* Выводы GPIO: имя цепи из конфигуратора -> <ИМЯ>_PIN (номер линии) и <ИМЯ>_PORT (блок GPIO);
    цепь LED[3] даёт имя LED3. Шина (LED[0], LED[1]...) на одном блоке: <ИМЯ>_MSK, <ИМЯ>_POS, <ИМЯ>_PORT.
