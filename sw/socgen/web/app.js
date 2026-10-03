@@ -77,14 +77,14 @@ const TYPES = {
                        vs1: null, vs2: null, vs3: null, vs4: null, vs5: null, vs6: null,
                        grid: null, sawHz: 500000, delayTicks: 400, pulseTicks: 150, sim: true, irq: 'plic' }) },
   adc121: { title: 'ADC121', ru: 'АЦП ADC121S051', cat: 'custom', slot: 0x17, irq: true,
-    about: 'Аналоговые измерения: АЦП ADC121S051 (12 бит, до ~300 тыс. отсчётов/с) на плате ADC_V (напряжение ±600 В) или ADC_C (ток) через цифровые изоляторы. Блок сам опрашивает АЦП, проверяет кадр, усредняет 2^N отсчётов; период отсчётов, прерывания, пересчёт кода в вольты/амперы - коэффициент и смещение в настройках.',
-    defaults: () => ({ cs: null, sclk: null, sdo: null, board: 'adc_v', mode: 'dc', sclkHz: 6000000, css: 2, csInv: false,
+    about: 'Аналоговые измерения: АЦП ADC121S051 (12 бит, до ~470 тыс. отсчётов/с на своём такте 96 МГц) на плате ADC_V (напряжение ±600 В) или ADC_C (ток) через цифровые изоляторы. Блок сам опрашивает АЦП, проверяет кадр, усредняет 2^N отсчётов; период отсчётов, прерывания, пересчёт кода в вольты/амперы - коэффициент и смещение в настройках.',
+    defaults: () => ({ cs: null, sclk: null, sdo: null, cmp: null, cmpPol: 'low', board: 'adc_v', mode: 'dc', clkMHz: 96, sclkHz: 8000000, css: 1, quiet: 1, csInv: false,
                        avgShift: 8, scaleUv: 323242, offset: 0, irq: 'plic' }) },
 };
 //АЦП ADC121S051: платы и пересчёт кода (как ADC121_BOARDS в socgen.py). ADC_V, DC: 323242 мкВ на код - issue Artel-Inc/temporary#3
 const ADC121_BOARDS = {
   adc_v: { title: 'ADC_V - напряжение', unit: 'В', scale: 323242, offset: { dc: 0, ac: 2045 } },
-  adc_c: { title: 'ADC_C - ток', unit: 'А', scale: 1000, offset: { dc: 0, ac: 2048 } },
+  adc_c: { title: 'ADC_C - ток', unit: 'А', scale: 48340, offset: { dc: 2048, ac: 2048 } },
   raw:   { title: 'без пересчёта (код)', unit: 'код', scale: 1000000, offset: { dc: 0, ac: 0 } },
 };
 const ADC121_SCLK_MIN = 3.2e6, ADC121_SCLK_MAX = 8e6, ADC121_DELAY_NS = 80;
@@ -206,7 +206,8 @@ function instSignals(inst) {
     case 'spiflash': return [{ key: 'sck', label: 'SCK', dir: 'output' }, { key: 'cs', label: 'CS#', dir: 'output' },
                              { key: 'mosi', label: 'MOSI', dir: 'output' }, { key: 'miso', label: 'MISO', dir: 'input' }];
     case 'adc121': return [{ key: 'cs', label: 'CS', dir: 'output' }, { key: 'sclk', label: 'SCLK', dir: 'output' },
-                           { key: 'sdo', label: 'SDO', dir: 'input' }];
+                           { key: 'sdo', label: 'SDO', dir: 'input' },
+                           ...(inst.cmp != null ? [{ key: 'cmp', label: 'CMP', dir: 'input' }] : [])];
     case 'sifu': return [...SIFU_SYNC.map(k => ({ key: k, label: k.toUpperCase(), dir: 'input' })),
                          ...SIFU_GATES.map(k => ({ key: k, label: k.toUpperCase(), dir: 'output' })),
                          ...(inst.grid != null ? [{ key: 'grid', label: 'GRID', dir: 'output' }] : [])];
@@ -307,13 +308,23 @@ function uartDiv(m, u) {
   const div = Math.max(0, Math.round(f / baud) - 1), real = f / (div + 1);
   return { div, real, err: Math.abs(real - baud) / baud * 100 };
 }
-//АЦП ADC121: делитель SCLK, частота отсчётов, запас на задержку DOUT (как adc121_info в socgen.py)
+//Свой такт блоков ADC121 (clkMHz > 0): один rPLL на все такие блоки (как adc121_clock в socgen.py); null - такт шины
+function adc121Clock(m) {
+  const ts = [...new Set(m.periph.filter(i => i.type === 'adc121' && Number(i.clkMHz) > 0).map(i => Number(i.clkMHz)))].sort((x, y) => x - y);
+  if (!ts.length) return null;
+  const r = pllSolve(Number(m.clock.xtalMHz), ts[0]);
+  if (!r) return { target: ts[0], targets: ts, fout: 0, errs: [`такт АЦП ${ts[0]} МГц: делителей rPLL нет`] };
+  return { target: ts[0], targets: ts, idiv: r.idiv, fbdiv: r.fbdiv, odiv: r.odiv, ...pllEval(Number(m.clock.xtalMHz), r.idiv, r.fbdiv, r.odiv) };
+}
+//АЦП ADC121: такт блока, делитель SCLK, частота отсчётов, запас на задержку DOUT (как adc121_info в socgen.py)
 function adc121Info(m, a) {
-  const f = sysclkHz(m), sclk = Number(a.sclkHz);
+  const ac = Number(a.clkMHz) > 0 ? adc121Clock(m) : null;
+  const f = ac && ac.fout ? ac.fout * 1e6 : sysclkHz(m), sclk = Number(a.sclkHz);
   const div = sclk > 0 ? Math.max(0, Math.min(255, Math.round(f / (2 * sclk)) - 1)) : 255, real = f / (2 * (div + 1));
-  const css = Number(a.css), rate = f / ((32 + css + 2) * (div + 1) + 1), budget = (2 * (div + 1) - 3) / f * 1e9;
+  const css = Number(a.css), quiet = Number(a.quiet ?? 2);
+  const rate = f / ((32 + css + quiet) * (div + 1) + 1), budget = (2 * (div + 1) - 3) / f * 1e9;
   const board = ADC121_BOARDS[a.board] || ADC121_BOARDS.raw, avgsh = Number(a.avgShift);
-  return { div, sclk: real, rate, budget, css, avgsh, avgRate: rate / Math.pow(2, avgsh), board,
+  return { f, own: !!ac, ac, div, sclk: real, rate, budget, css, quiet, avgsh, avgRate: rate / Math.pow(2, avgsh), board,
            scale: Number(a.scaleUv), offset: Number(a.offset) };
 }
 //СИФУ: делитель тика ГПН, частота пилы, тиков на полупериод 50 Гц, наибольший угол (как sifu_info в socgen.py)
@@ -564,6 +575,14 @@ function validate(m) {
       const ai = adc121Info(m, inst);
       if (!(ai.avgsh >= 0 && ai.avgsh <= 12)) out.push({ lvl: 'err', text: `${inst.name}: усреднение - 2^0..2^12 отсчётов`, inst: inst.name });
       if (!(ai.css >= 1 && ai.css <= 15)) out.push({ lvl: 'err', text: `${inst.name}: от CS до SCLK - 1..15 полупериодов`, inst: inst.name });
+      if (!(ai.quiet >= 1 && ai.quiet <= 15)) out.push({ lvl: 'err', text: `${inst.name}: пауза между кадрами - 1..15 полупериодов`, inst: inst.name });
+      if (ai.own) {
+        for (const e of ai.ac.errs) out.push({ lvl: 'err', text: `${inst.name}: rPLL такта АЦП: ${e}`, inst: inst.name });
+        if (ai.ac.targets.length > 1)
+          out.push({ lvl: 'err', text: `${inst.name}: у блоков ADC121 с отдельным тактом одна частота (rPLL один) - сейчас ${ai.ac.targets.map(fmt).join(', ')} МГц`, inst: inst.name });
+        else if (ai.ac.fout && Math.abs(ai.ac.fout - ai.ac.target) > 0.005 * ai.ac.target)
+          out.push({ lvl: 'warn', text: `${inst.name}: такт АЦП ${fmt(ai.ac.fout)} МГц вместо ${fmt(ai.ac.target)}`, inst: inst.name });
+      }
       if (!(ai.offset >= 0 && ai.offset <= 4095)) out.push({ lvl: 'err', text: `${inst.name}: смещение - 0..4095 кодов`, inst: inst.name });
       if (ai.sclk < ADC121_SCLK_MIN || ai.sclk > ADC121_SCLK_MAX)
         out.push({ lvl: 'warn', text: `${inst.name}: SCLK ${(ai.sclk / 1e6).toFixed(2)} МГц вне 3.2..8 МГц ADC121S051 (DIV ${ai.div})`, inst: inst.name });
@@ -985,6 +1004,7 @@ function instRows(inst) {
   if (inst.type === 'gpio' && inst.lines.length < 32) rows.push({ kind: 'add', key: 'newline', label: 'добавить линию' });
   if (inst.type === 'stim' && inst.out == null) rows.push({ kind: 'add', key: 'out', label: 'вывести ШИМ' });
   if (inst.type === 'sifu' && inst.grid == null) rows.push({ kind: 'add', key: 'grid', label: 'вывести «сеть есть»' });
+  if (inst.type === 'adc121' && inst.cmp == null) rows.push({ kind: 'add', key: 'cmp', label: 'вход компаратора' });
   return rows;
 }
 
@@ -1462,15 +1482,23 @@ function instForm(inst, v) {
     const bad = ai.budget < ADC121_DELAY_NS || ai.sclk < ADC121_SCLK_MIN || ai.sclk > ADC121_SCLK_MAX;
     h += `<label>Плата</label><select name="adcBoard">${opts(Object.entries(ADC121_BOARDS).map(([k, b]) => [k, b.title]), inst.board)}</select>
       <label>Режим платы</label><select name="adcMode">${opts([['dc', 'DC (без смещения)'], ['ac', 'AC (смещение 1.65 В)']], inst.mode)}</select>
+      <label>Такт блока, МГц</label><input type="number" name="clkMHz" min="0" max="200" step="any" value="${inst.clkMHz ?? 0}" style="width:90px"
+        title="Свой rPLL для кадра АЦП: 96 МГц - SCLK ровно 8 МГц (предел ADC121S051). 0 - такт шины. У всех блоков ADC121 со своим тактом частота одна">
       <label>SCLK, МГц</label><input type="number" name="sclkMHz" min="1" max="12" step="any" value="${inst.sclkHz / 1e6}" style="width:90px">
       <label>Среднее</label><select name="avgShift">${opts(avgOpts, inst.avgShift)}</select>
       <label>CS → SCLK, полупериодов</label><input type="number" name="css" min="1" max="15" value="${inst.css}" style="width:90px"
         title="Выдержка от спада CS до первого такта SCLK: запас на медленный оптрон в цепи CS">
+      <label>Пауза между кадрами, полупериодов</label><input type="number" name="quiet" min="1" max="15" value="${inst.quiet ?? 2}" style="width:90px"
+        title="QUIET: CS# в 1 между кадрами (t_QUIET АЦП - не меньше 50 нс)">
       <label>Вывод CS</label><select name="csInv">${opts([['0', 'прямой (CS# = 0 - кадр)'], ['1', 'инвертированный']], inst.csInv ? '1' : '0')}</select>
+      ${inst.board === 'adc_c' ? `<label>Шунт, мОм</label><input type="number" name="shuntMohm" step="any" min="0.01" value="${inst.shuntMohm ?? 0.16667}" style="width:90px"
+        title="Сопротивление шунта: 3 × 0,5 мОм = 0,1667 (±99 А), 1 × 0,5 мОм (±33 А). Масштаб = 3,3 В / 4096 / (Rш · 100)">` : ''}
       <label>Масштаб, мк${esc(ai.board.unit)}/код</label><input type="number" name="scaleUv" value="${inst.scaleUv}" style="width:110px">
-      <label>Смещение, код</label><input type="number" name="offset" min="0" max="4095" value="${inst.offset}" style="width:90px">
+      <label>Смещение, код</label><input type="number" name="offset" min="0" max="4095" step="any" value="${inst.offset}" style="width:90px"
+        title="Код при нулевом входе, можно с дробью (среднее по 4096 отсчётам при нуле)">
       <div class="full readout">${pe ? '<span class="bad">нет частоты rPLL</span>' :
-        `DIV = <b>${ai.div}</b> · SCLK <b class="${bad ? 'bad' : 'good'}">${fmt(ai.sclk / 1e6)} МГц</b> · до <b>${Math.round(ai.rate / 1000)}</b> тыс. отсч./с,
+        `такт ${ai.own ? `<b>${fmt(ai.f / 1e6)} МГц</b> (свой rPLL)` : 'шины ' + fmt(ai.f / 1e6) + ' МГц'} ·
+         DIV = <b>${ai.div}</b> · SCLK <b class="${bad ? 'bad' : 'good'}">${fmt(ai.sclk / 1e6)} МГц</b> · до <b>${Math.round(ai.rate / 1000)}</b> тыс. отсч./с,
          средних ${Math.round(ai.avgRate)} в с<br>запас на задержку DOUT ${Math.round(ai.budget)} нс · 1 код = ${fmt(ai.scale / 1e6)} ${esc(ai.board.unit)},
          полная шкала ${fmt((4095 - ai.offset) * ai.scale / 1e6)} ${esc(ai.board.unit)}`}</div>`;
   }
@@ -1519,9 +1547,17 @@ function instForm(inst, v) {
     в soc.h); прошивка может сменить их регистрами. UART программатора платы: Tang Nano 9K (BL702) - выводы 17 (TX) и 18 (RX),
     Tang Primer 20K (BL616 на Dock) - M11 (TX) и T13 (RX).</p>`;
   if (inst.type === 'tm1638') h += `<p class="note">Знакогенератор занимает 1 блок BSRAM; делители интерфейса считаются от частоты шины.</p>`;
-  if (inst.type === 'adc121') h += `<p class="note">Плата ADC_V: CS, SCLK, SDO - через цифровые изоляторы (3.3 В). Пересчёт:
+  if (inst.type === 'adc121') h += pinRowsHtml(inst, [], false) + (inst.cmp == null
+      ? `<button type="button" data-act="addcmp">+ Вход компаратора (CMP)</button>`
+      : `<label class="inline">Активный уровень CMP <select name="cmpPol">${opts([['low', 'низкий (LM311)'], ['high', 'высокий']], inst.cmpPol)}</select></label>
+         <button type="button" data-act="delcmp">Убрать вход компаратора</button>`) +
+    `<p class="note">Плата ADC_V: CS, SCLK, SDO - через цифровые изоляторы (3.3 В).
+    ADC_C: ток через шунт и INA181A3 (100 В/В), ноль - код 2048 (опора 1,65 В), вход CMP - выход компаратора защиты U2 (LM311, мгновенный ток,
+    только положительная полуволна; низкий уровень - перегрузка).`;
+  if (inst.type === 'adc121') h += `<p class="note"> Пересчёт:
     величина = (код - смещение) · масштаб. ADC_V, режим DC (исходная плата, 5 × 360 кОм) - 323242 мкВ/код по issue Artel-Inc/temporary#3;
-    ниже ~40 В плата нелинейна (код у нуля - около 68). Режим AC - смещение около 2045. Второй блок (ADC_C) добавляется так же, со своими выводами.
+    ниже ~40 В плата нелинейна (код у нуля - около 68). Режим AC - смещение около 2045. Плата стенда (доработана по issue, JP1 и JP3 разомкнуты,
+    JP4 в положении 2–3) - 222181 мкВ/код, ноль 0, полоса 22 кГц. Второй блок (ADC_C) добавляется так же, со своими выводами.
     В Си: ${esc(inst.name)}_SCALE_U, ${esc(inst.name)}_OFFSET, ADC121_CAL(${esc(inst.name)}).</p>`;
   if (inst.type === 'sifu') h += `<p class="note">Входы AB…AC - выходы платы синхронизации NSB (OUT_AB…OUT_AC, 0 - оптрон открыт). Высокий уровень NSB -
     около 1,8 В (делитель 47k/27k от 5 В): на Tang Nano 9K - банк 3 (1,8 В, выводы 79–86), для банков 3,3 В нужен другой делитель NSB.
@@ -1556,6 +1592,15 @@ function wireInstForm(box, inst) {
   q('base').addEventListener('change', e => { inst.base = e.target.value.trim().replace(/_/g, ''); changed(); });
   for (const k of ['irq', 'parity']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = e.target.value; changed(); });
   for (const k of ['width', 'stop', 'fifo', 'baud', 'sizeMB', 'div', 'delayTicks', 'pulseTicks']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
+  if (q('shuntMohm')) q('shuntMohm').addEventListener('change', e => {
+    inst.shuntMohm = Number(e.target.value);
+    if (inst.shuntMohm > 0) inst.scaleUv = Math.round(3.3 / 4096 / (inst.shuntMohm * 1e-3 * 100) * 1e6);
+    changed();
+  });
+  if (q('cmpPol')) q('cmpPol').addEventListener('change', e => { inst.cmpPol = e.target.value; changed(); });
+  const addCmp = box.querySelector('[data-act=addcmp]'), delCmp = box.querySelector('[data-act=delcmp]');
+  if (addCmp) addCmp.addEventListener('click', () => pinPicker({ id: `${inst.name}.cmp`, inst, key: 'cmp', name: `${inst.name} CMP`, dir: 'input', def: defNet(inst, 'cmp') }));
+  if (delCmp) delCmp.addEventListener('click', () => { inst.cmp = null; changed(); });
   if (q('adcBoard')) q('adcBoard').addEventListener('change', e => {
     inst.board = e.target.value;
     const b = ADC121_BOARDS[inst.board];
@@ -1569,7 +1614,7 @@ function wireInstForm(box, inst) {
   });
   if (q('sclkMHz')) q('sclkMHz').addEventListener('change', e => { inst.sclkHz = Math.round(Number(e.target.value) * 1e6); changed(); });
   if (q('csInv')) q('csInv').addEventListener('change', e => { inst.csInv = e.target.value === '1'; changed(); });
-  for (const k of ['avgShift', 'css', 'scaleUv', 'offset']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
+  for (const k of ['avgShift', 'css', 'quiet', 'clkMHz', 'scaleUv', 'offset']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
   if (q('sim')) q('sim').addEventListener('change', e => { inst.sim = e.target.value === '1'; changed(); });
   if (q('sawKHz')) q('sawKHz').addEventListener('change', e => { inst.sawHz = Math.round(Number(e.target.value) * 1000); changed(); });
   if (q('fpgaConfig')) q('fpgaConfig').addEventListener('change', e => {

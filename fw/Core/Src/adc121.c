@@ -13,7 +13,7 @@
 #if ADC121_PRESENT
 
 void ADC121_Init(ADC121_TypeDef *adc, uint32_t div, uint32_t avgsh) {
-	adc->CR  &= ADC121_CR_CSINV;									//Остановить, прерывания выключить
+	adc->CR  &= (ADC121_CR_CSINV | ADC121_CR_CPOL);				//Остановить, прерывания выключить
 	while (adc->SR & ADC121_SR_BUSY) ;								//Дождаться конца кадра
 	adc->DIV  = (adc->DIV & ~ADC121_DIV_MSK) | (div & ADC121_DIV_MSK);
 	adc->AVG  = avgsh;
@@ -22,7 +22,8 @@ void ADC121_Init(ADC121_TypeDef *adc, uint32_t div, uint32_t avgsh) {
 }
 
 void ADC121_SetRate(ADC121_TypeDef *adc, uint32_t hz) {
-	uint32_t per = hz ? (SYSCLK_HZ + hz / 2U) / hz : 0U;
+	uint32_t f = ADC121_GetClock(adc);
+	uint32_t per = hz ? (f + hz / 2U) / hz : 0U;
 	if (per > 0xFFFFFFU) per = 0xFFFFFFU;
 	adc->PER = per;
 }
@@ -32,7 +33,7 @@ uint32_t ADC121_GetRate(ADC121_TypeDef *adc) {
 	/* Кадр: 32 + CSS + QUIET полупериодов SCLK по DIV + 1 тактов и такт запуска */
 	uint32_t half = (d & ADC121_DIV_MSK) + 1U;
 	uint32_t frame = (32U + ((d >> ADC121_DIV_CSS_POS) & 0xFU) + ((d >> ADC121_DIV_QUIET_POS) & 0xFU)) * half + 1U;
-	return SYSCLK_HZ / (per > frame ? per : frame);
+	return ADC121_GetClock(adc) / (per > frame ? per : frame);
 }
 
 uint32_t ADC121_ReadSingle(ADC121_TypeDef *adc) {
@@ -48,13 +49,15 @@ uint32_t ADC121_ReadSingle(ADC121_TypeDef *adc) {
 }
 
 int32_t ADC121_ToMilli(ADC121_Cal cal, uint32_t code) {
-	return (int32_t)(((int64_t)((int32_t)code - cal.offset) * cal.scale_u) / 1000);
+	/* (код - смещение) в тысячных долях кода * мк-единиц на код / 1e6 = тысячные доли единицы */
+	return (int32_t)((((int64_t)code * 1000 - cal.offset_m) * cal.scale_u) / 1000000);
 }
 
 int32_t ADC121_MeanMilli(ADC121_TypeDef *adc, ADC121_Cal cal) {
 	uint32_t sh = adc->AVG & 0xFU;
-	int64_t sum = (int64_t)adc->SUM - ((int64_t)cal.offset << sh);	//Сумма за вычетом смещения
-	return (int32_t)((sum * cal.scale_u / 1000) >> sh);
+	/* Сумма 2^sh отсчётов в тысячных долях кода за вычетом смещения */
+	int64_t sum_m = (int64_t)adc->SUM * 1000 - ((int64_t)cal.offset_m << sh);
+	return (int32_t)(((sum_m * cal.scale_u) / 1000000) >> sh);
 }
 
 uint32_t ADC121_Capture(ADC121_TypeDef *adc, uint16_t *buf, uint32_t n) {

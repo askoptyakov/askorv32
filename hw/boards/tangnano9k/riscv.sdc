@@ -31,3 +31,7 @@ set_multicycle_path -from [get_regs {cpu/g_debug.dm/sbaddress*}] -setup -end 2
 set_multicycle_path -from [get_regs {cpu/g_debug.dm/sbaddress*}] -hold -end 1
 set_multicycle_path -to [get_regs {cpu/g_debug.dm/gpr_q*}] -setup -end 2
 set_multicycle_path -to [get_regs {cpu/g_debug.dm/gpr_q*}] -hold -end 1
+//>>> Такт блоков ADC121 (свой rPLL) - строки ведёт конфигуратор (socgen.py), не править
+create_clock -name clk_adc -period 16.461 -waveform {0 8.230} [get_pins {adc_pll/pll/CLKOUT}]
+set_clock_groups -asynchronous -group [get_clocks {clk_adc}] -group [get_clocks {clk clk_core clk_tck}]
+//<<< Такт блоков ADC121

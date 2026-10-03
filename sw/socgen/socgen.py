@@ -66,11 +66,17 @@ SIFU_SAW_MAX = 4095
 #АЦП ADC121S051 (adc121): платы ADC_V (напряжение) и ADC_C (ток). Пересчёт кода: (код - offset) * scale
 #мк-единиц (мкВ, мкА). ADC_V, режим DC, исходная плата (5 x 360 кОм): 323242 мкВ на код - issue
 #Artel-Inc/temporary#3 (3.31 В * 400 / 4096); режим AC: смещение 1.652 В = код 2045
+#ADC_C: шунт (3 x 0.5 мОм = 0.1667 мОм) -> INA181A3 (100 В/В), опора 1.65 В: ток в обе стороны, ноль - код 2048;
+#масштаб = 3.3 В / 4096 / (Rш * 100) - 48340 мкА на код (issue Artel-Inc/temporary#5); на плате стенда
+#измерено 45662 мкА/код, ноль 2049.3 (2026-10-04)
 ADC121_BOARDS = {"adc_v": dict(title="ADC_V", unit="V", scale=323242, offset={"dc": 0, "ac": 2045}),
-                 "adc_c": dict(title="ADC_C", unit="A", scale=1000, offset={"dc": 0, "ac": 2048}),
+                 "adc_c": dict(title="ADC_C", unit="A", scale=48340, offset={"dc": 2048, "ac": 2048}),
                  "raw":   dict(title="код АЦП", unit="code", scale=1000000, offset={"dc": 0, "ac": 0})}
 ADC121_SCLK_MIN, ADC121_SCLK_MAX = 3.2e6, 8.0e6     #ADC121S051 по листу данных
 ADC121_DELAY_NS = 80                               #Задержка DOUT: изоляторы туда-обратно и выход АЦП (с запасом)
+#Свой такт блоков ADC121 (clkMHz > 0): отдельный rPLL от кварца; 96 МГц - SCLK ровно 8 МГц (DIV 5), предел АЦП.
+#Все блоки с отдельным тактом - на одной частоте (один rPLL adc_pll, цепь clk_adc); 0 - такт шины
+ADC121_PLL_INST, ADC121_CLK_NET = "adc_pll", "clk_adc"
 BOOT_REGION = 0x10000      #Область образа программы во флеш: 64 кБайт (IMEM + DMEM не больше 48 кБайт)
 #Флеш хранит и конфигурацию ПЛИС (режим MSPI): битовый поток - с адреса 0, его размер - cfgRegion кристалла
 #(GW1NR-9 - 442 кБайт, образ программы не ниже 0x80000; GW2A-18 - 882 кБайт, не ниже 0x100000).
@@ -192,7 +198,8 @@ def inst_signals(inst):
         return [("sck", "SCK", "output", True), ("cs", "CS#", "output", True),
                 ("mosi", "MOSI", "output", True), ("miso", "MISO", "input", True)]
     if t == "adc121":
-        return [("cs", "CS", "output", True), ("sclk", "SCLK", "output", True), ("sdo", "SDO", "input", True)]
+        return ([("cs", "CS", "output", True), ("sclk", "SCLK", "output", True), ("sdo", "SDO", "input", True)] +
+                ([("cmp", "CMP", "input", False)] if inst.get("cmp") is not None else []))
     if t == "sifu":
         return ([(k, k.upper(), "input", True) for k in SIFU_SYNC] +
                 [(k, k.upper(), "output", True) for k in SIFU_GATES] +
@@ -395,22 +402,40 @@ def sifu_info(m, s):
                 delayDeg=deg(delay))
 
 
+def adc121_clock(m):
+    """Отдельный такт блоков ADC121: None (все на такте шины) или dict(target, targets, idiv, fbdiv, odiv, fout, pfd,
+    vco, errs) - делители rPLL подбираются как у такта ядра (pll_solve по пределам кристалла)."""
+    ts = sorted({float(i.get("clkMHz") or 0) for i in insts(m) if i["type"] == "adc121"} - {0.0})
+    if not ts:
+        return None
+    lim, fin = dev_of(m)["pll"], float(m["clock"]["xtalMHz"])
+    r = pll_solve(fin, ts[0], lim)
+    if not r:
+        return dict(target=ts[0], targets=ts, idiv=0, fbdiv=0, odiv=2, fout=0.0, pfd=0.0, vco=0.0,
+                    errs=[f"такт АЦП {ts[0]} МГц: делителей rPLL нет"])
+    pfd, fout, vco, errs = pll_eval(fin, r[0], r[1], r[2], lim)
+    return dict(target=ts[0], targets=ts, idiv=r[0], fbdiv=r[1], odiv=r[2], fout=fout, pfd=pfd, vco=vco, errs=errs)
+
+
 def adc121_info(m, a):
-    """АЦП ADC121: делитель SCLK и его частота, частота отсчётов, запас на задержку DOUT, среднее,
+    """АЦП ADC121: такт блока, делитель SCLK и его частота, частота отсчётов, запас на задержку DOUT, среднее,
     пересчёт кода (масштаб в мк-единицах на код, смещение в кодах, единица)."""
-    f = sysclk_hz(m)
+    ac = adc121_clock(m) if float(a.get("clkMHz") or 0) > 0 else None
+    f = ac["fout"] * 1e6 if ac and ac["fout"] else sysclk_hz(m)
     sclk = float(a.get("sclkHz", 6000000))
     div = max(0, min(255, round(f / (2 * sclk)) - 1)) if sclk > 0 else 255
     real = f / (2 * (div + 1))
     css = int(a.get("css", 2))
-    rate = f / ((32 + css + 2) * (div + 1) + 1)          #Кадр: 32 + CSS + QUIET (2) полупериодов и такт запуска
+    quiet = int(a.get("quiet", 2))
+    rate = f / ((32 + css + quiet) * (div + 1) + 1)      #Кадр: 32 + CSS + QUIET полупериодов и такт запуска
     budget_ns = (2 * (div + 1) - 3) / f * 1e9            #Период SCLK минус синхронизатор и выходной регистр
     board = ADC121_BOARDS.get(a.get("board", "adc_v"), ADC121_BOARDS["raw"])
     mode = a.get("mode", "dc")
     scale = int(a.get("scaleUv", board["scale"]))
-    offset = int(a.get("offset", board["offset"].get(mode, 0)))
+    offset = float(a.get("offset", board["offset"].get(mode, 0)))       #Код при нулевом входе, можно дробный
     avgsh = int(a.get("avgShift", 8))
-    return dict(div=div, sclk=real, rate=rate, budget=budget_ns, css=css, csInv=bool(a.get("csInv", False)),
+    return dict(f=f, own=bool(ac), div=div, sclk=real, rate=rate, budget=budget_ns, css=css, quiet=quiet,
+                csInv=bool(a.get("csInv", False)),
                 avgsh=avgsh, avgRate=rate / (1 << avgsh) if 0 <= avgsh <= 12 else 0, board=board, mode=mode,
                 scale=scale, offset=offset, unit=board["unit"])
 
@@ -676,6 +701,16 @@ def validate(m, dev):
                 errors.append(f"{n}: усреднение - 2^0..2^12 отсчётов")
             if not 1 <= ai["css"] <= 15:
                 errors.append(f"{n}: от CS до SCLK - 1..15 полупериодов")
+            if not 1 <= ai["quiet"] <= 15:
+                errors.append(f"{n}: пауза между кадрами - 1..15 полупериодов")
+            if ai["own"]:
+                ac = adc121_clock(m)
+                errors += [f"{n}: rPLL такта АЦП: {e}" for e in ac["errs"]]
+                if len(ac["targets"]) > 1:
+                    errors.append(f"{n}: у блоков ADC121 с отдельным тактом одна частота (rPLL один) - сейчас "
+                                  + ", ".join(fmt_mhz(x) for x in ac["targets"]) + " МГц")
+                elif ac["fout"] and abs(ac["fout"] - ac["target"]) > 0.005 * ac["target"]:
+                    warns.append(f"{n}: такт АЦП {fmt_mhz(ac['fout'])} МГц вместо {fmt_mhz(ac['target'])}")
             if not 0 <= ai["offset"] <= 4095:
                 errors.append(f"{n}: смещение - 0..4095 кодов")
             if not ADC121_SCLK_MIN <= ai["sclk"] <= ADC121_SCLK_MAX:
@@ -898,6 +933,16 @@ def gen_top(m, bases, cfg_rel):
     bf = boot_flash(m)
     if bf:
         w(f"    //Программу после сброса копирует из флеш {bf['name']} (порт boot_*)")
+    ac = adc121_clock(m)
+    if ac:
+        w("")
+        w(f"    //Такт блоков АЦП ADC121: свой rPLL от кварца, {fmt_mhz(ac['fout'])} МГц (PFD {fmt_mhz(ac['pfd'])}, "
+          f"VCO {fmt_mhz(ac['vco'])} МГц). Кадр АЦП и период запуска")
+        w(f"    //работают от него, регистры - от такта шины (переход между тактами - в adc121.sv); ограничение - в riscv.sdc")
+        w(f"    logic {ADC121_CLK_NET}, adc_lock;")
+        w(f"    clk_pll #(.FCLKIN(FCLKIN), .DEVICE(PLL_DEVICE), .IDIV_SEL({ac['idiv']}), .FBDIV_SEL({ac['fbdiv']}), "
+          f".ODIV_SEL({ac['odiv']})) {ADC121_PLL_INST}")
+        w(f"        (.clkin({net['clk']}), .clkout({ADC121_CLK_NET}), .lock(adc_lock));")
     else:
         w("    //Загрузчика программы нет: память команд и данных - из битового потока ПЛИС")
         w("    assign {boot_hold, boot_Write, boot_Addr, boot_WData} = '0;")
@@ -991,17 +1036,25 @@ def gen_top(m, bases, cfg_rel):
                 w("                 .boot_hold(), .boot_Write(), .boot_Addr(), .boot_WData());")
         elif t == "adc121":
             ai = adc121_info(m, inst)
-            w(f"    //-{num}- {inst_title(inst)}: АЦП ADC121S051, плата {ai['board']['title']} ({ai['mode'].upper()}), "
+            clk_txt = f"такт {ADC121_CLK_NET} {fmt_mhz(ai['f'] / 1e6)} МГц" if ai["own"] else "такт шины"
+            w(f"    //-{num}- {inst_title(inst)}: АЦП ADC121S051, плата {ai['board']['title']} ({ai['mode'].upper()}), {clk_txt}, "
               f"SCLK {fmt_mhz(round(ai['sclk'] / 1e3) / 1e3)} МГц (DIV {ai['div']}), до {ai['rate'] / 1e3:.0f} тыс. отсчётов/с, "
               f"среднее по {1 << ai['avgsh']}")
             w(f"    //    регистры с {base}")
             w(f"    logic irq_{h};")
+            cmp = net.get(f"{name}.cmp", "")
+            cpol = 1 if inst.get("cmpPol", "low") == "high" else 0
             w(f"    adc121_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(8'd{ai['div']}), .AVGSH_INIT(4'd{ai['avgsh']}), "
-              f".CSS_INIT(4'd{ai['css']}), .CSINV_INIT(1'b{1 if ai['csInv'] else 0})) {h}")
-            w("                (.clk(clk_per), .rst(rst_per),")
+              f".CSS_INIT(4'd{ai['css']}), .QUIET_INIT(4'd{ai['quiet']}), .CSINV_INIT(1'b{1 if ai['csInv'] else 0}),")
+            w(f"                 .CMP_EN(1'b{1 if cmp else 0}), .CPOL_INIT(1'b{cpol}), .CLK_HZ(32'd{round(ai['f'])})) {h}")
+            if ai["own"]:
+                w(f"                (.clk(clk_per), .rst(rst_per), .adc_clk({ADC121_CLK_NET}), .adc_lock(adc_lock),")
+            else:
+                w("                (.clk(clk_per), .rst(rst_per), .adc_clk(clk_per), .adc_lock(1'b1),")
             w(f"                 {bus},")
             w(f"                 .adc_cs_n({net[name + '.cs']}), .adc_sclk({net[name + '.sclk']}), .adc_sdo({net[name + '.sdo']}),")
-            w(f"                 .irq(irq_{h}));")
+            cmp_net = cmp if cmp else "1'b1"
+            w(f"                 .adc_cmp({cmp_net}), .irq(irq_{h}));" + ("" if cmp else "   //вход компаратора не выведен"))
         elif t == "sifu":
             si = sifu_info(m, inst)
             w(f"    //-{num}- {inst_title(inst)}: СИФУ трёхфазного мостового выпрямителя, тик ГПН {fmt_mhz(round(si['saw']) / 1e3)} кГц "
@@ -1153,15 +1206,21 @@ def gen_soc_h(m, bases, cfg_rel):
                        ("USER_SIZE", f"0x{fi['userSize']:08X}U", "Свободная область флеш: размер")]
         if t == "adc121":
             ai = adc121_info(m, inst)
-            params += [("DIV_DEFAULT", f"{ai['div']}U", "Делитель SCLK после сброса: SCLK = SYSCLK_HZ / (2 * (DIV + 1))"),
+            params += [("CLK_HZ", f"{round(ai['f'])}U", "Такт блока, Гц: " + ("свой rPLL" if ai["own"] else "такт шины")
+                        + " (он же - регистр FCLK)"),
+                       ("DIV_DEFAULT", f"{ai['div']}U", "Делитель SCLK после сброса: SCLK = CLK_HZ / (2 * (DIV + 1))"),
+                       ("CSS_DEFAULT", f"{ai['css']}U", "От CS до SCLK после сброса, полупериодов SCLK"),
+                       ("QUIET_DEFAULT", f"{ai['quiet']}U", "Пауза между кадрами после сброса, полупериодов SCLK"),
                        ("SCLK_HZ", f"{round(ai['sclk'])}U", "Частота SCLK при DIV_DEFAULT, Гц"),
                        ("RATE_HZ", f"{round(ai['rate'])}U", "Отсчётов в секунду при непрерывной работе (PER = 0)"),
                        ("AVGSH_DEFAULT", f"{ai['avgsh']}U", "Среднее по 2^AVGSH отсчётам"),
                        ("BOARD", json.dumps(ai['board']['title'], ensure_ascii=False), "Плата"),
                        ("MODE_AC", "1" if ai['mode'] == "ac" else "0", "Режим платы: 1 - AC (смещение), 0 - DC"),
                        ("SCALE_U", f"{ai['scale']}", f"Мк-единиц ({ai['unit']}) на код: величина = (код - OFFSET) * SCALE_U / 1e6"),
-                       ("OFFSET", f"{ai['offset']}", "Код при нулевом входе"),
-                       ("UNIT", json.dumps(ai['unit']), "Единица величины")]
+                       ("OFFSET", f"{round(ai['offset'])}", "Код при нулевом входе (округлённый)"),
+                       ("OFFSET_M", f"{round(ai['offset'] * 1000)}", "Код при нулевом входе, тысячные доли кода"),
+                       ("UNIT", json.dumps(ai['unit']), "Единица величины"),
+                       ("CMP", "1" if inst.get("cmp") is not None else "0", "Есть вход компаратора (SR.CMP, CMPF)")]
         if t == "sifu":
             si = sifu_info(m, inst)
             params += [("DIV_DEFAULT", f"{si['div']}U", "Делитель тика ГПН после сброса: SYSCLK_HZ / (DIV + 1)"),
@@ -1245,6 +1304,36 @@ def sync_sdc_clock(hw, net):
     if new == t:
         return False
     sdc.write_bytes(new.encode("utf-8"))
+    return True
+
+
+SDC_ADC_BEGIN = "//>>> Такт блоков ADC121 (свой rPLL) - строки ведёт конфигуратор (socgen.py), не править"
+SDC_ADC_END = "//<<< Такт блоков ADC121"
+
+
+def sync_sdc_adc(hw, ac):
+    """Ограничение такта блоков ADC121 в riscv.sdc: при своём rPLL - create_clock на его выходе и асинхронность с
+    остальными тактами (переходы - через синхронизаторы и пачку с подтверждением, adc121.sv); без него блока нет."""
+    sdc = hw / "riscv.sdc"
+    if not sdc.exists():
+        return None
+    t = sdc.read_bytes().decode("utf-8")
+    nl = "\r\n" if "\r\n" in t else "\n"
+    t0 = re.sub(re.escape(SDC_ADC_BEGIN) + r".*?" + re.escape(SDC_ADC_END) + r"[^\n]*\n?", "", t, flags=re.S)
+    if ac and ac["fout"]:
+        per = 1000.0 / ac["fout"]
+        groups = " ".join(c for c in ("clk", "clk_core", "clk_tck") if re.search(rf"-name\s+{c}\s", t0))
+        blk = [SDC_ADC_BEGIN,
+               f"create_clock -name {ADC121_CLK_NET} -period {per:.3f} -waveform {{0 {per / 2:.3f}}} "
+               f"[get_pins {{{ADC121_PLL_INST}/pll/CLKOUT}}]",
+               f"set_clock_groups -asynchronous -group [get_clocks {{{ADC121_CLK_NET}}}] -group [get_clocks {{{groups}}}]",
+               SDC_ADC_END]
+        if not t0.endswith(("\n", "\r\n")):
+            t0 += nl
+        t0 += nl.join(blk) + nl
+    if t0 == t:
+        return False
+    sdc.write_bytes(t0.encode("utf-8"))
     return True
 
 
@@ -1720,6 +1809,13 @@ def main():
     xnet = net_of(m, pin_key(m["clock"].get("xtalPin")))
     if sync_sdc_clock(hw, xnet):
         print(f"  {os.path.relpath(hw / 'riscv.sdc', ROOT)}: такт кварца - порт {xnet}")
+    ac = adc121_clock(m)
+    if sync_sdc_adc(hw, ac):
+        print(f"  {os.path.relpath(hw / 'riscv.sdc', ROOT)}: такт АЦП - "
+              + (f"{ADC121_CLK_NET} {fmt_mhz(ac['fout'])} МГц" if ac else "нет"))
+    if ac:
+        print(f"  rPLL такта АЦП: {fmt_mhz(ac['fout'])} МГц (IDIV {ac['idiv']}, FBDIV {ac['fbdiv']}, ODIV {ac['odiv']}, "
+              f"VCO {fmt_mhz(ac['vco'])})")
 
     if a.build:
         toolchain = a.toolchain or (m.get("build") or {}).get("toolchain", "gowin")

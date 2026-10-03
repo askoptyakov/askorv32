@@ -13,7 +13,7 @@
  *                6 - TM1638: бегущая строка на кириллице, номер нажатой кнопки;
  *                7 - внешняя SPI-флеш: откуда загружена программа, ID флеш, счётчик запусков во флеш;
  *                8 - СИФУ тиристорного выпрямителя (блок SIFU) с имитатором сети: самопроверка, угол с терминала;
- *                9 - аналоговые измерения: АЦП ADC121S051 на плате ADC_V (блок ADC_V), напряжение в UART и на TM1638.
+ *                9 - аналоговые измерения: АЦП ADC121S051 на платах ADC_V и ADC_C (напряжение и ток) в UART и на TM1638.
  *              Прерывания периферии идут через PLIC в векторном режиме: номера источников и имена
  *              обработчиков (PLIC_STIM_IRQHandler, PLIC_UART_IRQHandler) - в soc.h от конфигуратора.
  *              UART: терминал на ПК - 115200 8-N-1 (по умолчанию из конфигуратора), кодировка UTF-8.
@@ -32,8 +32,16 @@
 #include "sifu.h"
 #include "adc121.h"
 
+/* Пример по умолчанию - по составу ПЛИС (soc.h): стенд выпрямителя (Tang Nano 9K: СИФУ и дискретные
+   входы) - 8, платы АЦП без стенда (Tang Primer 20K) - 9, иначе - 3. Другой - -DEXAMPLE=N в настройках проекта */
 #ifndef EXAMPLE
+#if defined(SIFU) && defined(DI1_PIN)
 #define EXAMPLE 8
+#elif defined(ADC_V) || defined(ADC_C)
+#define EXAMPLE 9
+#else
+#define EXAMPLE 3
+#endif
 #endif
 
 /* Полупериод мигания, мс */
@@ -813,30 +821,61 @@ static void Example_Run(void) {
 #endif
 
 #if EXAMPLE == 9
-#ifndef ADC_V
-#error "Пример 9: в конфигурации ПЛИС нет блока ADC_V (плата ADC_V, Tang Primer 20K)"
+#if !defined(ADC_V) && !defined(ADC_C)
+#error "Пример 9: в конфигурации ПЛИС нет блоков ADC121 (платы ADC_V, ADC_C - Tang Primer 20K)"
 #endif
 /*
- * Пример 9: аналоговые измерения - АЦП ADC121S051 на плате ADC_V (блок ADC_V в конфигураторе).
- * Непрерывные преобразования (~300 тыс. отсчётов в секунду), блок сам усредняет 2^AVGSH отсчётов.
- * Раз в 0.5 с в UART: средний код (с дробью - по сумме SUM), последний отсчёт, сырой кадр,
- * величина (U = (код - OFFSET) * SCALE_U, коэффициент - из конфигуратора), частота отсчётов и число
- * ошибок кадра; на TM1638 - напряжение. Команды с терминала (115200 8-N-1, cp1251):
- *   w - запись 250 отсчётов с частотой 12.5 кГц (5 периодов 50 Гц, для режима AC) и вывод их кодов;
+ * Пример 9: аналоговые измерения - АЦП ADC121S051 на платах ADC_V (напряжение, блок ADC_V) и ADC_C
+ * (ток, блок ADC_C; какие есть - из конфигуратора, soc.h). Непрерывные преобразования (на своём такте
+ * блока 96 МГц - 468 тыс. отсчётов в секунду), блок сам усредняет 2^AVGSH отсчётов. Раз в 0.5 с в UART
+ * по каждой плате:
+ * средний код (с дробью - по сумме SUM), последний отсчёт, сырой кадр, величина
+ * ((код - OFFSET) * SCALE_U - коэффициенты из конфигуратора), частота отсчётов, ошибки кадра;
+ * у ADC_C - вход компаратора защиты (CMP) и число срабатываний. На TM1638 - напряжение «U 59.99» и ток
+ * «I 0.999», обновление 2 раза в секунду; при двух платах - по очереди через 2 с, а пока зажата кнопка 7
+ * (вторая справа) - только ток, кнопка 8 (крайняя правая) - только напряжение.
+ * Команды с терминала (115200 8-N-1, cp1251):
+ *   v, c - выбрать плату ADC_V или ADC_C для команд ниже;
+ *   w - запись 250 отсчётов с частотой 12.5 кГц (5 периодов 50 Гц) и вывод их кодов;
  *   r N - частота отсчётов N Гц (0 - максимальная); a N - усреднение по 2^N отсчётам (0..12);
  *   b - возможности тракта: для разных делителей SCLK и пауз кадра - частота отсчётов, доля кадров
  *       с ошибкой, разброс 1000 отсчётов (мин., макс., среднее, СКО) - SCLK за пределами листа данных
  *       АЦП тоже, чтобы увидеть запас;
  *   p - приём программой: при каких частотах опрос флага DRDY успевает забрать каждый отсчёт.
- * ADC_V, режим DC: коэффициент 0.3232 В на код (issue Artel-Inc/temporary#3); ниже ~40 В плата
- * нелинейна (выход ОУ не доходит до 0: при 0 В код около 68). Отрицательное напряжение в режиме DC
- * даёт код у нуля - так видно неправильную полярность.
+ * ADC_V: ниже ~40 В плата нелинейна (выход ОУ не доходит до 0). ADC_C: ток в обе стороны, ноль -
+ * код около 2048 (опора 1.65 В), компаратор U2 срабатывает только на положительный ток.
  */
 #define ADC_PRINT_MS		500U
+#define ADC_SHOW_MS			2000U		//Смена платы на индикаторе
+#define ADC_DISP_MS			500U		//Обновление индикатора: 2 раза в секунду
+#define KEY_SHOW_I			(1U << 1)	//Кнопка 7 TM1638 (вторая справа, бит 1 KEYS): только ток
+#define KEY_SHOW_U			(1U << 0)	//Кнопка 8 (крайняя правая, бит 0): только напряжение
 #define ADC_CAPTURE_N		250U
 #define ADC_CAPTURE_HZ		12500U
+#define ADC_BENCH_N			1000U
 
-static uint16_t adc_buf[ADC_CAPTURE_N];
+typedef struct
+{
+	ADC121_TypeDef *adc;
+	ADC121_Cal      cal;
+	const char     *name;
+	char            sym;				//'U' - напряжение, 'I' - ток
+	uint32_t        has_cmp;
+	uint32_t        errs, cmps, cnt_old, rate;
+} AdcBoard;
+
+static AdcBoard boards[] = {
+#ifdef ADC_V
+	{ ADC_V, { ADC_V_SCALE_U, ADC_V_OFFSET_M }, "ADC_V", 'U', ADC_V_CMP, 0, 0, 0, 0 },
+#endif
+#ifdef ADC_C
+	{ ADC_C, { ADC_C_SCALE_U, ADC_C_OFFSET_M }, "ADC_C", 'I', ADC_C_CMP, 0, 0, 0, 0 },
+#endif
+};
+#define ADC_BOARDS		(sizeof boards / sizeof boards[0])
+static AdcBoard *sel = &boards[0];		//Плата для команд w, r, a, b, p
+
+static uint16_t adc_big[ADC_BENCH_N];
 
 /* Тысячные доли - текстом «-12.345» (digits знаков после точки: 1..3) */
 static int fmt_milli(char *s, int32_t v, int digits) {
@@ -855,35 +894,50 @@ static int fmt_milli(char *s, int32_t v, int digits) {
 	return n;
 }
 
-static void adc_status(uint32_t errs, uint32_t rate) {
+static void put_k(uint32_t v) {						//Тысячные - «12.345»
+	UART_PutDec((int32_t)(v / 1000U)); UART_PutChar('.');
+	UART_PutChar((char)('0' + v / 100U % 10U)); UART_PutChar((char)('0' + v / 10U % 10U)); UART_PutChar((char)('0' + v % 10U));
+}
+
+static void adc_status(AdcBoard *b) {
 	char t[16];
-	uint32_t sh = ADC_V->AVG & 0xFU, sum = ADC121_GetSum(ADC_V);
-	int32_t mv = ADC121_MeanMilli(ADC_V, ADC121_CAL(ADC_V));
-	UART_PutText("ADC_V: код ");
+	uint32_t sh = b->adc->AVG & 0xFU, sum = ADC121_GetSum(b->adc);
+	int32_t mv = ADC121_MeanMilli(b->adc, b->cal);
+	UART_PutText(b->name);
+	UART_PutText(": код ");
 	fmt_milli(t, (int32_t)(((uint64_t)sum * 1000U) >> sh), 1);			//Среднее с десятыми
 	UART_PutText(t);
 	UART_PutText(" (среднее по ");
 	UART_PutDec((int32_t)(1U << sh));
 	UART_PutText(", последний ");
-	UART_PutDec((int32_t)ADC121_GetRaw(ADC_V));
+	UART_PutDec((int32_t)ADC121_GetRaw(b->adc));
 	UART_PutText(", кадр 0x");
-	UART_PutHex(ADC121_GetFrame(ADC_V), 4);
+	UART_PutHex(ADC121_GetFrame(b->adc), 4);
 	UART_PutText("), ");
-	UART_PutText(ADC_V_UNIT[0] == 'V' ? "U = " : "I = ");
-	fmt_milli(t, mv, 2);
+	UART_PutChar(b->sym);
+	UART_PutText(" = ");
+	fmt_milli(t, mv, b->sym == 'U' ? 2 : 3);
 	UART_PutText(t);
-	UART_PutText(ADC_V_UNIT[0] == 'V' ? " В" : " А");
-	UART_PutText(", ");
-	UART_PutDec((int32_t)rate);
+	UART_PutText(b->sym == 'U' ? " В, " : " А, ");
+	UART_PutDec((int32_t)b->rate);
 	UART_PutText(" отсч./с, ошибок кадра ");
-	UART_PutDec((int32_t)errs);
+	UART_PutDec((int32_t)b->errs);
+	if (b->has_cmp) {
+		UART_PutText(ADC121_CmpActive(b->adc) ? ", CMP: СРАБОТАЛ" : ", CMP: норма");
+		UART_PutText(", срабатываний ");
+		UART_PutDec((int32_t)b->cmps);
+	}
 	UART_PutText("\r\n");
-	/* TM1638: «U 50.12» */
+}
+
+/* TM1638: «U 59.99» или «I 0.999» */
+static void adc_show(AdcBoard *b) {
 	char d[12];
-	int n = 0;
-	d[n++] = ADC_V_UNIT[0] == 'V' ? 'U' : 'I';
-	d[n++] = ' ';
-	fmt_milli(&d[n], mv, (mv > -100000 && mv < 1000000) ? 2 : 1);
+	int32_t mv = ADC121_MeanMilli(b->adc, b->cal);
+	d[0] = b->sym;
+	d[1] = ' ';
+	if (b->sym == 'U') fmt_milli(&d[2], mv, (mv > -100000 && mv < 1000000) ? 2 : 1);
+	else               fmt_milli(&d[2], mv, (mv > -10000 && mv < 100000) ? 3 : 2);
 	TM1638_WriteText(d);
 }
 
@@ -895,7 +949,6 @@ static int32_t cmd_num(const char *s) {
 	while (*s >= '0' && *s <= '9') { v = v * 10 + (*s++ - '0'); digits++; }
 	return digits ? v : -1;
 }
-
 
 /* Разброс отсчётов: мин., макс., среднее и СКО в тысячных долях кода */
 static uint32_t isqrt64(uint64_t v) {
@@ -921,48 +974,66 @@ static void adc_stats(const uint16_t *b, uint32_t n, uint32_t *mn, uint32_t *mx,
 	*sd1000 = isqrt64(var);
 }
 
-/* Отсчёты подряд без пропусков (флаг DRDY), не дольше 50 мс; возвращает число */
-#define ADC_BENCH_N			1000U
-static uint16_t adc_big[ADC_BENCH_N];
-
-static void put_k(uint32_t v) {						//Тысячные - «12.345»
-	UART_PutDec((int32_t)(v / 1000U)); UART_PutChar('.');
-	UART_PutChar((char)('0' + v / 100U % 10U)); UART_PutChar((char)('0' + v / 10U % 10U)); UART_PutChar((char)('0' + v % 10U));
+/* w: запись 250 отсчётов при 12.5 кГц */
+static void adc_capture(ADC121_TypeDef *adc) {
+	uint32_t keep = adc->PER;
+	ADC121_SetRate(adc, ADC_CAPTURE_HZ);
+	uint32_t n = ADC121_Capture(adc, adc_big, ADC_CAPTURE_N);
+	adc->PER = keep;
+	UART_PutText("Запись: ");
+	UART_PutDec((int32_t)n);
+	UART_PutText(" отсчётов, ");
+	UART_PutDec((int32_t)ADC_CAPTURE_HZ);
+	UART_PutText(" Гц, коды:\r\n");
+	for (uint32_t i = 0; i < n; i++) {
+		UART_PutDec(adc_big[i]);
+		UART_PutText((i % 16U == 15U) ? "\r\n" : " ");
+	}
+	UART_PutText("\r\n");
 }
 
-/* b: делитель SCLK, CSS, QUIET -> частота отсчётов, ошибки кадра, разброс отсчётов */
-static void adc_bench(void) {
+/* Плата по символу: 'U' или 'I' (нет такой - NULL) */
+static AdcBoard *adc_by_sym(char sym) {
+	for (uint32_t i = 0; i < ADC_BOARDS; i++)
+		if (boards[i].sym == sym) return &boards[i];
+	return 0;
+}
+
+/* b: делитель SCLK, CSS, QUIET -> частота отсчётов, ошибки кадра, разброс отсчётов. Такт блока f -
+   регистр FCLK (свой rPLL 96 МГц: DIV 5 - SCLK 8 МГц, предел листа данных АЦП; DIV 4..2 - за пределом) */
+static void adc_bench(ADC121_TypeDef *adc) {
 	static const uint8_t cfg[][3] = {	//DIV, CSS, QUIET
-		{5, 2, 2}, {4, 2, 2}, {3, 2, 2}, {3, 1, 1}, {2, 2, 2}, {2, 1, 1}, {1, 2, 2}, {1, 1, 1}, {0, 1, 1}};
-	uint32_t keep_div = ADC_V->DIV, keep_per = ADC_V->PER, keep_avg = ADC_V->AVG;
+		{7, 2, 2}, {6, 2, 2}, {5, 2, 2}, {5, 1, 1}, {4, 2, 2}, {4, 1, 1}, {3, 1, 1}, {2, 1, 1}, {1, 1, 1}};
+	uint32_t f = ADC121_GetClock(adc);
+	uint32_t keep_div = adc->DIV, keep_per = adc->PER, keep_avg = adc->AVG;
 	UART_PutText("DIV CSS QUIET  SCLK,кГц  теор.отсч/с  факт.отсч/с  ошибок,%  мин  макс  среднее  СКО (по 1000 отсчётам)\r\n");
 	for (uint32_t c = 0; c < sizeof cfg / sizeof cfg[0]; c++) {
 		uint32_t div = cfg[c][0], css = cfg[c][1], quiet = cfg[c][2];
-		ADC121_Stop(ADC_V);
-		while (ADC_V->SR & ADC121_SR_BUSY) ;
-		ADC_V->DIV = (css << ADC121_DIV_CSS_POS) | (quiet << ADC121_DIV_QUIET_POS) | div;
-		ADC_V->PER = 0U;
-		ADC_V->AVG = 0U;
-		/* Кадр, тактов: CSS + 32 + QUIET полупериодов (16 подъёмов и 15 спадов SCLK, удержание CS) и такт запуска */
+		ADC121_Stop(adc);
+		while (adc->SR & ADC121_SR_BUSY) ;
+		adc->DIV = (css << ADC121_DIV_CSS_POS) | (quiet << ADC121_DIV_QUIET_POS) | div;
+		adc->PER = 0U;
+		adc->AVG = 0U;
+		/* Кадр, тактов блока: CSS + 32 + QUIET полупериодов (16 подъёмов и 15 спадов SCLK, удержание CS) и такт запуска */
 		uint32_t frame = (css + 32U + quiet) * (div + 1U) + 1U;
-		uint32_t theo = SYSCLK_HZ / frame;
-		ADC121_ClearFlags(ADC_V, ADC121_SR_DRDY | ADC121_SR_ARDY | ADC121_SR_ERR);
-		uint32_t c0 = ADC121_GetCount(ADC_V);
+		uint32_t theo = f / frame;
+		ADC121_ClearFlags(adc, ADC121_SR_FLAGS);
+		uint32_t c0 = ADC121_GetCount(adc);
 		uint64_t t0 = CORE_GetCycles();
-		ADC121_Start(ADC_V);
+		ADC121_Start(adc);
 		while (CORE_GetCycles() - t0 < SYSCLK_HZ / 10U) ;			//100 мс
-		uint32_t got = ADC121_GetCount(ADC_V) - c0;
+		uint32_t got = ADC121_GetCount(adc) - c0;
 		uint32_t dt = (uint32_t)(CORE_GetCycles() - t0);
 		uint32_t fact = (uint32_t)((uint64_t)got * SYSCLK_HZ / dt);
-		uint32_t frames = dt / frame;								//Кадров за время (все, с ошибкой тоже)
+		uint32_t frames = (uint32_t)((uint64_t)dt * (f / 1000U) / (SYSCLK_HZ / 1000U) / frame);	//Кадров за время (с ошибкой тоже)
 		uint32_t err100 = (frames > got) ? (uint32_t)((uint64_t)(frames - got) * 100000U / frames) : 0U;
 		/* Разброс: каждый отсчёт по DRDY (при больших частотах программа пропускает часть - не важно) */
-		ADC121_Capture(ADC_V, adc_big, ADC_BENCH_N);
+		ADC121_Capture(adc, adc_big, ADC_BENCH_N);
 		uint32_t mn, mx, mean, sd;
 		adc_stats(adc_big, ADC_BENCH_N, &mn, &mx, &mean, &sd);
 		UART_PutDec((int32_t)div); UART_PutText("    "); UART_PutDec((int32_t)css); UART_PutText("    ");
 		UART_PutDec((int32_t)quiet); UART_PutText("     ");
-		UART_PutDec((int32_t)(SYSCLK_HZ / (2U * (div + 1U)) / 1000U)); UART_PutText("\t   ");
+		UART_PutDec((int32_t)(f / (2U * (div + 1U)) / 1000U)); UART_PutText("\t   ");
 		UART_PutDec((int32_t)theo); UART_PutText("\t   ");
 		UART_PutDec((int32_t)fact); UART_PutText("\t");
 		put_k(err100); UART_PutText("\t");
@@ -970,26 +1041,26 @@ static void adc_bench(void) {
 		put_k(mean); UART_PutText("  "); put_k(sd);
 		UART_PutText("\r\n");
 	}
-	ADC121_Stop(ADC_V);
-	while (ADC_V->SR & ADC121_SR_BUSY) ;
-	ADC_V->DIV = keep_div; ADC_V->PER = keep_per; ADC_V->AVG = keep_avg;
-	ADC121_ClearFlags(ADC_V, ADC121_SR_DRDY | ADC121_SR_ARDY | ADC121_SR_ERR);
-	ADC121_Start(ADC_V);
+	ADC121_Stop(adc);
+	while (adc->SR & ADC121_SR_BUSY) ;
+	adc->DIV = keep_div; adc->PER = keep_per; adc->AVG = keep_avg;
+	ADC121_ClearFlags(adc, ADC121_SR_DRDY | ADC121_SR_ARDY | ADC121_SR_ERR);
+	ADC121_Start(adc);
 }
 
 /* p: приём программой опросом DRDY - сколько отсчётов пропущено при разных частотах */
-static void adc_cpu_bench(void) {
+static void adc_cpu_bench(ADC121_TypeDef *adc) {
 	static const uint32_t rates[] = {10000U, 20000U, 50000U, 100000U, 150000U, 200000U, 250000U, 0U};
-	uint32_t keep_per = ADC_V->PER;
+	uint32_t keep_per = adc->PER;
 	UART_PutText("Частота, отсч/с  принято  пропущено  время, мкс  тактов на отсчёт\r\n");
 	for (uint32_t r = 0; r < sizeof rates / sizeof rates[0]; r++) {
-		ADC121_SetRate(ADC_V, rates[r]);
-		uint32_t c0 = ADC121_GetCount(ADC_V);
+		ADC121_SetRate(adc, rates[r]);
+		uint32_t c0 = ADC121_GetCount(adc);
 		uint64_t t0 = CORE_GetCycles();
-		uint32_t n = ADC121_Capture(ADC_V, adc_big, ADC_BENCH_N);
+		uint32_t n = ADC121_Capture(adc, adc_big, ADC_BENCH_N);
 		uint32_t dt = (uint32_t)(CORE_GetCycles() - t0);
-		uint32_t made = ADC121_GetCount(ADC_V) - c0;			//Сделал АЦП за время записи
-		UART_PutDec((int32_t)(rates[r] ? rates[r] : ADC121_GetRate(ADC_V)));
+		uint32_t made = ADC121_GetCount(adc) - c0;				//Сделал АЦП за время записи
+		UART_PutDec((int32_t)(rates[r] ? rates[r] : ADC121_GetRate(adc)));
 		UART_PutText(rates[r] ? "\t\t" : " (макс.)\t");
 		UART_PutDec((int32_t)n); UART_PutText("\t ");
 		UART_PutDec((int32_t)(made > n ? made - n : 0U)); UART_PutText("\t    ");
@@ -997,67 +1068,103 @@ static void adc_cpu_bench(void) {
 		UART_PutDec((int32_t)(n ? dt / n : 0U));
 		UART_PutText("\r\n");
 	}
-	ADC_V->PER = keep_per;
+	adc->PER = keep_per;
 }
 
 static void Example_Run(void) {
 	char line[32];
-	uint64_t next = 0;
-	uint32_t errs = 0, cnt_old = 0, rate = 0;
+	uint64_t next = 0, next_show = 0, next_disp = 0;
+	uint32_t show = 0, keys_old = 0;
+	AdcBoard *shown = &boards[0];
 
 	UART_InitDefault();
 	TM1638_Init();
-	ADC121_INIT_DEFAULT(ADC_V);
-	ADC121_Start(ADC_V);
-	UART_PutText("\r\n== askoRV32: АЦП ADC121S051, плата " ADC_V_BOARD " ==\r\nSCLK ");
-	UART_PutDec((int32_t)ADC_V_SCLK_HZ);
-	UART_PutText(" Гц, до ");
-	UART_PutDec((int32_t)ADC121_GetRate(ADC_V));
-	UART_PutText(" отсчётов/с; пересчёт: (код - ");
-	UART_PutDec(ADC_V_OFFSET);
-	UART_PutText(") * ");
-	UART_PutDec(ADC_V_SCALE_U);
-	UART_PutText(" мк" ADC_V_UNIT "\r\nКоманды: w - запись 250 отсчётов, r N - частота N Гц (0 - макс.), a N - среднее по 2^N, b - тракт, p - приём программой\r\n");
-	cnt_old = ADC121_GetCount(ADC_V);
+	UART_PutText("\r\n== askoRV32: АЦП ADC121S051 ==\r\n");
+	for (uint32_t i = 0; i < ADC_BOARDS; i++) {
+		AdcBoard *b = &boards[i];
+		ADC121_Init(b->adc, b->adc->DIV & ADC121_DIV_MSK, b->adc->AVG & 0xFU);	//Значения конфигуратора (после сброса)
+		ADC121_Start(b->adc);
+		b->cnt_old = ADC121_GetCount(b->adc);
+		UART_PutText(b->name);
+		UART_PutText(": до ");
+		UART_PutDec((int32_t)ADC121_GetRate(b->adc));
+		UART_PutText(" отсчётов/с; пересчёт: (код - ");
+		put_k((uint32_t)b->cal.offset_m);
+		UART_PutText(") * ");
+		UART_PutDec(b->cal.scale_u);
+		UART_PutText(b->sym == 'U' ? " мкВ" : " мкА");
+		if (b->has_cmp) UART_PutText("; вход компаратора CMP");
+		UART_PutText("\r\n");
+	}
+	UART_PutText("Команды: v, c - плата; w - запись 250 отсчётов, r N - частота N Гц (0 - макс.), a N - среднее по 2^N, b - тракт, p - приём программой\r\n");
+	UART_PutText("TM1638: зажать кнопку 7 - только ток, кнопку 8 - только напряжение\r\n");
 	while (1) {
-		if (ADC_V->SR & ADC121_SR_ERR) { ADC121_ClearFlags(ADC_V, ADC121_SR_ERR); errs++; }
-		if (CORE_GetCycles() >= next) {							//Раз в 0.5 с - результат
-			next = CORE_GetCycles() + (uint64_t)MTIME_HZ / 1000U * ADC_PRINT_MS;
-			uint32_t c = ADC121_GetCount(ADC_V);
-			rate = (c - cnt_old) * (1000U / ADC_PRINT_MS);
-			cnt_old = c;
-			adc_status(errs, rate);
+		for (uint32_t i = 0; i < ADC_BOARDS; i++) {				//Ошибки кадра и срабатывания компаратора
+			AdcBoard *b = &boards[i];
+			uint32_t f = ADC121_GetFlags(b->adc) & (ADC121_SR_ERR | ADC121_SR_CMPF);
+			if (f) {
+				ADC121_ClearFlags(b->adc, f);
+				if (f & ADC121_SR_ERR)  b->errs++;
+				if (f & ADC121_SR_CMPF) b->cmps++;
+			}
+		}
+		uint64_t now = CORE_GetCycles();
+		if (now >= next) {										//Раз в 0.5 с - результат
+			next = now + (uint64_t)MTIME_HZ / 1000U * ADC_PRINT_MS;
+			for (uint32_t i = 0; i < ADC_BOARDS; i++) {
+				AdcBoard *b = &boards[i];
+				uint32_t c = ADC121_GetCount(b->adc);
+				b->rate = (c - b->cnt_old) * (1000U / ADC_PRINT_MS);
+				b->cnt_old = c;
+				adc_status(b);
+			}
 			LED_Toggle();
+		}
+		/* Индикатор: зажата кнопка 7 - ток, 8 - напряжение, иначе платы по очереди через 2 с */
+		uint32_t keys = TM1638_ReadKeys() & (KEY_SHOW_I | KEY_SHOW_U);
+		AdcBoard *held = (keys == KEY_SHOW_I) ? adc_by_sym('I') : (keys == KEY_SHOW_U) ? adc_by_sym('U') : 0;
+		if (keys != keys_old) {
+			keys_old = keys;
+			next_disp = now;									//Сразу показать
+			if (held) {
+				shown = held;
+				UART_PutText(held->sym == 'I' ? "Индикатор: ток (кнопка 7)\r\n" : "Индикатор: напряжение (кнопка 8)\r\n");
+			} else {
+				next_show = now;								//Отпустили - снова по очереди
+			}
+		}
+		if (!held && now >= next_show) {
+			next_show = now + (uint64_t)MTIME_HZ / 1000U * ADC_SHOW_MS;
+			shown = &boards[show];
+			if (++show >= ADC_BOARDS) show = 0;
+			next_disp = now;
+		}
+		if (now >= next_disp) {									//2 раза в секунду
+			next_disp = now + (uint64_t)MTIME_HZ / 1000U * ADC_DISP_MS;
+			adc_show(shown);
 		}
 		if (!(UART->IP & UART_IT_RXWM)) continue;
 		if (UART_GetErrors()) UART_ClearErrors(UART_GetErrors());
 		if (UART_ReadLine(line, sizeof line, 1) == 0) continue;
 		int32_t v = cmd_num(line);
-		if (line[0] == 'w') {
-			uint32_t keep = ADC_V->PER;
-			ADC121_SetRate(ADC_V, ADC_CAPTURE_HZ);
-			uint32_t n = ADC121_Capture(ADC_V, adc_buf, ADC_CAPTURE_N);
-			ADC_V->PER = keep;
-			UART_PutText("Запись: ");
-			UART_PutDec((int32_t)n);
-			UART_PutText(" отсчётов, ");
-			UART_PutDec((int32_t)ADC_CAPTURE_HZ);
-			UART_PutText(" Гц, коды:\r\n");
-			for (uint32_t i = 0; i < n; i++) {
-				UART_PutDec(adc_buf[i]);
-				UART_PutText((i % 16U == 15U) ? "\r\n" : " ");
-			}
+		if ((line[0] == 'v' || line[0] == 'c') && line[1] == '\0') {
+			for (uint32_t i = 0; i < ADC_BOARDS; i++)
+				if (boards[i].name[4] == (line[0] == 'v' ? 'V' : 'C')) sel = &boards[i];
+			UART_PutText("Плата для команд: ");
+			UART_PutText(sel->name);
 			UART_PutText("\r\n");
+		} else if (line[0] == 'w') {
+			adc_capture(sel->adc);
 		} else if (line[0] == 'b' && line[1] == '\0') {
-			adc_bench();
+			adc_bench(sel->adc);
 		} else if (line[0] == 'p' && line[1] == '\0') {
-			adc_cpu_bench();
+			adc_cpu_bench(sel->adc);
 		} else if (line[0] == 'r' && v >= 0) {
-			ADC121_SetRate(ADC_V, (uint32_t)v);
+			ADC121_SetRate(sel->adc, (uint32_t)v);
 		} else if (line[0] == 'a' && v >= 0 && v <= 12) {
-			ADC121_SetAverage(ADC_V, (uint32_t)v);
+			ADC121_SetAverage(sel->adc, (uint32_t)v);
 		} else {
-			UART_PutText("Команды: w, r N, a N, b, p\r\n");
+			UART_PutText("Команды: v, c, w, r N, a N, b, p\r\n");
 		}
 	}
 }
