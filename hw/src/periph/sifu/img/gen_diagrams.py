@@ -116,13 +116,11 @@ def pair_diagram(alpha_deg=30):
 
     #3 Пила
     ys, H = rows["saw"] + 50, 90
-    s.text(10, rows["saw"] - 50, "Пила OnePulse_3 (cnt)", 13, FG, weight="bold")
+    s.text(10, rows["saw"] - 50, "Пила OnePulse_3 (cnt): от смены полярности, через мёртвую зону", 13, FG, weight="bold")
     def saw(th):
-        for st, ln in (win_p, win_n):
-            d = wrap(th - st)
-            if d < ln:
-                return min(d * TPD, 4095)
-        return 0
+        #Пила - от начала полуволны (смена полярности) до начала следующей, через мёртвую зону
+        d = min(wrap(th - win_p[0]), wrap(th - win_n[0]))
+        return min(d * TPD, 4095)
     s.poly([(x(t / 4), ys - H * saw(t / 4) / 4095) for t in range(1441)], ACC, 1.4)
     t_on = alpha_deg * TPD + DELAY
     t_off = t_on + WIDTH

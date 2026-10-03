@@ -63,6 +63,9 @@ typedef struct
 #define SIFU_SAW_MAX				4095U		//Пила 12 бит: на 4095 останавливается, импульса там нет
 #define SIFU_ALPHA_OFF				4095U		//ALPHA «импульсов нет» (значение после сброса)
 #define SIFU_LOST_TICKS				8192U		//Без начала полуволны дольше - LOST
+#ifndef SIFU_ALPHA_LIMIT_DEG10
+#define SIFU_ALPHA_LIMIT_DEG10		1200U		//Наибольший угол для SIFU_SetAlphaDeg10: 120.0 эл. град.
+#endif
 
 #if SIFU_PRESENT	//Блок есть в ПЛИС (soc.h)
 
@@ -85,9 +88,13 @@ __SIFU_INLINE void SIFU_AlphaOff(void) { SIFU->ALPHA = SIFU_ALPHA_OFF; }
 /* Наибольший угол, тиков: 4094 - DELAY - WIDTH (импульс заканчивается до конца пилы) */
 uint32_t SIFU_AlphaMax(void);
 
-/* Угол в десятых долях эл. градуса (300 = 30.0 град.): пересчёт по полупериоду сети SIFU_HalfPeriod() */
+/* Угол в десятых долях эл. градуса (300 = 30.0 град.): пересчёт по полупериоду сети SIFU_HalfPeriod().
+   Ограничивается SIFU_AlphaMaxDeg10() */
 void     SIFU_SetAlphaDeg10(uint32_t deg10);
 uint32_t SIFU_GetAlphaDeg10(void);
+/* Наибольший угол, десятые доли градуса: SIFU_ALPHA_LIMIT_DEG10 (120 град.), если пила позволяет,
+   иначе SIFU_AlphaMax() в градусах */
+uint32_t SIFU_AlphaMaxDeg10(void);
 /* Тики <-> десятые доли градуса по текущему полупериоду */
 uint32_t SIFU_TicksToDeg10(uint32_t ticks);
 uint32_t SIFU_Deg10ToTicks(uint32_t deg10);
@@ -102,7 +109,7 @@ __SIFU_INLINE void SIFU_DoublePulse(uint32_t on) { if (on) SIFU->CR |= SIFU_CR_D
 uint32_t SIFU_SawHz(void);
 /* Полупериод сети, тиков ГПН: измеренный (HPER), а пока синхронизации нет - 50 Гц по частоте ГПН */
 uint32_t SIFU_HalfPeriod(void);
-/* Частота сети, сотые доли Гц (5000 = 50.00 Гц); 0 - синхронизации нет */
+/* Частота сети по паре AB, сотые доли Гц (5000 = 50.00 Гц); 0 - сети нет */
 uint32_t SIFU_GridFreq100(void);
 
 /* Состояние */

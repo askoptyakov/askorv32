@@ -24,28 +24,26 @@ module top #(
                 //Отладка и прерывания
              parameter bit DEBUG_EN          = 1, //модуль отладки JTAG (выводы TMS 5, TCK 6, TDI 7, TDO 8)
              parameter int PLIC_SOURCES      = 8, //источников PLIC (1..31)
-                //Тактирование: кварц 27 МГц, rPLL -> 45 МГц (PFD 9, VCO 720 МГц)
+                //Тактирование: кварц 27 МГц, rPLL -> 40.5 МГц (PFD 13.5, VCO 648 МГц)
              parameter FCLKIN                = "27", //частота кварца, МГц (строка для rPLL)
              parameter PLL_DEVICE            = "GW1NR-9C", //кристалл для rPLL
              parameter int XTAL_KHZ          = 27000, //частота кварца, кГц
-             parameter int PLL_IDIV_SEL      = 2,
-             parameter int PLL_FBDIV_SEL     = 4,
+             parameter int PLL_IDIV_SEL      = 1,
+             parameter int PLL_FBDIV_SEL     = 2,
              parameter int PLL_ODIV_SEL      = 16)
    (
     //Такт и сброс
     input wire          CLOCK,                //вывод 52
     input wire          RESET,                //вывод 3
     //GPIO
-    inout wire          LED0,                 //вывод 10
-    inout wire          LED1,                 //вывод 11
-    inout wire          LED2,                 //вывод 13
-    inout wire          LED3,                 //вывод 14
-    inout wire          LED4,                 //вывод 15
-    inout wire          LED5,                 //вывод 16
+    inout wire          DI1,                  //вывод 75
+    inout wire          DI2,                  //вывод 77
+    inout wire          DI3,                  //вывод 36
+    inout wire          RO1,                  //вывод 74
+    inout wire          RO2,                  //вывод 76
+    inout wire          RO3,                  //вывод 39
     //TM1638
     inout wire   [2:0]  GPIO,                 //выводы 25, 26, 27
-    //STIM
-    output wire         STIM_OUT,             //вывод 68
     //UART
     output wire         UART_TX,              //вывод 17
     input wire          UART_RX,              //вывод 18
@@ -55,18 +53,19 @@ module top #(
     output wire         FLASH_MOSI,           //вывод 61
     input wire          FLASH_MISO,           //вывод 62
     //SIFU
-    input wire          NSB_AB,               //вывод 79
-    input wire          NSB_BA,               //вывод 80
-    input wire          NSB_BC,               //вывод 81
-    input wire          NSB_CB,               //вывод 82
-    input wire          NSB_CA,               //вывод 83
-    input wire          NSB_AC,               //вывод 84
-    output wire         VS1,                  //вывод 28
+    input wire          NSB_AB,               //вывод 11
+    input wire          NSB_BA,               //вывод 10
+    input wire          NSB_BC,               //вывод 15
+    input wire          NSB_CB,               //вывод 14
+    input wire          NSB_CA,               //вывод 13
+    input wire          NSB_AC,               //вывод 16
+    output wire         VS1,                  //вывод 69
     output wire         VS2,                  //вывод 29
-    output wire         VS3,                  //вывод 30
-    output wire         VS4,                  //вывод 31
-    output wire         VS5,                  //вывод 32
-    output wire         VS6                   //вывод 33
+    output wire         VS3,                  //вывод 57
+    output wire         VS4,                  //вывод 68
+    output wire         VS5,                  //вывод 30
+    output wire         VS6,                  //вывод 56
+    output wire         GRID                  //вывод 51
 `ifndef GWSOC_NO_JTAG_PINS
     //Выводы JTAG ПЛИС: для примитива GW_JTAG (отладчик), назначения в .cst не требуются
    ,input  logic        tck_pad_i, tms_pad_i, tdi_pad_i,
@@ -117,7 +116,8 @@ module top #(
              .bus_per_Write(bus_per_Write), .bus_per_Read(bus_per_Read), .bus_per_Addr(bus_per_Addr), .bus_per_WData(bus_per_WData), .bus_per_RData(bus_per_RData),
              .irq_local(irq_local), .irq_src(irq_src),
              .boot_hold(boot_hold), .boot_Write(boot_Write), .boot_Addr(boot_Addr), .boot_WData(boot_WData));
-    //Программу после сброса копирует из флеш SPIFLASH (порт boot_*)
+    //Загрузчика программы нет: память команд и данных - из битового потока ПЛИС
+    assign {boot_hold, boot_Write, boot_Addr, boot_WData} = '0;
 
     //#3 Шина пользовательской периферии (memmux): ведомые перечислены от старшего номера к младшему
     logic [ 3:0] gpio_Write, tm1638_Write, stim_Write, uart_Write, spiflash_Write, sifu_Write;
@@ -142,7 +142,7 @@ module top #(
     gpio_top #(.MEMORY_TYPE(DMEM_TYPE), .WIDTH(6)) gpio
               (.clk(clk_per), .rst(rst_per),
                .Write(gpio_Write), .Addr(gpio_Addr), .WData(gpio_WriteData), .RData(gpio_ReadData),
-               .io_ports({LED5, LED4, LED3, LED2, LED1, LED0}));
+               .io_ports({RO3, RO2, RO1, DI3, DI2, DI1}));
 
     //-2- TM1638: внешний модуль LED&KEY, регистры с 32'h1200_0000
     tm1638_top #(.MEMORY_TYPE(DMEM_TYPE), .CLK_MHZ(CLK_DMEM_MHZ)) tm1638
@@ -155,33 +155,33 @@ module top #(
     stim_top #(.MEMORY_TYPE(DMEM_TYPE), .WIDTH(16)) stim
                 (.clk(clk_per), .rst(rst_per),
                  .Write(stim_Write), .Addr(stim_Addr), .WData(stim_WriteData), .RData(stim_ReadData),
-                 .tim_out(STIM_OUT), .irq(irq_stim));
+                 .tim_out(), .irq(irq_stim));   //выход ШИМ не выведен
 
-    //-4- UART: 115200 бит/с (div 390, фактически 115090, ошибка 0.10 %), чётность none, стоп-битов 1, FIFO 16
+    //-4- UART: 115200 бит/с (div 351, фактически 115057, ошибка 0.12 %), чётность none, стоп-битов 1, FIFO 16
     //    регистры с 32'h1400_0000
     logic irq_uart;
-    uart_top #(.MEMORY_TYPE(DMEM_TYPE), .DEPTH(16), .DIV_INIT(390), .STOP_INIT(1), .PARITY_INIT(0)) uart
+    uart_top #(.MEMORY_TYPE(DMEM_TYPE), .DEPTH(16), .DIV_INIT(351), .STOP_INIT(1), .PARITY_INIT(0)) uart
                 (.clk(clk_per), .rst(rst_per),
                  .Write(uart_Write), .Read(sRead[2]), .Addr(uart_Addr), .WData(uart_WriteData), .RData(uart_ReadData),
                  .tx(UART_TX), .rx(UART_RX), .irq(irq_uart));
 
-    //-5- SPIFLASH: SPI-флеш 4 МБайт, SCK 11.25 МГц (DIV 1), загрузка программы с адреса 0x100000, конфигурация ПЛИС с адреса 0 (MSPI)
+    //-5- SPIFLASH: SPI-флеш 4 МБайт, SCK 10.125 МГц (DIV 1), без загрузки программы
     //    регистры с 32'h1500_0000
-    spiflash_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(1), .BOOT_EN(1), .BOOT_ADDR(24'h100000)) spiflash
+    spiflash_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(1), .BOOT_EN(0), .BOOT_ADDR(24'h100000)) spiflash
                 (.clk(clk_per), .rst(rst_per),
                  .Write(spiflash_Write), .Read(sRead[1]), .Addr(spiflash_Addr), .WData(spiflash_WriteData), .RData(spiflash_ReadData),
                  .spi_sck(FLASH_SCK), .spi_cs_n(FLASH_CS), .spi_mosi(FLASH_MOSI), .spi_miso(FLASH_MISO),
-                 .boot_hold(boot_hold), .boot_Write(boot_Write), .boot_Addr(boot_Addr), .boot_WData(boot_WData));
+                 .boot_hold(), .boot_Write(), .boot_Addr(), .boot_WData());
 
-    //-6- SIFU: СИФУ трёхфазного мостового выпрямителя, тик ГПН 500 кГц (DIV 89), DELAY 400, импульс 150 тиков
+    //-6- SIFU: СИФУ трёхфазного мостового выпрямителя, тик ГПН 500 кГц (DIV 80), DELAY 400, импульс 150 тиков
     //    регистры с 32'h1600_0000; входы - плата синхронизации NSB (0 - оптрон открыт), выходы - тиристоры VS1..VS6; есть имитатор сети
     logic irq_sifu;
-    sifu_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(16'd89), .DELAY_INIT(12'd400), .WIDTH_INIT(12'd150), .SIM_EN(1)) sifu
+    sifu_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(16'd80), .DELAY_INIT(12'd400), .WIDTH_INIT(12'd150), .SIM_EN(1)) sifu
                 (.clk(clk_per), .rst(rst_per),
                  .Write(sifu_Write), .Addr(sifu_Addr), .WData(sifu_WriteData), .RData(sifu_ReadData),
                  .sync_ab(NSB_AB), .sync_ba(NSB_BA), .sync_bc(NSB_BC), .sync_cb(NSB_CB), .sync_ca(NSB_CA), .sync_ac(NSB_AC),
                  .vs1(VS1), .vs2(VS2), .vs3(VS3), .vs4(VS4), .vs5(VS5), .vs6(VS6),
-                 .irq(irq_sifu));
+                 .grid_o(GRID), .irq(irq_sifu));
 
     //-7- Прерывания периферии: источники PLIC (MEI, векторный режим) и локальные линии LI0..LI15
     //    STIM: источник PLIC 1

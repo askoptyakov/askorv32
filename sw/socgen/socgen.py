@@ -184,7 +184,8 @@ def inst_signals(inst):
                 ("mosi", "MOSI", "output", True), ("miso", "MISO", "input", True)]
     if t == "sifu":
         return ([(k, k.upper(), "input", True) for k in SIFU_SYNC] +
-                [(k, k.upper(), "output", True) for k in SIFU_GATES])
+                [(k, k.upper(), "output", True) for k in SIFU_GATES] +
+                ([("grid", "GRID", "output", False)] if inst.get("grid") is not None else []))
     return []
 
 
@@ -953,7 +954,8 @@ def gen_top(m, bases, cfg_rel):
             w(f"                 {bus},")
             w("                 " + ", ".join(f".sync_{k}({net[name + '.' + k]})" for k in SIFU_SYNC) + ",")
             w("                 " + ", ".join(f".{k}({net[name + '.' + k]})" for k in SIFU_GATES) + ",")
-            w(f"                 .irq(irq_{h}));")
+            grid = net.get(f"{name}.grid", "")
+            w(f"                 .grid_o({grid}), .irq(irq_{h}));" + ("" if grid else "   //выход «сеть есть» не выведен"))
         w("")
         num += 1
 

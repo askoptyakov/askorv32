@@ -36,15 +36,16 @@ uint32_t SIFU_SawHz(void) {
 
 uint32_t SIFU_HalfPeriod(void) {
 	uint32_t h = SIFU->HPER;
-	/* Измерение годно, когда синхронизация есть и полупериод в разумных пределах (после сброса
-	   и при пропадании сети HPER - 65535) */
-	if (!SIFU_SyncLost() && h > 0U && h < SIFU_LOST_TICKS) return h;
+	/* Измерение (по паре AB) годно, когда сеть есть и полупериод в разумных пределах (после сброса
+	   и при пропадании сети HPER - 65535). SR.LOST не проверяется: он ставится и при неисправности
+	   другой пары (залипший оптрон), а полупериод пары AB при этом верный */
+	if (SIFU_GridPresent() && h > 0U && h < SIFU_LOST_TICKS) return h;
 	return SIFU_SawHz() / 100U;							//Полупериод 50 Гц - 10 мс
 }
 
 uint32_t SIFU_GridFreq100(void) {
 	uint32_t h = SIFU->HPER;
-	if (SIFU_SyncLost() || h == 0U || h >= SIFU_LOST_TICKS) return 0U;
+	if (!SIFU_GridPresent() || h == 0U || h >= SIFU_LOST_TICKS) return 0U;
 	/* f = SawHz / (2 * h); сотые доли Гц: SawHz * 50 / h, с округлением */
 	return (uint32_t)(((uint64_t)SIFU_SawHz() * 50U + h / 2U) / h);
 }
@@ -59,8 +60,14 @@ uint32_t SIFU_TicksToDeg10(uint32_t ticks) {
 	return (ticks * 1800U + h / 2U) / h;
 }
 
+uint32_t SIFU_AlphaMaxDeg10(void) {
+	uint32_t saw = SIFU_TicksToDeg10(SIFU_AlphaMax());
+	return (saw < SIFU_ALPHA_LIMIT_DEG10) ? saw : SIFU_ALPHA_LIMIT_DEG10;
+}
+
 void SIFU_SetAlphaDeg10(uint32_t deg10) {
-	SIFU_SetAlpha(SIFU_Deg10ToTicks(deg10));
+	uint32_t max = SIFU_AlphaMaxDeg10();
+	SIFU_SetAlpha(SIFU_Deg10ToTicks(deg10 > max ? max : deg10));
 }
 
 uint32_t SIFU_GetAlphaDeg10(void) {

@@ -26,11 +26,12 @@ module tb_sifu;
     //Модель сети: время в тактах clk
     localparam int H  = 9000;            //Полупериод, тактов
     localparam int P  = 2 * H;
-    localparam int DZ = 150;             //Мёртвая зона у перехода через 0, тактов (3 эл. град.)
+    int DZ = 150;                        //Мёртвая зона у перехода через 0, тактов (3 эл. град.); меняется в #14
     localparam int TICK = 2;             //Тактов на тик ГПН при DIV = 1
 
     logic grid_on = 1'b0;                //Сеть подана
     logic glitch  = 1'b0;                //Помеха на входе AB: оптрон на миг «закрывается» (1)
+    logic stuck_ca = 1'b0;               //Оптрон CA «залип» открытым (0)
     longint t0 = 0;                      //Такт, с которого отсчитывается фаза сети
     int theta;                           //Фаза U_AB, тактов от перехода через 0 вверх
     always @(posedge clk) theta <= int'((cycles - t0) % P);
@@ -44,14 +45,14 @@ module tb_sifu;
     wire n_ba = !grid_on |  opto_n(theta - H);
     wire n_bc = !grid_on |  opto_n(theta - P / 3);
     wire n_cb = !grid_on |  opto_n(theta - P / 3 - H);
-    wire n_ca = !grid_on |  opto_n(theta - 2 * P / 3);
+    wire n_ca = (!grid_on |  opto_n(theta - 2 * P / 3)) & !stuck_ca;
     wire n_ac = !grid_on |  opto_n(theta - 2 * P / 3 - H);
 
-    wire vs1, vs2, vs3, vs4, vs5, vs6, irq;
+    wire vs1, vs2, vs3, vs4, vs5, vs6, grid_o, irq;
     sifu_top #(.MEMORY_TYPE(1'b1), .DIV_INIT(16'd89), .DELAY_INIT(12'd400), .WIDTH_INIT(12'd150)) dut
         (.clk(clk), .rst(rst), .Write(Write), .Addr(Addr), .WData(WData), .RData(RData),
          .sync_ab(n_ab), .sync_ba(n_ba), .sync_bc(n_bc), .sync_cb(n_cb), .sync_ca(n_ca), .sync_ac(n_ac),
-         .vs1(vs1), .vs2(vs2), .vs3(vs3), .vs4(vs4), .vs5(vs5), .vs6(vs6), .irq(irq));
+         .vs1(vs1), .vs2(vs2), .vs3(vs3), .vs4(vs4), .vs5(vs5), .vs6(vs6), .grid_o(grid_o), .irq(irq));
     wire [6:1] vs = {vs6, vs5, vs4, vs3, vs2, vs1};
 
     //Начало полуволны тиристора k на входах (фаза сети, такты): VS1 - U_AB, VS2 - U_AC, VS3 - U_BC,
@@ -95,6 +96,8 @@ module tb_sifu;
 
     logic [31:0] v;
     int lag, exp_lag, w;
+    logic f_ab_seen = 1'b0;              //Выход фильтра AB был 1 (помеха прошла)
+    always @(posedge clk) if (dut.sync_f[0]) f_ab_seen <= 1'b1;
 
     initial begin
         reset_dut();
@@ -109,7 +112,8 @@ module tb_sifu;
         check_rd(GATE,   0,             "сброс: GATE");
         bus_rd(SR, v);
         check(v[5:0] == 6'h3F && !v[8] && !v[9] && !v[10] && v[11], "сброс: SR - оптроны закрыты, сети нет, LOST", v, 32'h0000_083F);
-        check(vs == 0 && irq == 0, "сброс: выходы и irq в 0", {vs, irq}, 0);
+        check_rd(CNT1, 32'hFFF, "сброс: пила стоит на 4095");
+        check(vs == 0 && irq == 0 && grid_o == 0, "сброс: выходы, grid_o и irq в 0", {vs, grid_o, irq}, 0);
 
         //#2 Разрядность и байтовая запись
         bus_wr(ALPHA, 32'hFFFF_F123); check_rd(ALPHA, 32'h123, "ALPHA 12 бит");
@@ -128,6 +132,7 @@ module tb_sifu;
         check(v >= H / TICK - 1 && v <= H / TICK + 1, "HPER = полупериод в тиках", v, H / TICK);
         bus_rd(SR, v);
         check(v[8] && !v[11], "сеть есть: GRID = 1, LOST = 0", v, SR_GRID);
+        check(grid_o == 1'b1, "сеть есть: выход grid_o = 1", grid_o, 1);
         check(v[9], "SYNCF после начала полуволн", v, SR_SYNCF);
         bus_wr(SR, SR_SYNCF);
         bus_rd(SR, v);
@@ -231,6 +236,7 @@ module tb_sifu;
         bus_rd(SR, v);
         check(!v[8], "сети нет: GRID = 0", v, 0);
         check(vs == 0, "сети нет: выходы в 0", vs, 0);
+        check(grid_o == 1'b0, "сети нет: выход grid_o = 0", grid_o, 0);
         tick(8192 * TICK + 100);
         bus_rd(SR, v);
         check(v[10] && v[11], "LOSSF и LOST", v, SR_LOSSF | SR_LOST);
@@ -259,27 +265,70 @@ module tb_sifu;
         end
         bus_wr(CR, FLT);
 
-        //#13 Фильтр: помеха на входе AB короче 3 тиков (FLT = 1) не перезапускает пилу
+        //#13 Фильтр: помеха на входе AB короче 3 тиков (FLT = 1) на выход фильтра не проходит; при
+        //FLT = 0 (отсчёт каждый такт) проходит, но пилу не перезапускает - полярность та же
         bus_wr(DELAY, 400); bus_wr(ALPHA, 0);
         bus_wr(CR, EN | FLT);
         t0 = cycles; grid_on = 1'b1;
         halfwaves(4);
         wait (theta == DZ + 200 * TICK);      //Полуволна AB, пила ~200
+        f_ab_seen = 1'b0;
         glitch = 1'b1;                        //Вход AB «закрылся» на 2 тика = 4 такта
         tick(2 * TICK);
         glitch = 1'b0;
+        tick(10);
+        check(!f_ab_seen, "FLT = 1: помеха 2 тика не прошла фильтр", f_ab_seen, 0);
         bus_rd(CNT1, v);
-        check(v > 190, "FLT = 1: помеха 2 тика не перезапустила пилу", v, 200);
-        //FLT = 0 (отсчёт каждый такт): та же помеха проходит - пила перезапускается
+        check(v > 190, "FLT = 1: пила не перезапущена", v, 200);
         bus_wr(CR, EN);
         halfwaves(2);
         wait (theta == DZ + 200 * TICK);
+        f_ab_seen = 1'b0;
         glitch = 1'b1;
         tick(2 * TICK);
         glitch = 1'b0;
-        tick(10);                             //Фильтр: 3 отсчёта + выход - пила уже перезапущена
+        tick(10);
+        check(f_ab_seen, "FLT = 0: помеха 4 такта прошла фильтр", f_ab_seen, 1);
         bus_rd(CNT1, v);
-        check(v < 20, "FLT = 0: помеха 4 такта перезапустила пилу", v, 0);
+        check(v > 190, "FLT = 0: та же полярность - пила не перезапущена", v, 200);
+        clear_pulses();
+        halfwaves(2);
+        check(n_pulse[1] == 1, "FLT = 0: после помехи VS1 - один импульс за период", n_pulse[1], 1);
+
+        //#14 Широкая мёртвая зона (малое напряжение сети): окно оптрона короче ALPHA + DELAY - импульс
+        //всё равно приходит, в мёртвой зоне (пила идёт до начала следующей полуволны)
+        bus_wr(CR, EN | FLT);
+        DZ = 1200;                            //Окно 9000 - 2 * 1200 = 6600 тактов = 3300 тиков
+        bus_wr(ALPHA, 3100);                  //t_on = 3500 тиков: после конца окна (3300)
+        halfwaves(4);
+        clear_pulses();
+        halfwaves(2);
+        for (int k = 1; k <= 6; k++) begin
+            lag = lag_ticks(k); exp_lag = 3500 + 3;
+            check(n_pulse[k] == 1, $sformatf("мёртвая зона 1200: VS%0d - импульс есть", k), n_pulse[k], 1);
+            check(lag >= exp_lag - 1 && lag <= exp_lag + 2, $sformatf("мёртвая зона 1200: VS%0d через ALPHA + DELAY", k), lag, exp_lag);
+        end
+        DZ = 150;
+
+        //#15 Оптрон CA «залип» открытым: смены полярности у пары CA/AC нет - импульсов VS5, VS2 нет,
+        //через 8192 тика - LOST; остальные тиристоры работают
+        bus_wr(ALPHA, 0);
+        halfwaves(2);
+        stuck_ca = 1'b1;
+        halfwaves(2);
+        clear_pulses();
+        halfwaves(4);
+        check(n_pulse[5] == 0 && n_pulse[2] == 0, "CA залип: у VS5 и VS2 импульсов нет", {n_pulse[5], n_pulse[2]}, 0);
+        check(n_pulse[1] == 2 && n_pulse[3] == 2 && n_pulse[4] == 2 && n_pulse[6] == 2, "CA залип: VS1, VS3, VS4, VS6 работают", n_pulse[1], 2);
+        bus_rd(SR, v);
+        check(v[11], "CA залип: LOST", v, SR_LOST);
+        stuck_ca = 1'b0;
+        halfwaves(4);
+        bus_rd(SR, v);
+        check(!v[11], "CA в порядке: синхронизация вернулась", v, 0);
+        clear_pulses();
+        halfwaves(2);
+        check(n_pulse[5] == 1 && n_pulse[2] == 1, "CA в порядке: VS5 и VS2 снова с импульсами", {n_pulse[5], n_pulse[2]}, 32'h0000_0101);
 
         finish_tests();
     end

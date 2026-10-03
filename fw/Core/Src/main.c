@@ -31,7 +31,7 @@
 #include "sifu.h"
 
 #ifndef EXAMPLE
-#define EXAMPLE 3
+#define EXAMPLE 8
 #endif
 
 /* Полупериод мигания, мс */
@@ -44,7 +44,9 @@ unsigned int dig_transform(unsigned int digit);
 volatile unsigned int blink_count = 0;	//Число переключений светодиода
 
 __attribute__((unused)) static void LED_Toggle(void) {
+#ifdef LED0_PIN						//На стенде выпрямителя (Tang Nano 9K) светодиодов нет
 	GPIO->OUT ^= (1U << LED0_PIN);
+#endif
 	blink_count++;
 }
 
@@ -405,23 +407,86 @@ static void Example_Run(void) {
  *
  * При старте - самопроверка: для углов 0, 30, 60, 90, 120 эл. град. программа по счётчику тактов
  * (mcycle) измеряет у каждого тиристора VS1..VS6 задержку фронта импульса от начала его полуволны и
- * длительность импульса (в тиках ГПН) и сравнивает с ожидаемыми: ALPHA + DELAY и WIDTH (начало
- * полуволны модуль видит после фильтра входов, импульс отсчитывается от того же момента). Затем -
- * команды с терминала (115200 8-N-1, cp1251):
+ * длительность импульса (в тиках ГПН) и сравнивает с ожидаемыми. Меряются импульсы пар до
+ * разрешения (GATE[13:8]): EN при этом 0, на драйверы тиристоров импульсы не идут. Ожидается:
+ * ALPHA + DELAY и WIDTH (начало полуволны модуль видит после фильтра входов, импульс отсчитывается от
+ * того же момента). Угол меняется двумя левыми кнопками TM1638 (крайняя левая - угол больше, вторая
+ * слева - меньше, шаг 0.5 град. по сетке 0.5, удержание - автоповтор) или с терминала (115200 8-N-1,
+ * cp1251):
  *   число 0..127 (можно с десятыми: 32.5) - угол управления, эл. град.;
  *   e - импульсы вкл./выкл. (EN); d - сдвоенные импульсы вкл./выкл.;
- *   n - входы платы NSB (настоящая сеть); s - снова имитатор; t - повторить самопроверку.
+ *   n - входы платы NSB (настоящая сеть); s - снова имитатор; t - повторить самопроверку;
+ *   g - синхронизация: смены шести входов (после фильтра) за два периода сети с длительностями.
+ * Угол - до 120 эл. град. (SIFU_ALPHA_LIMIT_DEG10).
  * Раз в секунду - частота сети, полупериод, угол и состояние. TM1638: угол; светодиоды: 1 - сеть есть,
  * 2 - нет синхронизации, 3 - EN, 4 - имитатор. Импульсы VS1..VS6 - на выводах ПЛИС (Tang Nano 9K:
  * 28..33, Tang Primer 20K: разъём PMOD J5) - их можно смотреть осциллографом.
+ * Стенд выпрямителя (Tang Nano 9K, цепи DI1..DI3 и RO1..RO3 в конфигураторе): дискретные входы
+ * повторяются на выходах программой - DI1 -> RO1, DI2 -> RO2, DI3 -> RO3 (в основном цикле; на время
+ * самопроверки и ввода строки с терминала выходы не обновляются). Состояние - в строке состояния.
+ * Импульсы на драйверы тиристоров на стенде включают входы: DI1 = 1 - синхронизация от сети (входы
+ * NSB), DI2 = 1 - от имитатора сети; оба 0 или оба 1 - импульсов нет. При смене источника импульсы
+ * снимаются на 40 мс (пары заново находят полярность). Команды e, n, s на стенде при включённом DI1
+ * или DI2 не действуют. Индикатор показывает заданный угол; тики ALPHA раз в секунду пересчитываются
+ * по полупериоду сети, усреднённому за секунду (угол в градусах держится при уходе частоты).
  */
 #define SIFU_SIM_FREQ100	5000U		//Частота имитатора: 50.00 Гц
 #define SIFU_SIM_DZ10		20U			//Мёртвая зона имитатора: 2.0 град.
+#define KEY_ALPHA_UP		(1U << 7)	//Крайняя левая кнопка TM1638 (на плате стенда - бит 7 KEYS): угол больше
+#define KEY_ALPHA_DOWN		(1U << 6)	//Вторая слева: угол меньше
+#define KEY_STEP_DEG10		5U			//Шаг угла кнопкой: 0.5 град.
+#define KEY_DELAY_MS		500U		//Удержание: автоповтор через 0.5 с...
+#define KEY_REPEAT_MS		100U		//...каждые 0.1 с
 
-/* Измерение тиристора k (1..6): начало его полуволны (SR.SYNCF с CH = k) -> фронт и спад выхода VSk.
-   Результат - в тиках ГПН; 0 - не дождались (100 мс) */
+/* Дискретные входы и выходы стенда - если цепи DI1..DI3, RO1..RO3 есть в конфигурации ПЛИС (soc.h) */
+#if defined(DI1_PIN) && defined(DI2_PIN) && defined(DI3_PIN) && defined(RO1_PIN) && defined(RO2_PIN) && defined(RO3_PIN)
+#define STAND_IO	1
+static void stand_io_init(void) {
+	GPIO_MODE(DI1, GPIO_MODE_INPUT);
+	GPIO_MODE(DI2, GPIO_MODE_INPUT);
+	GPIO_MODE(DI3, GPIO_MODE_INPUT);
+	GPIO_WRITE(RO1, GPIO_PIN_RESET);
+	GPIO_WRITE(RO2, GPIO_PIN_RESET);
+	GPIO_WRITE(RO3, GPIO_PIN_RESET);
+	GPIO_MODE(RO1, GPIO_MODE_OUTPUT);
+	GPIO_MODE(RO2, GPIO_MODE_OUTPUT);
+	GPIO_MODE(RO3, GPIO_MODE_OUTPUT);
+}
+/* Входы -> выходы: DIn -> ROn. Импульсы на драйверы (CR.EN) и источник синхронизации - по DI1, DI2:
+   DI1 - сеть (входы NSB), DI2 - имитатор; оба 0 или оба 1 - импульсов нет. Возвращает 1, если
+   источник задан входами (команды n, s не действуют) */
+#define STAND_SRC_HOLD_MS	40U			//После смены источника импульсы сняты: 2 периода сети
+static uint64_t stand_hold = 0U;
+static int stand_io_copy(void) {
+	uint32_t di1 = GPIO_READ(DI1), di2 = GPIO_READ(DI2);
+	uint64_t now = CORE_GetCycles();
+	GPIO_WRITE(RO1, di1);
+	GPIO_WRITE(RO2, di2);
+	GPIO_WRITE(RO3, GPIO_READ(DI3));
+	if (di1 == di2) {									//Ни одного или оба - импульсов нет
+		SIFU_Disable();
+		return di1;
+	}
+	uint32_t sim = (SIFU->CR & SIFU_CR_SIM) != 0U;
+	if (di2 != sim) {									//Смена источника
+		SIFU_Disable();
+		if (di2) SIFU_SimStart(SIFU_SIM_FREQ100, SIFU_SIM_DZ10);
+		else     SIFU_SimStop();
+		stand_hold = now + (uint64_t)MTIME_HZ / 1000U * STAND_SRC_HOLD_MS;
+	}
+	if (now >= stand_hold) SIFU_Enable();
+	else                   SIFU_Disable();
+	return 1;
+}
+#else
+#define STAND_IO	0
+#endif
+
+/* Измерение тиристора k (1..6): начало его полуволны (SR.SYNCF с CH = k) -> фронт и спад импульса
+   пары до сдваивания и разрешения EN (GATE[13:8]) - выводы не нужны. Результат - в тиках ГПН;
+   0 - не дождались (100 мс) */
 static int sifu_measure(uint32_t k, uint32_t *lag, uint32_t *width) {
-	uint32_t div1 = SIFU->DIV + 1U, bit = 1U << (k - 1U);
+	uint32_t div1 = SIFU->DIV + 1U, bit = 1U << (SIFU_GATE_DIRECT_POS + k - 1U);
 	uint32_t t0, t1, t2, start = (uint32_t)CORE_GetCycles(), tout = SYSCLK_HZ / 10U;
 
 	SIFU_ClearFlags(SIFU_SR_SYNCF);
@@ -457,8 +522,7 @@ static int sifu_selftest(void) {
 	uint32_t keep_cr = SIFU->CR, keep_alpha = SIFU->ALPHA;
 	int errors = 0;
 
-	SIFU->CR = keep_cr & ~SIFU_CR_DBL;					//Без сдваивания: у каждого выхода один импульс
-	SIFU_Enable();
+	SIFU_Disable();										//На выводы импульсы не идут: меряются GATE[13:8]
 	UART_PutText("Самопроверка: задержка фронта VSk от начала его полуволны / длительность, тиков ГПН\r\n");
 	UART_PutText("  угол   ALPHA  ожид.     VS1       VS2       VS3       VS4       VS5       VS6\r\n");
 	for (uint32_t a = 0; a < sizeof angles / sizeof angles[0]; a++) {
@@ -497,6 +561,33 @@ static int sifu_selftest(void) {
 	return errors;
 }
 
+/* Синхронизация за два периода сети: каждое состояние шести входов после фильтра (1 - оптрон закрыт,
+   порядок AB BA BC CB CA AC) и его длительность в микросекундах и градусах */
+static void sifu_sync_trace(void) {
+	uint32_t st[40], dt[40], n = 0;
+	uint32_t prev = SIFU->SR & SIFU_SR_SYNC_MSK, t0 = (uint32_t)CORE_GetCycles(), tl = t0;
+	uint32_t per = SIFU_HalfPeriod() * (SIFU->DIV + 1U);	//Полупериод, тактов
+	while ((uint32_t)CORE_GetCycles() - t0 < SYSCLK_HZ / 25U && n < 40U) {	//40 мс
+		uint32_t s = SIFU->SR & SIFU_SR_SYNC_MSK;
+		if (s != prev) {
+			uint32_t now = (uint32_t)CORE_GetCycles();
+			st[n] = prev; dt[n] = now - tl; n++;
+			tl = now; prev = s;
+		}
+	}
+	UART_PutText("Входы NSB за 40 мс (AB BA BC CB CA AC, 1 - оптрон закрыт): длительность, мкс / эл. град.\r\n");
+	for (uint32_t i = 0; i < n; i++) {
+		UART_PutText("  ");
+		for (uint32_t b = 0; b < 6U; b++) { UART_PutChar((st[i] >> b) & 1U ? '1' : '0'); UART_PutChar(' '); }
+		UART_PutText(i == 0 ? " (с начала записи) " : " ");
+		UART_PutDec((int32_t)(dt[i] / (SYSCLK_HZ / 1000000U)));
+		UART_PutText(" мкс / ");
+		put_deg10((uint32_t)(((uint64_t)dt[i] * 1800U + per / 2U) / per));
+		UART_PutText("\r\n");
+	}
+	if (n == 0) UART_PutText("  смен нет - сигналы стоят\r\n");
+}
+
 /* Разбор угла «32» или «32.5» в десятые доли градуса; -1 - не число */
 static int32_t parse_deg10(const char *s) {
 	int32_t v = 0, frac = 0, digits = 0;
@@ -511,6 +602,34 @@ static int32_t parse_deg10(const char *s) {
 	return (digits && *s == '\0') ? v * 10 + frac : -1;
 }
 
+/* Заданный угол (десятые доли градуса) и полупериод сети, усреднённый за секунду (0 - ещё нет) */
+static uint32_t sifu_alpha10 = 300U;
+static uint32_t sifu_hper_avg = 0U;
+static uint32_t hper_sum = 0U, hper_n = 0U;
+
+/* Угол в тики ALPHA: по усреднённому полупериоду, пока его нет - по последнему измеренному */
+static void sifu_apply_alpha(void) {
+	uint32_t max10 = SIFU_AlphaMaxDeg10();
+	if (sifu_alpha10 > max10) sifu_alpha10 = max10;
+	if (sifu_hper_avg) SIFU_SetAlpha((sifu_alpha10 * sifu_hper_avg + 900U) / 1800U);
+	else               SIFU_SetAlphaDeg10(sifu_alpha10);
+}
+
+/* Отсчёт полупериода (зовётся в цикле, берёт раз в 10 мс) и итог раз в секунду */
+static void sifu_hper_sample(void) {
+	static uint64_t next = 0U;
+	uint64_t now = CORE_GetCycles();
+	if (now < next) return;
+	next = now + (uint64_t)MTIME_HZ / 100U;
+	uint32_t h = SIFU->HPER;
+	if (SIFU_GridPresent() && h >= 1000U && h < SIFU_LOST_TICKS) { hper_sum += h; hper_n++; }
+}
+static void sifu_hper_update(void) {
+	sifu_hper_avg = hper_n ? (hper_sum + hper_n / 2U) / hper_n : 0U;
+	hper_sum = hper_n = 0U;
+	sifu_apply_alpha();
+}
+
 static void sifu_status(void) {
 	uint32_t sr = SIFU->SR, f = SIFU_GridFreq100();
 	UART_PutText("f = ");
@@ -519,11 +638,11 @@ static void sifu_status(void) {
 	UART_PutText(", HPER ");
 	UART_PutDec((int32_t)SIFU->HPER);
 	UART_PutText(", угол ");
-	put_deg10(SIFU_GetAlphaDeg10());
+	put_deg10(sifu_alpha10);
 	UART_PutText(" (ALPHA ");
 	UART_PutDec((int32_t)SIFU->ALPHA);
 	UART_PutText(", макс. ");
-	put_deg10(SIFU_TicksToDeg10(SIFU_AlphaMax()));
+	put_deg10(SIFU_AlphaMaxDeg10());
 	UART_PutText("), EN ");
 	UART_PutDec((SIFU->CR & SIFU_CR_EN) ? 1 : 0);
 	UART_PutText(", DBL ");
@@ -533,12 +652,18 @@ static void sifu_status(void) {
 	UART_PutHex(sr, 5);
 	UART_PutText((sr & SIFU_SR_GRID) ? " сеть есть" : " сети нет");
 	if (sr & SIFU_SR_LOST) UART_PutText(", нет синхронизации");
+#if STAND_IO
+	UART_PutText(", DI ");
+	UART_PutDec(GPIO_READ(DI1)); UART_PutDec(GPIO_READ(DI2)); UART_PutDec(GPIO_READ(DI3));
+	UART_PutText(" RO ");
+	UART_PutDec(GPIO_READ(RO1)); UART_PutDec(GPIO_READ(RO2)); UART_PutDec(GPIO_READ(RO3));
+#endif
 	UART_PutText("\r\n");
 }
 
 static void sifu_show(void) {
 	char t[12];
-	uint32_t d10 = SIFU_GetAlphaDeg10(), sr = SIFU->SR, cr = SIFU->CR;
+	uint32_t d10 = sifu_alpha10, sr = SIFU->SR, cr = SIFU->CR;		//Заданный угол
 	int n = 0;
 	t[n++] = 'У'; t[n++] = 'Г'; t[n++] = 'О'; t[n++] = 'Л';
 	if (d10 < 1000U) t[n++] = ' ';
@@ -553,12 +678,54 @@ static void sifu_show(void) {
 	                 ((cr & SIFU_CR_EN) ? 4U : 0U) | ((cr & SIFU_CR_SIM) ? 8U : 0U));
 }
 
+/* Угол двумя левыми кнопками (больше, меньше): шаг 0.5 град. по сетке 0.5 (32.3 -> 32.5 или 32.0),
+   по нажатию, при удержании - автоповтор. Возвращает 1, если угол изменился */
+static int sifu_keys(void) {
+	uint32_t *alpha10 = &sifu_alpha10;
+	static uint32_t old = 0U;
+	static uint64_t repeat = 0U;
+	uint32_t keys = TM1638_ReadKeys() & (KEY_ALPHA_UP | KEY_ALPHA_DOWN);
+	uint64_t now = CORE_GetCycles();
+	uint32_t max10 = SIFU_AlphaMaxDeg10(), a = *alpha10;
+	int step = 0;
+
+	if (keys != old) {									//Нажатие (или смена кнопки) - сразу шаг
+		old = keys;
+		repeat = now + (uint64_t)MTIME_HZ / 1000U * KEY_DELAY_MS;
+		step = (keys != 0U);
+	} else if (keys && now >= repeat) {					//Удержание - автоповтор
+		repeat = now + (uint64_t)MTIME_HZ / 1000U * KEY_REPEAT_MS;
+		step = 1;
+	}
+	if (!step || keys == (KEY_ALPHA_UP | KEY_ALPHA_DOWN)) return 0;
+	if (keys & KEY_ALPHA_UP) {
+		a = (a / KEY_STEP_DEG10 + 1U) * KEY_STEP_DEG10;			//Следующее значение сетки
+		if (a > max10) a = max10;
+	} else if (a % KEY_STEP_DEG10) {
+		a -= a % KEY_STEP_DEG10;								//Вниз до сетки
+	} else {
+		a = (a > KEY_STEP_DEG10) ? a - KEY_STEP_DEG10 : 0U;
+	}
+	if (a == *alpha10) return 0;
+	*alpha10 = a;
+	sifu_apply_alpha();
+	return 1;
+}
+
 static void Example_Run(void) {
 	char line[32];
 	uint64_t next = 0;
+	int stand_src = 0;									//Источник задан входами DI1/DI2
+#if STAND_IO
+	uint32_t di_old = 0xFFU;							//Прошлое состояние DI1, DI2 - сообщение при смене
+	uint64_t di_msg = 0U;								//Когда печатать сообщение (после паузы смены источника)
+#endif
 
 	UART_InitDefault();
 	TM1638_Init();
+#if STAND_IO
+	stand_io_init();
+#endif
 	SIFU_Init();
 	SIFU_SimStart(SIFU_SIM_FREQ100, SIFU_SIM_DZ10);
 	delay_ms(100);										//Синхронизация и полупериод HPER
@@ -571,11 +738,37 @@ static void Example_Run(void) {
 	UART_PutText(" тиков\r\n");
 	sifu_status();
 	sifu_selftest();
-	SIFU_SetAlphaDeg10(300U);							//30 град., импульсы выключены - 'e'
-	UART_PutText("Команды: угол 0..127, e - EN, d - сдвоенные, n - входы NSB, s - имитатор, t - самопроверка\r\n> ");
+	sifu_apply_alpha();									//30 град., импульсы выключены - 'e'
+#if STAND_IO
+	SIFU_SimStop();										//Стенд: источник дальше задают DI1 (сеть) и DI2 (имитатор)
+	UART_PutText("Стенд: импульсы на драйверы - DI1 = 1 от сети, DI2 = 1 от имитатора (оба 0 или оба 1 - нет)\r\n");
+#endif
+	sifu_show();
+	UART_PutText("Кнопки TM1638: крайняя левая - угол больше, вторая слева - меньше (шаг 0.5 град.)\r\n");
+	UART_PutText("Команды: угол 0..120, e - EN, d - сдвоенные, n - входы NSB, s - имитатор, t - самопроверка, g - синхронизация\r\n> ");
 	while (1) {
-		if (CORE_GetCycles() >= next) {					//Раз в секунду - состояние
+#if STAND_IO
+		stand_src = stand_io_copy();					//DI1..DI3 -> RO1..RO3, источник и EN по DI1, DI2
+		uint32_t di = GPIO_READ(DI1) | (GPIO_READ(DI2) << 1);
+		if (di != di_old) {								//Сменились DI1, DI2 - сообщение через 0.1 с
+			di_old = di;
+			di_msg = CORE_GetCycles() + MTIME_HZ / 10U;
+		}
+		if (di_msg && CORE_GetCycles() >= di_msg) {
+			di_msg = 0U;
+			UART_PutText(di == 1U ? "\r\nDI1: импульсы на драйверы, синхронизация от сети\r\n" :
+			             di == 2U ? "\r\nDI2: импульсы на драйверы, синхронизация от имитатора сети\r\n" :
+			             di == 3U ? "\r\nDI1 и DI2 вместе - импульсы сняты\r\n" :
+			                        "\r\nDI1 и DI2 выключены - импульсы сняты\r\n");
+			sifu_status();
+			UART_PutText("> ");
+		}
+#endif
+		sifu_hper_sample();
+		if (sifu_keys()) sifu_show();					//Угол кнопками TM1638
+		if (CORE_GetCycles() >= next) {					//Раз в секунду: угол по среднему полупериоду, индикатор
 			next = CORE_GetCycles() + MTIME_HZ;
+			sifu_hper_update();
 			sifu_show();
 			LED_Toggle();
 		}
@@ -584,19 +777,32 @@ static void Example_Run(void) {
 		if (UART_ReadLine(line, sizeof line, 1) == 0) { sifu_status(); UART_PutText("> "); continue; }
 		int32_t d10 = parse_deg10(line);
 		if (d10 >= 0) {
-			SIFU_SetAlphaDeg10((uint32_t)d10);
+			sifu_alpha10 = (uint32_t)d10;
+			sifu_apply_alpha();
+			sifu_show();
 		} else if (line[0] == 'e' && line[1] == '\0') {
+#if STAND_IO
+			UART_PutText("Импульсы на стенде включают входы: DI1 - от сети, DI2 - от имитатора\r\n");
+#else
 			SIFU->CR ^= SIFU_CR_EN;
+#endif
 		} else if (line[0] == 'd' && line[1] == '\0') {
 			SIFU->CR ^= SIFU_CR_DBL;
+		} else if ((line[0] == 'n' || line[0] == 's') && line[1] == '\0' && stand_src) {
+			UART_PutText("Источник синхронизации задают входы DI1 (сеть) и DI2 (имитатор)\r\n");
 		} else if (line[0] == 'n' && line[1] == '\0') {
 			SIFU_SimStop();
 		} else if (line[0] == 's' && line[1] == '\0') {
+#if STAND_IO
+			SIFU_Disable();								//Стенд: без DI2 импульсы имитатора на драйверы не выдаются
+#endif
 			SIFU_SimStart(SIFU_SIM_FREQ100, SIFU_SIM_DZ10);
 		} else if (line[0] == 't' && line[1] == '\0') {
 			sifu_selftest();
+		} else if (line[0] == 'g' && line[1] == '\0') {
+			sifu_sync_trace();
 		} else {
-			UART_PutText("Не понял: угол 0..127, e, d, n, s, t\r\n");
+			UART_PutText("Не понял: угол 0..120, e, d, n, s, t, g\r\n");
 		}
 		sifu_status();
 		UART_PutText("> ");
@@ -632,7 +838,9 @@ int main(void) {
 	}
 #elif EXAMPLE <= 2
 	GPIO_Init();
+#ifdef LED0_PIN
 	GPIO_PinMode(LED0_PIN, GPIO_MODE_OUTPUT);
+#endif
 	Example_Init();
 
 	while(1) {
@@ -644,7 +852,9 @@ int main(void) {
 	}
 #else
 	GPIO_Init();
+#ifdef LED0_PIN
 	GPIO_PinMode(LED0_PIN, GPIO_MODE_OUTPUT);
+#endif
 	Example_Run();
 #endif
 }

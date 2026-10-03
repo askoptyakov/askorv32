@@ -75,7 +75,7 @@ const TYPES = {
     about: 'СИФУ трёхфазного мостового тиристорного выпрямителя: синхронизация от платы NSB (6 оптронов на линейных напряжениях), пила на каждую пару фаз, угол управления ALPHA от точки естественной коммутации, сдвоенные импульсы на тиристоры VS1..VS6, измерение частоты сети, имитатор сети для проверки без силовой части.',
     defaults: () => ({ ab: null, ba: null, bc: null, cb: null, ca: null, ac: null,
                        vs1: null, vs2: null, vs3: null, vs4: null, vs5: null, vs6: null,
-                       sawHz: 500000, delayTicks: 400, pulseTicks: 150, sim: true, irq: 'plic' }) },
+                       grid: null, sawHz: 500000, delayTicks: 400, pulseTicks: 150, sim: true, irq: 'plic' }) },
 };
 //СИФУ: входы платы синхронизации NSB и выходы на тиристоры (как SIFU_SYNC, SIFU_GATES в socgen.py)
 const SIFU_SYNC = ['ab', 'ba', 'bc', 'cb', 'ca', 'ac'];
@@ -195,7 +195,8 @@ function instSignals(inst) {
     case 'spiflash': return [{ key: 'sck', label: 'SCK', dir: 'output' }, { key: 'cs', label: 'CS#', dir: 'output' },
                              { key: 'mosi', label: 'MOSI', dir: 'output' }, { key: 'miso', label: 'MISO', dir: 'input' }];
     case 'sifu': return [...SIFU_SYNC.map(k => ({ key: k, label: k.toUpperCase(), dir: 'input' })),
-                         ...SIFU_GATES.map(k => ({ key: k, label: k.toUpperCase(), dir: 'output' }))];
+                         ...SIFU_GATES.map(k => ({ key: k, label: k.toUpperCase(), dir: 'output' })),
+                         ...(inst.grid != null ? [{ key: 'grid', label: 'GRID', dir: 'output' }] : [])];
   }
   return [];
 }
@@ -951,6 +952,7 @@ function instRows(inst) {
   const rows = instSignals(inst).map(g => ({ kind: 'sig', key: g.key, label: g.label, pin: instPin(inst, g.key) }));
   if (inst.type === 'gpio' && inst.lines.length < 32) rows.push({ kind: 'add', key: 'newline', label: 'добавить линию' });
   if (inst.type === 'stim' && inst.out == null) rows.push({ kind: 'add', key: 'out', label: 'вывести ШИМ' });
+  if (inst.type === 'sifu' && inst.grid == null) rows.push({ kind: 'add', key: 'grid', label: 'вывести «сеть есть»' });
   return rows;
 }
 
@@ -1456,6 +1458,10 @@ function instForm(inst, v) {
     h += inst.out == null
       ? `<button type="button" data-act="addout">+ Вывести ШИМ на вывод</button><p class="note">Без вывода таймер работает только на прерывание.</p>`
       : pinRowsHtml(inst, rows, false) + `<button type="button" data-act="delout">Не выводить ШИМ</button>`;
+  } else if (inst.type === 'sifu') {
+    h += pinRowsHtml(inst, rows, false) + (inst.grid == null
+      ? `<button type="button" data-act="addgrid">+ Вывести «сеть есть» (GRID)</button>`
+      : `<button type="button" data-act="delgrid">Не выводить «сеть есть»</button>`);
   } else {
     h += pinRowsHtml(inst, rows, false);
   }
@@ -1523,6 +1529,8 @@ function wireInstForm(box, inst) {
                                    dir: 'inout', def: defNet(inst, 'line' + inst.lines.length) }));
   act('addout', () => pinPicker({ id: `${inst.name}.out`, inst, key: 'out', name: `${inst.name} PWM`, dir: 'output', def: defNet(inst, 'out') }));
   act('delout', () => { inst.out = null; changed(); });
+  act('addgrid', () => pinPicker({ id: `${inst.name}.grid`, inst, key: 'grid', name: `${inst.name} GRID`, dir: 'output', def: defNet(inst, 'grid') }));
+  act('delgrid', () => { inst.grid = null; changed(); });
   act('readme', () => openLibrary(inst.type));
   act('remove', () => {
     if (!confirm(`Удалить блок ${inst.name}? Его выводы освободятся, имена цепей останутся подписями.`)) return;

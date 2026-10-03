@@ -23,7 +23,7 @@
 #define SOC_DMEM_BYTES					8192U
 
 /* Частота шины периферии (clk_per), Гц: от неё считают таймер STIM, UART и mtime в CLINT */
-#define SYSCLK_HZ						45000000U
+#define SYSCLK_HZ						40500000U
 
 /* Системные устройства процессора (cpu.sv): адреса и указатели; типы регистров - в clint.h и plic.h */
 #define CLINT_BASE						(0x02000000U)
@@ -64,7 +64,7 @@
 /* UART */
 #define UART_BASE						(0x14000000U)
 #define UART							((UART_TypeDef*) UART_BASE)
-#define UART_BAUD						115200U		//Скорость по умолчанию, бит/с (div 390, ошибка 0.10 %)
+#define UART_BAUD						115200U		//Скорость по умолчанию, бит/с (div 351, ошибка 0.12 %)
 #define UART_PARITY_DEFAULT				0		//0 - нет, 1 - even, 2 - odd
 #define UART_STOP_DEFAULT				1		//Стоп-битов
 #define UART_FIFO_DEPTH					16U		//Глубина FIFO приёма и передачи
@@ -74,18 +74,18 @@
 #define SPIFLASH						((SPIFLASH_TypeDef*) SPIFLASH_BASE)
 #define SPIFLASH_SIZE					0x00400000U		//Объём флеш, Байт
 #define SPIFLASH_DIV_DEFAULT			1U		//Делитель SCK после сброса
-#define SPIFLASH_SCK_HZ					11250000U		//Частота SCK при DIV_DEFAULT, Гц
-#define SPIFLASH_FPGA_CONFIG			1		//Флеш хранит конфигурацию ПЛИС с адреса 0 (MSPI)
-#define SPIFLASH_BOOT					1		//Загрузчик программы (= FPGA_CONFIG)
+#define SPIFLASH_SCK_HZ					10125000U		//Частота SCK при DIV_DEFAULT, Гц
+#define SPIFLASH_FPGA_CONFIG			0		//Флеш хранит конфигурацию ПЛИС с адреса 0 (MSPI)
+#define SPIFLASH_BOOT					0		//Загрузчик программы (= FPGA_CONFIG)
 #define SPIFLASH_BOOT_ADDR				0x00100000U		//Образ программы во флеш
-#define SPIFLASH_BOOT_SIZE				0x00010000U		//Область образа (параметры туда не писать)
-#define SPIFLASH_USER_ADDR				0x00110000U		//Свободная область флеш: начало (ниже - конфигурация ПЛИС и образ)
-#define SPIFLASH_USER_SIZE				0x002F0000U		//Свободная область флеш: размер
+#define SPIFLASH_BOOT_SIZE				0x00000000U		//Область образа (параметры туда не писать)
+#define SPIFLASH_USER_ADDR				0x00000000U		//Свободная область флеш: начало (ниже - конфигурация ПЛИС и образ)
+#define SPIFLASH_USER_SIZE				0x00400000U		//Свободная область флеш: размер
 
 /* SIFU */
 #define SIFU_BASE						(0x16000000U)
 #define SIFU							((SIFU_TypeDef*) SIFU_BASE)
-#define SIFU_DIV_DEFAULT				89U		//Делитель тика ГПН после сброса: SYSCLK_HZ / (DIV + 1)
+#define SIFU_DIV_DEFAULT				80U		//Делитель тика ГПН после сброса: SYSCLK_HZ / (DIV + 1)
 #define SIFU_SAW_HZ						500000U		//Частота тиков ГПН при DIV_DEFAULT, Гц
 #define SIFU_DELAY_DEFAULT				400U		//DELAY_RC_COMPENSATION после сброса, тиков
 #define SIFU_WIDTH_DEFAULT				150U		//Длительность импульса после сброса, тиков
@@ -107,17 +107,17 @@ typedef enum
 /* Выводы GPIO: имя цепи из конфигуратора -> <ИМЯ>_PIN (номер линии) и <ИМЯ>_PORT (блок GPIO);
    цепь LED[3] даёт имя LED3. Шина (LED[0], LED[1]...) на одном блоке: <ИМЯ>_MSK, <ИМЯ>_POS, <ИМЯ>_PORT.
    Работа по имени - макросы GPIO_WRITE(LED3, GPIO_PIN_SET), GPIO_READ(...), GPIO_MODE(...) в gpio.h */
-#define LED0_PIN						0U		//вывод 10, цепь LED0
-#define LED0_PORT						GPIO
-#define LED1_PIN						1U		//вывод 11, цепь LED1
-#define LED1_PORT						GPIO
-#define LED2_PIN						2U		//вывод 13, цепь LED2
-#define LED2_PORT						GPIO
-#define LED3_PIN						3U		//вывод 14, цепь LED3
-#define LED3_PORT						GPIO
-#define LED4_PIN						4U		//вывод 15, цепь LED4
-#define LED4_PORT						GPIO
-#define LED5_PIN						5U		//вывод 16, цепь LED5
-#define LED5_PORT						GPIO
+#define DI1_PIN							0U		//вывод 75, цепь DI1
+#define DI1_PORT						GPIO
+#define DI2_PIN							1U		//вывод 77, цепь DI2
+#define DI2_PORT						GPIO
+#define DI3_PIN							2U		//вывод 36, цепь DI3
+#define DI3_PORT						GPIO
+#define RO1_PIN							3U		//вывод 74, цепь RO1
+#define RO1_PORT						GPIO
+#define RO2_PIN							4U		//вывод 76, цепь RO2
+#define RO2_PORT						GPIO
+#define RO3_PIN							5U		//вывод 39, цепь RO3
+#define RO3_PORT						GPIO
 
 #endif /* __SOC_H */

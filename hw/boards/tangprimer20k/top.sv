@@ -181,7 +181,7 @@ module top #(
                  .Write(sifu_Write), .Addr(sifu_Addr), .WData(sifu_WriteData), .RData(sifu_ReadData),
                  .sync_ab(NSB_AB), .sync_ba(NSB_BA), .sync_bc(NSB_BC), .sync_cb(NSB_CB), .sync_ca(NSB_CA), .sync_ac(NSB_AC),
                  .vs1(VS1), .vs2(VS2), .vs3(VS3), .vs4(VS4), .vs5(VS5), .vs6(VS6),
-                 .irq(irq_sifu));
+                 .grid_o(), .irq(irq_sifu));   //выход «сеть есть» не выведен
 
     //-7- Прерывания периферии: источники PLIC (MEI, векторный режим) и локальные линии LI0..LI15
     //    STIM: источник PLIC 1
