@@ -41,6 +41,7 @@
 //==============================================================================================
 module tb_core;
     parameter bit CORE_TYPE = 0;      //1 - однотактное ядро; 0 - конвейерное (как в top.sv)
+    parameter int RF_TYPE   = 0;      //Регистровый файл: 0 - LUT, 1/2 - BSRAM (run_tests.py --rf-bsram 1|2)
     parameter int TIMEOUT   = 200000; //Предельное число тактов ядра на одну программу
     parameter int IMEM_KB   = 8;      //Размер памяти инструкций: 8/16/32 кБайт (BSRAM_IMEM_SIZE)
     parameter int DMEM_KB   = 8;      //Размер памяти данных: 8/16/32 кБайт (BSRAM_DMEM_SIZE)
@@ -68,7 +69,7 @@ module tb_core;
     wire  [ 3:0] boot_Write;
     wire  [31:0] boot_Addr, boot_WData;
 
-    cpu #(.CORE_TYPE(CORE_TYPE),
+    cpu #(.CORE_TYPE(CORE_TYPE), .RF_TYPE(RF_TYPE),
           .IMEM_TYPE(1'b1), .BSRAM_IMEM_SIZE(IMEM_KB),
           .DMEM_TYPE(1'b1), .BSRAM_DMEM_SIZE(DMEM_KB), .PLIC_SOURCES(8))
         dut (.clk(clk), .rst_n(rst_n),

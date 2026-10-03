@@ -69,7 +69,7 @@
 3. В установщике оставить отмеченным **Programmer**.
 4. Драйвер USB-JTAG: если плата не видна в Programmer, установите его из `<Gowin>\Programmer\driver`.
 5. Проверка:
-   1. Открыть `hw/riscv.gprj`.
+   1. Открыть проект платы `hw/boards/<плата>/riscv.gprj` (`tangnano9k` или `tangprimer20k`, см. [hw/boards/README.md](../hw/boards/README.md)).
    2. Запустить **Run All**: синтез и P&R должны пройти без ошибок.
    3. В Programmer должно определяться устройство **GW1NR-9C**.
 
@@ -145,7 +145,7 @@
 4. **Сменить префикс компилятора.** Проект создавался под старый тулчейн `riscv-none-embed-`, а xPack называется `riscv-none-elf-`.
    1. Открыть **Project → Properties → C/C++ Build → Settings → Toolchains**.
    2. Для конфигураций *Debug* и *Release* выставить *Prefix* = `riscv-none-elf-`.
-5. Проверка: **Project → Build Project** — в `fw/Debug/` должны появиться `riscv.elf`, `riscv.bin` и `riscv.lst`, а в конце лога — статистика `BSRAM IMEM / DMEM` от `mergetool`.
+5. Проверка: **Project → Build Project** — в каталоге активной конфигурации сборки (`fw/TangNano9K/` или `fw/TangPrimer20K/`) должны появиться `riscv.elf`, `riscv.bin` и `riscv.lst`, а в конце лога — статистика `BSRAM IMEM / DMEM` от `mergetool`.
    - `make: *** No rule to make target 'clean'` при самом первом **Clean** — не ошибка: makefile ещё не сгенерирован.
 
 ---
@@ -158,7 +158,7 @@
 
 1. Скачать `xpack-openocd-<версия>-win32-x64.zip` со страницы <https://github.com/xpack-dev-tools/openocd-xpack/releases> (или с Яндекс Диска).
 2. Распаковать рядом с компилятором: `C:\Program Files\Eclipse\riscv-toolchain\xpack-openocd-<версия>` (нужны права администратора: распаковать во временную папку и скопировать в Проводнике).
-3. Проверка: `"C:\Program Files\Eclipse\riscv-toolchain\xpack-openocd-<версия>\bin\openocd.exe" --version`. Разбор конфигурации проекта без платы — из папки `fw/openocd`: `openocd -f askorv32_tangnano9k.cfg -c shutdown`.
+3. Проверка: `"C:\Program Files\Eclipse\riscv-toolchain\xpack-openocd-<версия>\bin\openocd.exe" --version`. Разбор конфигурации проекта без платы — из папки `fw/boards/tangnano9k` (или `fw/boards/tangprimer20k`): `openocd -f openocd.cfg -c shutdown`.
 
 ### 8.2. Драйвер WinUSB (Zadig)
 
@@ -179,13 +179,15 @@ OpenOCD работает с программатором через libusb, по
 
    Gowin Programmer (и Gowin IDE) перед заменой закрыть: пока он держит интерфейс, Zadig завершается ошибкой *Operation timed out*.
 
+Вторая плата: WinUSB ставится и её программатору. Windows привязывает драйвер к экземпляру устройства — по серийному номеру, а без него к USB-порту. Программатор, подключённый в другой порт, может прийти с драйвером FTDI («USB Serial Converter A» вместо «JTAG Debugger»): тогда снова Zadig для Interface 0 или прежний порт. Работа с двумя платами сразу — [hw/boards/README.md, «Несколько плат на одном ПК»](../hw/boards/README.md#несколько-плат-на-одном-пк); для неё `openocd.cfg` вызывает Python (команда `py`, п. 2).
+
 Возврат драйвера FTDI: **Диспетчер устройств** → то же устройство (Interface 0) → **Удалить устройство** с галочкой *Удалить драйвер* → отключить и снова подключить плату. Windows поставит драйвер FTDI заново.
 
 ### 8.3. Проверка подключения
 
-Из папки `fw/openocd`:
+Из папки `fw/boards/tangnano9k` (Tang Primer 20K - `fw/boards/tangprimer20k`, TAP `gw2a18.cpu`):
 ```
-openocd -c "set JTAG_ONLY 1" -f askorv32_tangnano9k.cfg -c "init; irscan gw1nr9.cpu 0x42; echo [drscan gw1nr9.cpu 32 0]; shutdown"
+openocd -c "set JTAG_ONLY 1" -f openocd.cfg -c "init; irscan gw1nr9.cpu 0x42; echo [drscan gw1nr9.cpu 32 0]; shutdown"
 ```
 Должно быть `tap/device found: 0x1100481b` и `00001071`. Если нет — см. [debug.md, «Первый запуск на плате»](../hw/info/debug.md#первый-запуск-на-плате).
 
@@ -211,10 +213,10 @@ openocd -c "set JTAG_ONLY 1" -f askorv32_tangnano9k.cfg -c "init; irscan gw1nr9.
 | `riscv FPGA Flash` | записывает ПЛИС во встроенную flash, ПЛИС стартует с неё при включении (выводы MODE1 = MODE0 = 0) | ~12 с |
 | `riscv SPI-FLASH` | записывает битовый поток и программу во внешнюю SPI-флеш, ПЛИС стартует с неё (режим MSPI, MODE1 = 1; блок SPIFLASH «Конфигурация и программа — в этой флеш») | ~3 с, с изменённой ПЛИС ~3 мин |
 
-Все три перед загрузкой собирают проект `riscv` и запускают `sw/fpgaload/fpgaload.py sram|flash|spiflash` (способы хранения — [hw/src/periph/spiflash/README.md](../hw/src/periph/spiflash/README.md#три-способа-хранения-конфигурации-и-программы)). openFPGALoader берётся исправленный, из `sdk/openfpgaloader/bin` (запись внешней флеш GW1N в ~3.5 раза быстрее, работает очистка `--bulk-erase`, см. [sdk/openfpgaloader/README.md](openfpgaloader/README.md)); если его нет — из OSS CAD Suite. Пересобрать его можно в MSYS2 (`C:\msys64`, пакеты и команда — в том же README). Скрипт:
+Все три перед загрузкой собирают проект `riscv` и запускают `sw/fpgaload/fpgaload.py sram|flash|spiflash` (способы хранения — [hw/src/periph/spiflash/README.md](../hw/src/periph/spiflash/README.md#три-способа-хранения-конфигурации-и-программы)). openFPGALoader берётся исправленный, из `sdk/openfpgaloader/bin` (запись внешней флеш GW1N в ~3.5 раза быстрее, запись флеш GW2A не вешает программатор BL616 Tang Primer 20K, работает очистка `--bulk-erase`, см. [sdk/openfpgaloader/README.md](openfpgaloader/README.md)); если его нет — из OSS CAD Suite. Пересобрать его можно в MSYS2 (`C:\msys64`, пакеты и команда — в том же README). Скрипт:
 1. Проверяет, что отладка остановлена. Если запущен `openocd.exe`, выводит «Программатор занят…» и выходит, не обращаясь к плате. Одновременная работа с программатором сбивает USB-соединение OpenOCD (консоль без конца заполняется `LIBUSB_ERROR_IO`) и срывает загрузку.
-2. Запускает `mergetool`: программа (`Debug/riscv.bin`) вливается в последний битстрим Gowin (`hw/impl/pnr/riscv.fs`). Отдельный запуск нужен потому, что сборка Eclipse вызывает `mergetool` только при изменении `riscv.elf`, и после пересборки одной ПЛИС в `Debug/riscv.fs` остался бы старый дизайн.
-3. Загружает `Debug/riscv.fs` командой `openFPGALoader -b tangnano9k [-f] riscv.fs`. OSS CAD Suite ищется в `C:\oss-cad-suite` или в переменной `OSS_CAD_SUITE`, его `bin` и `lib` скрипт сам добавляет в `PATH`.
+2. Запускает `mergetool`: программа (`<конфигурация>/riscv.bin`) вливается в последний битстрим Gowin платы (`hw/boards/<плата>/impl/pnr/riscv.fs`). Отдельный запуск нужен потому, что сборка Eclipse вызывает `mergetool` только при изменении `riscv.elf`, и после пересборки одной ПЛИС в `Debug/riscv.fs` остался бы старый дизайн.
+3. Загружает `<конфигурация>/riscv.fs` командой `openFPGALoader -b <плата> [-f] riscv.fs`. OSS CAD Suite ищется в `C:\oss-cad-suite` или в переменной `OSS_CAD_SUITE`, его `bin` и `lib` скрипт сам добавляет в `PATH`.
 
 **Окно «Программатор ПЛИС»** (плагин конфигуратора, п. 11) — то же без *External Tools*, в духе Gowin Programmer: кнопка со значком микросхемы со стрелкой на панели инструментов или команда **Программатор ПЛИС** в контекстном меню проекта. В окне:
 - **Запись конфигурации и программы** — SRAM, встроенная flash или внешняя SPI-флеш (недоступный при текущей сборке ПЛИС вариант выключен: встроенная flash — при «Конфигурация и программа — в этой флеш (MSPI)», внешняя флеш — при другой настройке блока SPIFLASH); флажки «Собрать программу перед записью» и «записать битовый поток, даже если он не менялся» (`--force`); кнопка **Прошить**;
@@ -242,8 +244,8 @@ openocd -c "set JTAG_ONLY 1" -f askorv32_tangnano9k.cfg -c "init; irscan gw1nr9.
 
 **Замечания:**
 - Во время отладки (**Debug**) программатор занят OpenOCD, и загрузка откажется начинаться (см. выше): сначала остановить отладку (**Terminate**). Если OpenOCD всё же потерял связь с программатором и засыпает консоль ошибками `LIBUSB_ERROR_IO`, нажать **Terminate** (или завершить `openocd.exe` в Диспетчере задач), при необходимости переподключить плату.
-- После загрузки ПЛИС первое чтение `dtmcs` возвращает 0. В `fw/openocd/askorv32_tangnano9k.cfg` для этого есть пустое чтение перед подключением, **Debug** сразу после загрузки работает ([debug.md](../hw/info/debug.md#вариант-а-только-winusb-плис-через-openfpgaloader)).
-- То же из командной строки: `py sw/fpgaload/fpgaload.py sram` (или `flash`) из корня репозитория. Сам openFPGALoader — из окна после `C:\oss-cad-suite\environment.bat`, из `fw/Debug`: `openFPGALoader -b tangnano9k riscv.fs` (SRAM), `-f` (flash), `openFPGALoader -b tangnano9k -r` — перезагрузить ПЛИС из flash, как при включении питания.
+- После загрузки ПЛИС первое чтение `dtmcs` возвращает 0. В `fw/boards/<плата>/openocd.cfg` для этого есть пустое чтение перед подключением, **Debug** сразу после загрузки работает ([debug.md](../hw/info/debug.md#вариант-а-только-winusb-плис-через-openfpgaloader)).
+- То же из командной строки: `py sw/fpgaload/fpgaload.py sram --config TangNano9K` (или `flash`; плата - `--config TangPrimer20K`) из корня репозитория. Сам openFPGALoader — из окна после `C:\oss-cad-suite\environment.bat`, из `fw/Debug`: `openFPGALoader -b tangnano9k riscv.fs` (SRAM), `-f` (flash), `openFPGALoader -b tangnano9k -r` — перезагрузить ПЛИС из flash, как при включении питания.
 
 ---
 
@@ -259,7 +261,7 @@ openocd -c "set JTAG_ONLY 1" -f askorv32_tangnano9k.cfg -c "init; irscan gw1nr9.
 
 1. Собрать архив (нужен только установленный Eclipse): `py sw/socgen/eclipse/build.py` → `sw/socgen/eclipse/build/askorv32-gwsoc-repo.zip`.
 2. Eclipse: **Help → Install New Software → Add… → Archive…** → выбрать этот zip → отметить **askoRV32** → **снять** флажок внизу **Contact all update sites during install to find required software** (иначе p2 заодно тянет посторонние пакеты, например `jcl.over.slf4j`, и падает с «An error occurred while collecting items to be installed») → **Next** → **Finish**. На вопрос о неподписанном содержимом ответить **Install Anyway**, затем перезапустить Eclipse.
-3. В проекте `riscv` появится файл `riscv.gwsoc` (двойной щелчок открывает конфигуратор), в контекстном меню проекта и на панели инструментов - команды **Конфигуратор ПЛИС** и **Программатор ПЛИС** (запись и очистка памяти ПЛИС, п. 8.5).
+3. В проекте `riscv` - файлы плат `boards/<плата>/<плата>.gwsoc` (двойной щелчок открывает конфигуратор), в контекстном меню проекта и на панели инструментов - команды **Конфигуратор ПЛИС** и **Программатор ПЛИС** (запись и очистка памяти ПЛИС, п. 8.5).
 4. Обновление: собрать архив заново и повторить установку (**Help → Install New Software** предложит новую версию).
 
 Подробнее - [sw/socgen/README.md](../sw/socgen/README.md).

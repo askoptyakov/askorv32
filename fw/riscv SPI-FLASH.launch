@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <launchConfiguration type="org.eclipse.ui.externaltools.ProgramLaunchConfigurationType">
-    <!-- Конфигурация и программа - во внешнюю SPI-флеш платы (U3), загрузка по MSPI (вывод MODE1 = 1: на Tang Nano 9K -
-         подтяжка вывода 87 к 1.8 В). Через openFPGALoader на драйвере WinUSB (исправленный, sdk/openfpgaloader).
-         Сборка проекта, затем sw/fpgaload/fpgaload.py spiflash: проверка, что отладка (OpenOCD) остановлена,
-         битовый поток hw/impl/pnr/riscv.fs с адреса 0 (около 3 мин; пропускается, если не менялся), образ
-         программы из Debug/riscv.elf с адреса образа (около 5 с), перезапуск ПЛИС из внешней флеш - загрузчик
-         блока SPIFLASH копирует программу в память. В конфигураторе должно быть выбрано хранение во внешней флеш.
-         См. hw/src/periph/spiflash/README.md -->
+    <!-- Конфигурация и программа - во внешнюю SPI-флеш платы, загрузка по MSPI (Tang Nano 9K - вывод MODE1 = 1,
+         подтяжка вывода 87 к 1.8 В; Tang Primer 20K - так загружается всегда). Плата - активная конфигурация сборки
+         (ключ config). Через openFPGALoader на драйвере WinUSB (исправленный, sdk/openfpgaloader). Сборка проекта,
+         затем sw/fpgaload/fpgaload.py spiflash: проверка, что отладка (OpenOCD) остановлена, битовый поток
+         hw/boards/<плата>/impl/pnr/riscv.fs с адреса 0 (9K - около 3 мин, 20K - около 10 с; пропускается, если не
+         менялся), образ программы из <конфигурация>/riscv.elf с адреса образа, перезапуск ПЛИС из внешней флеш -
+         загрузчик блока SPIFLASH копирует программу в память. В конфигураторе должно быть выбрано хранение во
+         внешней флеш. См. hw/src/periph/spiflash/README.md -->
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_LOCATION" value="${env_var:ComSpec}"/>
-    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_TOOL_ARGUMENTS" value="/c py -u ..\..\sw\fpgaload\fpgaload.py spiflash"/>
-    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_WORKING_DIRECTORY" value="${project_loc:riscv}/Debug"/>
+    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_TOOL_ARGUMENTS" value="/c py -u ..\sw\fpgaload\fpgaload.py spiflash --config ${config_name:riscv}"/>
+    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_WORKING_DIRECTORY" value="${project_loc:riscv}"/>
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_LAUNCH_CONFIGURATION_BUILD_SCOPE" value="${projects:riscv}"/>
     <booleanAttribute key="org.eclipse.ui.externaltools.ATTR_INCLUDE_REFERENCED_PROJECTS" value="false"/>
     <booleanAttribute key="org.eclipse.ui.externaltools.ATTR_SHOW_CONSOLE" value="true"/>

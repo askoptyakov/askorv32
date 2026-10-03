@@ -13,7 +13,7 @@ import org.eclipse.ui.handlers.HandlerUtil;
 
 /**
  * Команда «Программатор ПЛИС» (меню проекта и панель инструментов): окно записи и очистки памяти ПЛИС
- * для проекта с файлом .gwsoc (выбранного или проекта активного редактора).
+ * для платы - файла .gwsoc проекта (выделенного, открытого в конфигураторе или выбранного из списка).
  */
 public class ProgrammerHandler extends AbstractHandler {
     @Override
@@ -24,13 +24,17 @@ public class ProgrammerHandler extends AbstractHandler {
             IEditorPart ed = win.getActivePage().getActiveEditor();
             if (ed != null && ed.getEditorInput() instanceof IFileEditorInput fi) project = fi.getFile().getProject();
         }
-        IFile cfg = project != null ? OpenConfiguratorHandler.findConfig(project) : null;
-        if (cfg == null) {
-            MessageDialog.openInformation(win.getShell(), "Программатор ПЛИС",
-                project == null ? "Выберите проект с кодом МК в Project Explorer."
-                                : "В корне проекта «" + project.getName() + "» нет файла конфигурации ПЛИС (*.gwsoc).");
+        if (project == null) {
+            MessageDialog.openInformation(win.getShell(), "Программатор ПЛИС", "Выберите проект с кодом МК в Project Explorer.");
             return null;
         }
+        //Плата: файл, открытый в конфигураторе (активный редактор), иначе выделенный .gwsoc, единственный или из списка
+        IFile cfg = null;
+        IEditorPart act = win.getActivePage().getActiveEditor();
+        if (act instanceof GwsocEditor && act.getEditorInput() instanceof IFileEditorInput fi && fi.getFile().getProject().equals(project))
+            cfg = fi.getFile();
+        if (cfg == null) cfg = OpenConfiguratorHandler.chooseConfig(win.getShell(), project, HandlerUtil.getCurrentSelection(event), "Программатор ПЛИС");
+        if (cfg == null) return null;
         ProgrammerDialog.open(win.getShell(), project, cfg);
         return null;
     }

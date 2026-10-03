@@ -1,25 +1,27 @@
-# fw
-fw/Debug/*
-!fw/Debug/riscv.bin
-!fw/Debug/riscv.fs
-!fw/Debug/riscv.lst
+# fw: каталоги сборки конфигураций Eclipse (по платам)
+fw/TangNano9K/*
+!fw/TangNano9K/riscv.bin
+!fw/TangNano9K/riscv.fs
+!fw/TangNano9K/riscv.lst
+fw/TangPrimer20K/*
+!fw/TangPrimer20K/riscv.bin
+!fw/TangPrimer20K/riscv.fs
+!fw/TangPrimer20K/riscv.lst
 fw/Release/*
 !fw/Release/riscv.bin
 !fw/Release/riscv.fs
 !fw/Release/riscv.lst
 
 # hw
-hw/impl/*
-!hw/impl/*.json
-!hw/impl/pnr/*.fs
-!hw/impl/pnr/*.posp
+hw/boards/*/impl/*
+!hw/boards/*/impl/*.json
+hw/boards/*/*.user
+hw/boards/*/impl_oss/
 hw/src/gwlib/*
 !hw/src/gwlib/*.v
 hw/src/gwlib/*_tmp.v
 hw/*.user
 hw/src/test
-hw/impl_oss/*
-!hw/impl_oss/riscv.fs
 hw/sim/build/
 __pycache__/
 
@@ -39,3 +41,4 @@ sdk/*.zip
 _autosave-*
 */#auto_saved_files#
 */*-backups/*
+sw/mergetool/fsprobe/work/

@@ -43,7 +43,8 @@ import org.eclipse.ui.ide.IDE;
 /**
  * Окно «Программатор ПЛИС» - упрощённый аналог Gowin Programmer: запись конфигурации и программы
  * в одно из трёх мест (SRAM, встроенная flash, внешняя SPI-флеш) и очистка встроенной flash и внешней
- * SPI-флеш по отдельности. Работу делает sw/fpgaload/fpgaload.py (openFPGALoader из sdk/openfpgaloader);
+ * SPI-флеш по отдельности - для одной платы (файл .gwsoc). У ПЛИС без встроенной flash (GW2A-18, Tang Primer 20K)
+ * её пункты недоступны. Работу делает sw/fpgaload/fpgaload.py --gwsoc <файл> (openFPGALoader из sdk/openfpgaloader);
  * его вывод - в консоль «askoRV32 - программатор ПЛИС», ход - полосой в окне.
  * Окно немодальное: пока идёт запись, можно работать в Eclipse; закрытие окна запись не прерывает.
  */
@@ -64,6 +65,9 @@ public class ProgrammerDialog extends Dialog {
     private final IFile cfg;
     private boolean extCfg;         //Блок SPIFLASH хранит конфигурацию ПЛИС (fpgaConfig): ПЛИС собрана для MSPI
     private String bootAddr = "0x100000";
+    private boolean embeddedFlash = true;   //У ПЛИС есть встроенная flash конфигурации (GW1NR-9 - да, GW2A-18 - нет)
+    private String boardTitle;              //Название платы ("board.title" в .gwsoc)
+    private String cfgWrite = "около 3 мин";    //Сколько пишется битовый поток во внешнюю флеш
 
     private final List<Button> radios = new ArrayList<>();
     private final List<Control> locked = new ArrayList<>();    //Недоступны, пока идёт работа
@@ -105,13 +109,39 @@ public class ProgrammerDialog extends Dialog {
             extCfg = Pattern.compile("\"fpgaConfig\"\\s*:\\s*true").matcher(text).find();
             Matcher m = Pattern.compile("\"bootAddr\"\\s*:\\s*\"([^\"]*)\"").matcher(text);
             if (m.find()) bootAddr = m.group(1);
+            m = Pattern.compile("\"title\"\\s*:\\s*\"([^\"]*)\"").matcher(text);
+            if (m.find()) boardTitle = m.group(1);
         } catch (IOException | CoreException ignored) { }
+        //Свойства ПЛИС платы (встроенная flash, время записи) - от fpgaload describe: кристаллы описаны в devices.js
+        try {
+            Process p = new ProcessBuilder(python(), "-u", fpgaloadPath().getAbsolutePath(), "describe", "--gwsoc",
+                                           cfg.getLocation().toFile().getAbsolutePath()).redirectErrorStream(true).start();
+            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            if (p.waitFor() == 0) {
+                embeddedFlash = !out.contains("\"embeddedFlash\": false");
+                extCfg = out.contains("\"extCfg\": true");
+                Matcher m = Pattern.compile("\"cfgWrite\": \"([^\"]*)\"").matcher(out);
+                if (m.find()) cfgWrite = m.group(1);
+                m = Pattern.compile("\"title\": \"([^\"]*)\"").matcher(out);
+                if (m.find()) boardTitle = m.group(1);
+            }
+        } catch (IOException e) {
+            //Без Python окно всё равно откроется; запуск fpgaload сообщит об ошибке
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private File fpgaloadPath() {
+        File root = cfg.getLocation().toFile().getParentFile();
+        File sw = new File(root, jsonGenerator()).getParentFile().getParentFile();
+        return new File(sw, "fpgaload/fpgaload.py");
     }
 
     @Override
     protected void configureShell(Shell shell) {
         super.configureShell(shell);
-        shell.setText("Программатор ПЛИС askoRV32 - " + project.getName());
+        shell.setText("Программатор ПЛИС askoRV32 - " + (boardTitle != null ? boardTitle : project.getName()) + " (" + cfg.getName() + ")");
     }
 
     @Override
@@ -149,7 +179,7 @@ public class ProgrammerDialog extends Dialog {
         }
         if (radios.stream().noneMatch(Button::getSelection)) radios.get(0).setSelection(true);
         build = check(wr, "Собрать программу перед записью", true);
-        force = check(wr, "Внешняя флеш: записать битовый поток, даже если он не менялся (около 3 мин)", false);
+        force = check(wr, "Внешняя флеш: записать битовый поток, даже если он не менялся (" + cfgWrite + ")", false);
         Button prog = button(wr, "Прошить");
         prog.addListener(SWT.Selection, e -> program());
         getShell().setDefaultButton(prog);
@@ -158,8 +188,11 @@ public class ProgrammerDialog extends Dialog {
         Group er = group(area, "Очистка");
         ((GridLayout) er.getLayout()).numColumns = 2;
         Button ef = button(er, "Очистить встроенную flash");
-        label(er, extCfg ? "Стирает встроенную flash ПЛИС. При MSPI ПЛИС после этого снова загружается из внешней флеш."
-                         : "Стирает встроенную flash ПЛИС: при AUTO BOOT ПЛИС пуста до следующей записи.");
+        ef.setData("erase-flash");
+        ef.setEnabled(embeddedFlash);
+        label(er, !embeddedFlash ? "Недоступно: у ПЛИС этой платы нет встроенной flash."
+                 : extCfg ? "Стирает встроенную flash ПЛИС. При MSPI ПЛИС после этого снова загружается из внешней флеш."
+                          : "Стирает встроенную flash ПЛИС: при AUTO BOOT ПЛИС пуста до следующей записи.");
         ef.addListener(SWT.Selection, e -> eraseFlash());
         Button es = button(er, "Очистить SPI-флеш");
         label(er, "Стирает всю внешнюю флеш: битовый поток, образ программы и рабочие параметры программы.");
@@ -229,7 +262,7 @@ public class ProgrammerDialog extends Dialog {
                 "Стереть всю внешнюю SPI-флеш?\n\nБудут стёрты битовый поток ПЛИС, образ программы и все данные программы "
                 + "(рабочие параметры)." + (extCfg
                     ? "\n\nПЛИС загружается из внешней флеш (MSPI): после стирания она не запустится, пока не записать её "
-                      + "заново («Внешняя SPI-флеш» → «Прошить», около 3 мин)."
+                      + "заново («Внешняя SPI-флеш» → «Прошить», " + cfgWrite + ")."
                     : "")))
             return;
         run("Очистка SPI-флеш", List.of("erase-spiflash"), false);
@@ -248,13 +281,12 @@ public class ProgrammerDialog extends Dialog {
     private void run(String title, List<String> args, boolean buildFirst) {
         if (job != null) return;
         if (buildFirst) IDE.saveAllEditors(new IResource[] { project }, false);
-        File root = cfg.getLocation().toFile().getParentFile();
-        File fpgaload = new File(root, jsonGenerator()).getParentFile().getParentFile();
-        fpgaload = new File(fpgaload, "fpgaload/fpgaload.py");
-        File debug = new File(project.getLocation().toFile(), "Debug");
-        File cwd = debug.isDirectory() ? debug : project.getLocation().toFile();
+        //Плата - файл .gwsoc: fpgaload берёт из него ПЛИС, битовый поток и каталог сборки программы
+        File fpgaload = fpgaloadPath();
+        File cwd = project.getLocation().toFile();
         List<String> cmd = new ArrayList<>(List.of(python(), "-u", fpgaload.getAbsolutePath()));
         cmd.addAll(args);
+        cmd.addAll(List.of("--gwsoc", cfg.getLocation().toFile().getAbsolutePath()));
 
         MessageConsole console = console();
         ConsolePlugin.getDefault().getConsoleManager().showConsoleView(console);
@@ -356,7 +388,8 @@ public class ProgrammerDialog extends Dialog {
 
     private boolean usable(String target) {
         return switch (target) {
-            case "flash" -> !extCfg;        //ПЛИС для MSPI во встроенную flash не пишется (fpgaload откажет)
+            case "flash" -> embeddedFlash && !extCfg;   //Нет встроенной flash; ПЛИС для MSPI в неё не пишется (fpgaload откажет)
+            case "erase-flash" -> embeddedFlash;
             case "spiflash" -> extCfg;      //Без загрузчика программа из внешней флеш не возьмётся
             default -> true;
         };
@@ -364,9 +397,9 @@ public class ProgrammerDialog extends Dialog {
 
     private String note(String target) {
         if (usable(target)) return "";
-        return "spiflash".equals(target)
-            ? ". Недоступно: в конфигураторе блок SPIFLASH не хранит конфигурацию ПЛИС"
-            : ". Недоступно: ПЛИС собрана для внешней SPI-флеш (MSPI)";
+        if ("spiflash".equals(target)) return ". Недоступно: в конфигураторе блок SPIFLASH не хранит конфигурацию ПЛИС";
+        return !embeddedFlash ? ". Недоступно: у ПЛИС этой платы нет встроенной flash"
+                              : ". Недоступно: ПЛИС собрана для внешней SPI-флеш (MSPI)";
     }
 
     private void updateForce() {

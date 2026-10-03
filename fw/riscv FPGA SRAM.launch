@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <launchConfiguration type="org.eclipse.ui.externaltools.ProgramLaunchConfigurationType">
     <!-- Конфигурация и программа - в SRAM ПЛИС (до выключения питания) через openFPGALoader на драйвере WinUSB,
-         при любых выводах MODE. См. hw/info/debug.md, «Прошивка и отладка без смены драйвера». Сборка проекта,
-         затем sw/fpgaload/fpgaload.py sram: проверка, что отладка (OpenOCD) остановлена, mergetool вливает
-         программу в свежий битстрим Gowin (hw/impl/pnr/riscv.fs), загрузка -->
+         при любых выводах MODE. Плата - активная конфигурация сборки (ключ config): TangNano9K или TangPrimer20K.
+         См. hw/info/debug.md, «Прошивка и отладка без смены драйвера». Сборка проекта, затем
+         sw/fpgaload/fpgaload.py sram: проверка, что отладка (OpenOCD) остановлена, mergetool вливает программу в
+         свежий битовый поток платы (hw/boards/<плата>/impl/pnr/riscv.fs), загрузка -->
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_LOCATION" value="${env_var:ComSpec}"/>
-    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_TOOL_ARGUMENTS" value="/c py -u ..\..\sw\fpgaload\fpgaload.py sram"/>
-    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_WORKING_DIRECTORY" value="${project_loc:riscv}/Debug"/>
+    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_TOOL_ARGUMENTS" value="/c py -u ..\sw\fpgaload\fpgaload.py sram --config ${config_name:riscv}"/>
+    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_WORKING_DIRECTORY" value="${project_loc:riscv}"/>
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_LAUNCH_CONFIGURATION_BUILD_SCOPE" value="${projects:riscv}"/>
     <booleanAttribute key="org.eclipse.ui.externaltools.ATTR_INCLUDE_REFERENCED_PROJECTS" value="false"/>
     <booleanAttribute key="org.eclipse.ui.externaltools.ATTR_SHOW_CONSOLE" value="true"/>

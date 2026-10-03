@@ -1,0 +1,42 @@
+--- a/src/ftdiJtagMPSSE.cpp	2026-10-03 17:03:48.514748200 +0500
++++ b/src/ftdiJtagMPSSE.cpp	2026-10-03 17:04:12.046881500 +0500
+@@ -263,6 +263,9 @@
+ 	if ((nb_byte + _num + 3) > _buffer_size)
+ 		mpsse_write();
+ 
++	/* askoRV32: the tail of a long write-only shift goes bit by bit (see below) */
++	const bool split_tail = tdi && !tdo && nb_byte > 0;
++
+ 	if ((nb_byte * 8) + nb_bit != real_len) {
+ 		printf("pas cool\n");
+ 		throw std::exception();
+@@ -310,11 +313,24 @@
+ 		display("%s read/write %d bit\n", __func__, nb_bit);
+ 		tx_buf[0] |= MPSSE_BITMODE;
+ 		tx_buf[0] |= MPSSE_LSB;
+-		tx_buf[1] = nb_bit - 1;
+-		mpsse_store(tx_buf, 2);
+-		if (tdi) {
+-			display("%s last_bit %x size %d\n", __func__, last_bit, nb_bit-1);
+-			mpsse_store(last_bit);
++		if (split_tail) {
++			/* askoRV32: residual bits one by one, so the data byte of a bit command
++			 * is only 0x00/0x01. The BL616 FT2232 emulation (Tang Primer 20K
++			 * on-board debugger) stops answering on "0x1B 0x06 0x71" - GW2A external
++			 * flash page whose last byte is 0x8E. Long shifts only: short ones (GW1N
++			 * boundary scan, IR) carry fixed patterns and stay as they were. */
++			tx_buf[1] = 0;
++			for (int i = 0; i < nb_bit; i++) {
++				mpsse_store(tx_buf, 2);
++				mpsse_store((unsigned char)((last_bit >> i) & 1));
++			}
++		} else {
++			tx_buf[1] = nb_bit - 1;
++			mpsse_store(tx_buf, 2);
++			if (tdi) {
++				display("%s last_bit %x size %d\n", __func__, last_bit, nb_bit-1);
++				mpsse_store(last_bit);
++			}
+ 		}
+ 		if (tdo && !last) {
+ 			mpsse_read(rx_ptr, 1);

@@ -145,7 +145,8 @@ public class GwsocEditor extends EditorPart {
         }
     }
 
-    //Описание модуля из библиотеки: hw/src/periph/<тип>/README.md (каталог hw - из paths.hw файла .gwsoc)
+    //Описание модуля из библиотеки: hw/src/periph/<тип>/README.md (общие исходники - paths.src файла .gwsoc,
+    //в файлах старого вида - каталог src внутри paths.hw)
     private void sendReadme(String type) {
         String text;
         if (!type.matches("[a-z0-9_]+")) {
@@ -153,8 +154,10 @@ public class GwsocEditor extends EditorPart {
         } else {
             try (InputStream in = file.getContents(true)) {
                 String cfg = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-                File hw = new File(file.getLocation().toFile().getParentFile(), jsonPath(cfg, "hw", "../hw"));
-                File md = new File(hw, "src/periph/" + type + "/README.md");
+                File dir = file.getLocation().toFile().getParentFile();
+                String srcPath = jsonPath(cfg, "src", null);
+                File src = srcPath != null ? new File(dir, srcPath) : new File(new File(dir, jsonPath(cfg, "hw", "../hw")), "src");
+                File md = new File(src, "periph/" + type + "/README.md");
                 text = md.isFile() ? java.nio.file.Files.readString(md.toPath(), StandardCharsets.UTF_8)
                                    : "Описание не найдено: " + md.getCanonicalPath();
             } catch (IOException | CoreException e) {
@@ -176,7 +179,7 @@ public class GwsocEditor extends EditorPart {
         }
     }
 
-    //Занятые ресурсы последней сборки (генератор пишет hw/impl/socgen/resources.json) - для панели ресурсов
+    //Занятые ресурсы последней сборки (генератор пишет impl/socgen/resources.json в каталоге платы paths.hw) - для панели ресурсов
     private void sendResources(String cfgText) {
         String res = "";
         try {

@@ -12,7 +12,7 @@ hw/src/periph/spiflash/README.md, «Формат образа»).
 которому программа работает): .text - в IMEM с 0, .data/.rodata - в DMEM с 0x1000_0000 (у .data в
 GW1NR9.lds адрес загрузки LMA 0x8000 - для mergetool, загрузчику он не нужен). .bss обнуляет start.S.
 
-Запуск:  py sw/bootimage/bootimage.py fw/Debug/riscv.elf [-o riscv_flash.bin] [--imem-kb 16 --dmem-kb 8]
+Запуск:  py sw/bootimage/bootimage.py fw/TangNano9K/riscv.elf [-o riscv_flash.bin] [--imem-kb 16 --dmem-kb 8]
 Из Python: segments_from_elf(path) -> [(адрес, байты)], build(segments) -> bytes.
 """
 import argparse

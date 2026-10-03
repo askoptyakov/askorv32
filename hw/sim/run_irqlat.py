@@ -29,7 +29,7 @@ import run_tests as rt  # noqa: E402
 REPO = rt.HW_DIR.parent
 FW = REPO / "fw"
 SRC = rt.SIM_DIR / "bench" / "irqlat"
-#Флаги проекта Eclipse (fw/Debug/makefile), кроме -O
+#Флаги проекта Eclipse (fw/TangNano9K/makefile), кроме -O
 FLAGS = ("-march=rv32im_zicsr -mabi=ilp32 -mtune=size -mcmodel=medany -msmall-data-limit=8 -mstrict-align "
          "-msave-restore -fmessage-length=0 -ffunction-sections -fdata-sections -fno-builtin -g").split()
 #Путь: вход таблицы векторов, точка входа, функция устройства (для диспетчера), метка полезного кода
@@ -42,7 +42,7 @@ def build(prefix, opt):
     out = rt.BUILD_DIR / f"irqlat{opt}"
     out.mkdir(parents=True, exist_ok=True)
     elf = out / "irqlat.elf"
-    r = rt.run([prefix + "gcc", *FLAGS, opt, f"-I{FW / 'Core' / 'Inc'}", "-nostartfiles",
+    r = rt.run([prefix + "gcc", *FLAGS, opt, f"-I{FW / 'boards' / 'tangnano9k'}", f"-I{FW / 'Core' / 'Inc'}", "-nostartfiles",
                 "-T", FW / "GW1NR9.lds", "-Wl,--gc-sections", "-o", elf,
                 FW / "Core" / "Startup" / "start.S", FW / "Core" / "Src" / "plic.c", SRC / "irqlat.c"])
     if r.returncode:

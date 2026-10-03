@@ -7,7 +7,7 @@ sys.stdout.reconfigure(encoding="utf-8") #Вывод в UTF-8: консоль с
 imem_bytesize = 0
 dmem_bytesize = 0
 
-input = "fw/Debug/riscv.bin" #argv[1]
+input = "fw/TangNano9K/riscv.bin" #argv[1]
 output_i = "hw/src/mem_init/i.mem" #argv[2]
 output_d = "hw/src/mem_init/d.mem" #argv[3]
 

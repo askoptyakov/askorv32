@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 """socgen - генератор проекта ПЛИС askoRV32 из файла конфигурации .gwsoc.
 
-По файлу fw/riscv.gwsoc (его редактирует визуальный конфигуратор в Eclipse) создаёт:
-  hw/src/top.sv     - верхний уровень платы: выводы, параметры процессора cpu.sv, карта адресов
-                    и шина пользовательской периферии, сами устройства и их прерывания;
-  hw/src/riscv.cst  - назначение выводов (IO_LOC/IO_PORT) для Gowin EDA и nextpnr;
-  fw/Core/Inc/soc.h - для прошивки: частота, адреса и указатели устройств, номера источников PLIC
-                    и имена обработчиков, настройки устройств, имена выводов GPIO (<ЦЕПЬ>_PIN/_PORT).
-С ключом --build собирает проект ПЛИС: в Gowin EDA (gw_sh, проект hw/riscv.gprj) или открытым
-маршрутом Yosys + nextpnr-himbaechel + apicula - по build.toolchain в .gwsoc или ключу --toolchain.
+Плата - файл fw/boards/<плата>/<плата>.gwsoc (его редактирует визуальный конфигуратор в Eclipse): кристалл
+("device", номер детали Gowin; свойства семейства - в web/devices.js), ядро, такт, периферия и выводы.
+По нему создаёт (каталоги - из "paths" в .gwsoc):
+  hw/boards/<плата>/top.sv     - верхний уровень платы: выводы, параметры процессора cpu.sv, карта адресов
+                               и шина пользовательской периферии, сами устройства и их прерывания;
+  hw/boards/<плата>/riscv.cst  - назначение выводов (IO_LOC/IO_PORT) для Gowin EDA и nextpnr;
+  fw/boards/<плата>/soc.h      - для прошивки: плата, частота, адреса и указатели устройств, номера
+                               источников PLIC и имена обработчиков, настройки устройств, имена выводов GPIO;
+и обновляет кристалл в проекте Gowin hw/boards/<плата>/riscv.gprj (элемент Device) и напряжение ядра (VCC)
+в его настройке процесса. Общие исходники (ядро, cpu.sv, периферия) - в hw/src.
+С ключом --build собирает проект ПЛИС: в Gowin EDA (gw_sh, проект платы) или открытым маршрутом
+Yosys + nextpnr-himbaechel + apicula - по build.toolchain в .gwsoc или ключу --toolchain.
 
 Пользовательская периферия - список экземпляров "periph" (тип, имя, адрес, настройки, выводы);
 имя экземпляра - имя устройства в прошивке (указатель на регистры), в top.sv - его строчная форма.
 Правила (адреса, rPLL, проверки, имена) продублированы в web/app.js - при изменении править оба места.
 
-Запуск:  py sw/socgen/socgen.py fw/riscv.gwsoc [--check] [--build [--toolchain gowin|apicula]]
+Запуск:  py sw/socgen/socgen.py fw/boards/tangnano9k/tangnano9k.gwsoc [--check] [--build [--toolchain gowin|apicula]]
                                                 [--gowin <каталог IDE>] [--oss C:/oss-cad-suite]
 """
 import argparse
@@ -29,13 +33,15 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[1]          #Корень репозитория askoRV32
 
 # ============================================================================================
 # Данные кристалла и правила
 # ============================================================================================
-JTAG_PINS = {5: "TMS", 6: "TCK", 7: "TDI", 8: "TDO"}
+#Свойства кристалла (пределы rPLL, ресурсы, выводы JTAG и двойного назначения...) - в web/devices.js
+#(создаёт mkdevices.py), здесь - только общие для семейств правила
 ODIV_SET = [2, 4, 8, 16, 32, 48, 64, 80, 96, 112, 128]
-PLL = dict(inMin=3, inMax=400, pfdMin=3, pfdMax=400, vcoMin=400, vcoMax=1200, outMin=3.125, outMax=600)
+DEFAULT_DEVICE = "GW1NR-LV9QN88PC6/I5"
 
 #Библиотека устройств (как TYPES в web/app.js). slot - окно адресов первого экземпляра при "auto";
 #cat - группа на схеме: iface - интерфейсы, gpio - выводы общего назначения, custom - своя периферия
@@ -51,16 +57,11 @@ UART_PARITY = {"none": 0, "even": 1, "odd": 2}
 FIFO_DEPTHS = [8, 16, 32]
 FLASH_MB = [1, 2, 4, 8, 16]
 BOOT_REGION = 0x10000      #Область образа программы во флеш: 64 кБайт (IMEM + DMEM не больше 48 кБайт)
-#Флеш хранит и конфигурацию ПЛИС (режим MSPI, вывод MODE1 = 1): битовый поток - с адреса 0. Для GW1NR-9 он
-#442 кБайт (hw/impl/pnr/riscv.bin), поэтому образ программы и данные - не ниже 0x80000; без загрузки
-#программы свободная область начинается с 1 МБайт
-CFG_REGION = 0x80000
-CFG_USER = 0x100000
-#Выводы двойного назначения, занятые как обычные I/O: флажок настройки процесса Gowin EDA
-#(hw/impl/riscv_process_config.json) и ключ gowin_pack. Признак - функция вывода (cfg в device.js)
-DUAL_PURPOSE = {"MSPI": (("MCLK", "MCS_N", "MO", "MI"), "--mspi_as_gpio")}
+#Флеш хранит и конфигурацию ПЛИС (режим MSPI): битовый поток - с адреса 0, его размер - cfgRegion кристалла
+#(GW1NR-9 - 442 кБайт, образ программы не ниже 0x80000; GW2A-18 - 882 кБайт, не ниже 0x100000).
+#Выводы двойного назначения, занятые как обычные I/O (MSPI, у GW2A и SSPI, READY, DONE, RECONFIG_N): флажок
+#настройки процесса Gowin EDA и ключ gowin_pack - dualPurpose кристалла, признак - функция вывода (cfg)
 MEM_KB = [8, 16, 32]
-BSRAM_TOTAL = 26           #Блоков BSRAM (18 кбит, 2 кБайт данных) в GW1NR-9
 FIXED_REGIONS = {"IMEM": 0x00, "CLINT": 0x02, "PLIC": 0x0C, "DMEM": 0x10, "SIM": 0x1F}
 AUTO_FIRST, AUTO_LAST = 0x11, 0x1E
 PLACE_OPTIONS = {"0": "быстрее компиляция", "1": "лучше трассируемость", "2": "лучше тайминги"}
@@ -79,9 +80,9 @@ RESERVED_NETS = {"tck_pad_i", "tms_pad_i", "tdi_pad_i", "tdo_pad_o", "clk_per", 
                  "bus_per_Read", "bus_per_Addr", "bus_per_WData", "bus_per_RData", "irq_local", "irq_src",
                  "sRead", "top", "cpu", "permux", "memmux", "gpio_top", "stim_top", "tm1638_top", "uart_top",
                  "spiflash_top", "boot_hold", "boot_Write", "boot_Addr", "boot_WData",
-                 "CORE_TYPE", "M_EXT", "DIV_BPC", "IMEM_TYPE", "BSRAM_IMEM_SIZE", "SYNTH_IMEM_SIZE", "IMEM_INIT_FILE",
+                 "CORE_TYPE", "M_EXT", "DIV_BPC", "RF_TYPE", "IMEM_TYPE", "BSRAM_IMEM_SIZE", "SYNTH_IMEM_SIZE", "IMEM_INIT_FILE",
                  "DMEM_TYPE", "BSRAM_DMEM_SIZE", "SYNTH_DMEM_SIZE", "DMEM_INIT_FILE", "DEBUG_EN", "PLIC_SOURCES",
-                 "FCLKIN", "XTAL_KHZ", "PLL_IDIV_SEL", "PLL_FBDIV_SEL", "PLL_ODIV_SEL", "WIN_MASK", "CLK_BASE_MHZ",
+                 "FCLKIN", "PLL_DEVICE", "XTAL_KHZ", "PLL_IDIV_SEL", "PLL_FBDIV_SEL", "PLL_ODIV_SEL", "WIN_MASK", "CLK_BASE_MHZ",
                  "CLK_DMEM_MHZ"}
 #Имена экземпляров, занятые в прошивке (periphery.h, soc.h, драйверы)
 RESERVED_C = {"CLINT", "PLIC", "SOC", "SYSCLK_HZ", "MTIME_HZ", "LI", "IRQ", "NULL", "MODE", "OUT", "IN"}
@@ -91,12 +92,31 @@ class ConfigError(Exception):
     pass
 
 
-def load_device():
-    text = (HERE / "web" / "device.js").read_text(encoding="utf-8")
-    start = text.index("{", text.index("GWSOC_DEVICE"))
-    dev = json.loads(text[start:text.rindex("}") + 1])
+def load_devices():
+    text = (HERE / "web" / "devices.js").read_text(encoding="utf-8")
+    start = text.index("{", text.index("GWSOC_DEVICES"))
+    return json.loads(text[start:text.rindex("}") + 1])
+
+
+def load_device(part=None):
+    """Кристалл по номеру детали ("device" в .gwsoc): выводы корпуса и свойства семейства из web/devices.js."""
+    devs = load_devices()
+    part = part or DEFAULT_DEVICE
+    if part not in devs:
+        raise ConfigError(f"Кристалл «{part}» не поддерживается: есть {', '.join(devs)}")
+    dev = devs[part]
     dev["byNum"] = {p["n"]: p for p in dev["pins"]}
+    #Выводы JTAG ПЛИС (функции TMS/TCK/TDI/TDO): их занимает примитив GW_JTAG при включённом отладчике
+    dev["jtag"] = {p["n"]: f for p in dev["pins"] for f in ("TMS", "TCK", "TDI", "TDO")
+                   if f in p.get("cfg", "").split("/")}
     return dev
+
+
+def pin_key(pin):
+    """Вывод из .gwsoc: номер у корпусов QFN (число), имя шарика у BGA (строка "H11")."""
+    if isinstance(pin, str) and pin.isdigit():
+        return int(pin)
+    return pin
 
 
 def slot_hex(slot):
@@ -161,13 +181,13 @@ def inst_signals(inst):
 
 def inst_pin(inst, key):
     if key.startswith("line"):
-        return inst["lines"][int(key[4:])]
-    return inst.get(key)
+        return pin_key(inst["lines"][int(key[4:])])
+    return pin_key(inst.get(key))
 
 
 def signals(m):
-    s = [dict(id="clk", inst=None, key="clk", name="Кварц", dir="input", pin=m["clock"].get("xtalPin")),
-         dict(id="rst", inst=None, key="rst", name="Сброс rst_n", dir="input", pin=m["reset"].get("pin"))]
+    s = [dict(id="clk", inst=None, key="clk", name="Кварц", dir="input", pin=pin_key(m["clock"].get("xtalPin"))),
+         dict(id="rst", inst=None, key="rst", name="Сброс rst_n", dir="input", pin=pin_key(m["reset"].get("pin")))]
     for inst in insts(m):
         for key, label, d, _ in inst_signals(inst):
             s.append(dict(id=f"{inst['name']}.{key}", inst=inst, key=key, name=f"{inst['name']} {label}",
@@ -239,7 +259,8 @@ def address_map(m, errors):
 
 
 # --- rPLL ---
-def pll_eval(fin, idiv, fbdiv, odiv):
+def pll_eval(fin, idiv, fbdiv, odiv, PLL):
+    """Проверка делителей rPLL по пределам кристалла PLL (pll в devices.js)."""
     pfd, fout = fin / (idiv + 1), fin * (fbdiv + 1) / (idiv + 1)
     vco = fout * odiv
     errs = []
@@ -258,7 +279,7 @@ def pll_eval(fin, idiv, fbdiv, odiv):
     return pfd, fout, vco, errs
 
 
-def pll_solve(fin, target):
+def pll_solve(fin, target, PLL):
     """Минимальная ошибка частоты, затем наименьшие делители, затем наибольшая VCO."""
     best = None
     for idiv in range(64):
@@ -278,13 +299,30 @@ def pll_solve(fin, target):
     return best[1:] if best else None
 
 
+def dev_of(m):
+    """Кристалл конфигурации (загружается в main по "device")."""
+    return m["_dev"]
+
+
+def board_title(m):
+    """Название платы ("board.title" в .gwsoc)."""
+    return (m.get("board") or {}).get("title") or (m.get("board") or {}).get("id") or "плата не указана"
+
+
+def jtag_pins_text(dev):
+    """Выводы JTAG кристалла для комментариев: «TMS 5, TCK 6, TDI 7, TDO 8»."""
+    by_f = {f: n for n, f in dev["jtag"].items()}
+    return ", ".join(f"{f} {by_f[f]}" for f in ("TMS", "TCK", "TDI", "TDO") if f in by_f)
+
+
 def resolve_pll(m):
     c, p = m["clock"], m["clock"]["pll"]
+    lim = dev_of(m)["pll"]
     if p.get("mode", "auto") == "auto":
-        r = pll_solve(float(c["xtalMHz"]), float(p["targetMHz"]))
+        r = pll_solve(float(c["xtalMHz"]), float(p["targetMHz"]), lim)
         if r:
             p["idiv"], p["fbdiv"], p["odiv"] = r
-    return pll_eval(float(c["xtalMHz"]), int(p["idiv"]), int(p["fbdiv"]), int(p["odiv"]))
+    return pll_eval(float(c["xtalMHz"]), int(p["idiv"]), int(p["fbdiv"]), int(p["odiv"]), lim)
 
 
 # --- Частота шины периферии, UART, прерывания, стандарты выводов ---
@@ -315,7 +353,7 @@ def flash_info(m, f):
     cfg = bool(f.get("fpgaConfig", False))
     boot = cfg
     baddr = parse_base(f.get("bootAddr", "0x000000")) or 0
-    user = baddr + BOOT_REGION if boot else (CFG_USER if cfg else 0)
+    user = baddr + BOOT_REGION if boot else (dev_of(m)["cfgUser"] if cfg else 0)
     return dict(div=div, sck=sysclk_hz(m) / (2 * (div + 1)), size=size, boot=boot, bootAddr=baddr,
                 fpgaConfig=cfg, user=user, userSize=max(0, size - user))
 
@@ -332,18 +370,33 @@ def boot_flash(m):
 
 
 def dual_purpose(m, dev):
-    """Флажки выводов двойного назначения для текущей раскладки: {"MSPI": True/False}."""
+    """Флажки выводов двойного назначения для текущей раскладки: {"MSPI": True/False, ...} (dualPurpose кристалла)."""
     used = [dev["byNum"][s["pin"]] for s in signals(m) if s["pin"] in dev["byNum"]]
     return {flag: any(set(p.get("cfg", "").split("/")) & set(funcs) for p in used)
-            for flag, (funcs, _) in DUAL_PURPOSE.items()}
+            for flag, (funcs, _) in dev["dualPurpose"].items()}
+
+
+def rf_bsram(m):
+    """Регистровый файл на BSRAM (core.rfType = "bsram"): только у конвейерного ядра."""
+    core = m["core"]
+    return core.get("rfType", "lut") in ("bsram", "bsram-edge") and core.get("coreType", "pipeline") != "singlecycle"
+
+
+def rf_type_value(m):
+    """Параметр RF_TYPE: 0 - LUT; регистровый файл на BSRAM - режим чтения по спаду (2, мера Ч19). Режим 1 (чтение на
+    фронте D -> E) остался в core.sv для сравнения: core.rfType = "bsram-edge"."""
+    if not rf_bsram(m):
+        return 0
+    return 1 if m["core"].get("rfType") == "bsram-edge" else 2
 
 
 def bsram_blocks(m):
-    """Блоки BSRAM: IMEM и DMEM по 2 кБайт на блок, шрифт каждого TM1638 - один блок. (занято, всего)."""
+    """Блоки BSRAM: IMEM и DMEM по 2 кБайт на блок, шрифт каждого TM1638 - один блок, регистровый файл на BSRAM -
+    два блока. (занято, всего)."""
     core = m["core"]
     used = sum(int((core.get(k) or {}).get("kb", 8)) // 2 for k in ("imem", "dmem")
                if (core.get(k) or {}).get("type", "bsram") == "bsram")
-    return used + len(insts(m, "tm1638")), BSRAM_TOTAL
+    return used + len(insts(m, "tm1638")) + (2 if rf_bsram(m) else 0), dev_of(m)["resources"]["bsram"]
 
 
 def irq_map(m):
@@ -420,8 +473,8 @@ def validate(m, dev):
         if not p or p["type"] != "io":
             errors.append(f"{s['name']}: вывод {pin} не является I/O")
             continue
-        if m["core"].get("debug") and pin in JTAG_PINS:
-            errors.append(f"{s['name']}: вывод {pin} занят JTAG ({JTAG_PINS[pin]})")
+        if m["core"].get("debug") and pin in dev["jtag"]:
+            errors.append(f"{s['name']}: вывод {pin} занят JTAG ({dev['jtag'][pin]})")
         by_pin.setdefault(pin, []).append(s)
     for pin, lst in by_pin.items():
         if len(lst) > 1:
@@ -487,6 +540,10 @@ def validate(m, dev):
     core = m["core"]
     if core.get("coreType", "pipeline") not in ("pipeline", "singlecycle"):
         errors.append("Ядро: тип pipeline или singlecycle")
+    if core.get("rfType", "lut") not in ("lut", "bsram", "bsram-edge"):
+        errors.append("Ядро: регистровый файл (rfType) - lut, bsram или bsram-edge")
+    elif core.get("rfType") in ("bsram", "bsram-edge") and core.get("coreType") == "singlecycle":
+        warns.append("Ядро: регистровый файл на BSRAM - только у конвейерного ядра, однотактное остаётся на LUT")
     if int(core.get("divBpc", 2)) not in (1, 2, 4):
         errors.append("Ядро: бит частного за такт (divBpc) - 1, 2 или 4")
     for k in ("imem", "dmem"):
@@ -549,8 +606,9 @@ def validate(m, dev):
                     errors.append(f"{n}: адрес образа программы кратен 0x10000 (64 кБайт)")
                 elif ba + BOOT_REGION > fi["size"]:
                     errors.append(f"{n}: адрес образа программы 0x{ba:06X} вне флеш ({fi['size'] // 1048576} МБайт)")
-                elif ba < CFG_REGION:
-                    errors.append(f"{n}: флеш хранит конфигурацию ПЛИС (с адреса 0) - образ программы не ниже 0x{CFG_REGION:06X}")
+                elif ba < dev["cfgRegion"]:
+                    errors.append(f"{n}: флеш хранит конфигурацию ПЛИС {dev['series']} (с адреса 0) - "
+                                  f"образ программы не ниже 0x{dev['cfgRegion']:06X}")
     if len([i for i in insts(m, "spiflash") if i.get("fpgaConfig", False)]) > 1:
         errors.append("Конфигурацию ПЛИС может хранить только одна флеш (выводы MSPI)")
 
@@ -561,8 +619,8 @@ def validate(m, dev):
     if lr and lr not in LOADING_RATES:
         errors.append(f"Loading Rate: одно из значений 250 МГц / N ({', '.join(LOADING_RATES)} МГц), сейчас «{lr}»")
 
-    xp = m["clock"].get("xtalPin")
-    if xp in dev["byNum"] and not re.search(r"GCLK|PLL_T_IN", dev["byNum"][xp].get("cfg", "")):
+    xp = pin_key(m["clock"].get("xtalPin"))
+    if xp in dev["byNum"] and not re.search(r"GCLK|PLL\d?_T_IN", dev["byNum"][xp].get("cfg", ""), re.I):
         warns.append(f"Кварц на выводе {xp} без GCLK/PLL_IN: такт пойдёт по обычной трассировке")
     errors += ["rPLL: " + e for e in resolve_pll(m)[3]]
     bases = address_map(m, errors)
@@ -623,8 +681,9 @@ def gen_top(m, bases, cfg_rel):
     w("//==============================================================================================")
     w("// top.sv - ВЕРХНИЙ УРОВЕНЬ askoRV32. ФАЙЛ СОЗДАН КОНФИГУРАТОРОМ ПЛИС - НЕ РЕДАКТИРУЙТЕ ВРУЧНУЮ.")
     w(f"// Источник: {cfg_rel}; генератор: sw/socgen/socgen.py (кнопка «Собрать» в Eclipse).")
-    w("// Процессор (ядро, память, отладчик, CLINT, PLIC) - в cpu.sv, он правится вручную; здесь -")
+    w("// Процессор (ядро, память, отладчик, CLINT, PLIC) - в hw/src/cpu.sv, он правится вручную; здесь -")
     w("// параметры платы для cpu и пользовательская периферия на его порту bus_per.")
+    w(f"// Плата: {board_title(m)}; ПЛИС: {dev_of(m)['part']}.")
     w("//==============================================================================================")
     w("")
     coretype = 1 if core.get("coreType") == "singlecycle" else 0
@@ -635,6 +694,7 @@ def gen_top(m, bases, cfg_rel):
         ("bit", "CORE_TYPE", f"{coretype}", "1 - однотактное, 0 - конвейерное"),
         ("bit", "M_EXT", f"{1 if core.get('mExt', True) else 0}", "расширение M"),
         ("int", "DIV_BPC", f"{core.get('divBpc', 2)}", "бит частного за такт: 1, 2, 4"),
+        ("int", "RF_TYPE", f"{rf_type_value(m)}", "регистровый файл: 0 - LUT; BSRAM (2 блока SDPB): 1 - чтение на фронте D->E, 2 - по спаду в D"),
         ("//Память команд и данных", None, None),
         ("bit", "IMEM_TYPE", f"{1 if im.get('type', 'bsram') == 'bsram' else 0}", "1 - BSRAM, 0 - синтезированная"),
         ("int", "BSRAM_IMEM_SIZE", f"{im.get('kb', 8)}", "кБайт: 8/16/32"),
@@ -645,10 +705,11 @@ def gen_top(m, bases, cfg_rel):
         ("int", "SYNTH_DMEM_SIZE", f"{dm.get('synthWords', 256)}", "слов по 4 Байт"),
         ("", "DMEM_INIT_FILE", json.dumps(dm.get("init", "mem_init/d.mem")), None),
         ("//Отладка и прерывания", None, None),
-        ("bit", "DEBUG_EN", f"{1 if core.get('debug', True) else 0}", "модуль отладки JTAG (выводы 5-8)"),
+        ("bit", "DEBUG_EN", f"{1 if core.get('debug', True) else 0}", "модуль отладки JTAG (выводы " + jtag_pins_text(dev_of(m)) + ")"),
         ("int", "PLIC_SOURCES", f"{core.get('plicSources', 8)}", "источников PLIC (1..31)"),
         (f"//Тактирование: кварц {fmt_mhz(xtal)} МГц, rPLL -> {fmt_mhz(fout)} МГц (PFD {fmt_mhz(pfd)}, VCO {fmt_mhz(vco)} МГц)", None, None),
         ("", "FCLKIN", json.dumps(fmt_mhz(xtal)), "частота кварца, МГц (строка для rPLL)"),
+        ("", "PLL_DEVICE", json.dumps(dev_of(m)["pllDevice"]), "кристалл для rPLL"),
         ("int", "XTAL_KHZ", f"{round(xtal * 1000)}", "частота кварца, кГц"),
         ("int", "PLL_IDIV_SEL", f"{p['idiv']}", None),
         ("int", "PLL_FBDIV_SEL", f"{p['fbdiv']}", None),
@@ -698,7 +759,7 @@ def gen_top(m, bases, cfg_rel):
     w(");")
     if debug:
         w("`ifdef GWSOC_NO_JTAG_PINS")
-        w("    //Сборка без выводов JTAG (apicula не поддерживает GW_JTAG для GW1N-9C, DEBUG_EN = 0)")
+        w("    //Сборка без выводов JTAG (apicula для этого кристалла не поддерживает GW_JTAG, DEBUG_EN = 0)")
     else:
         w("    //Отладчик выключен (core.debug = false): выводы JTAG остаются за ПЛИС")
     w("    logic tck_pad_i = 1'b0, tms_pad_i = 1'b1, tdi_pad_i = 1'b0;")
@@ -735,11 +796,11 @@ def gen_top(m, bases, cfg_rel):
     w("    logic [ 3:0] boot_Write;")
     w("    logic [31:0] boot_Addr, boot_WData;")
     w("")
-    w("    cpu #(.CORE_TYPE(CORE_TYPE), .M_EXT(M_EXT), .DIV_BPC(DIV_BPC),")
+    w("    cpu #(.CORE_TYPE(CORE_TYPE), .M_EXT(M_EXT), .DIV_BPC(DIV_BPC), .RF_TYPE(RF_TYPE),")
     w("          .IMEM_TYPE(IMEM_TYPE), .BSRAM_IMEM_SIZE(BSRAM_IMEM_SIZE), .SYNTH_IMEM_SIZE(SYNTH_IMEM_SIZE), .IMEM_INIT_FILE(IMEM_INIT_FILE),")
     w("          .DMEM_TYPE(DMEM_TYPE), .BSRAM_DMEM_SIZE(BSRAM_DMEM_SIZE), .SYNTH_DMEM_SIZE(SYNTH_DMEM_SIZE), .DMEM_INIT_FILE(DMEM_INIT_FILE),")
     w("          .DEBUG_EN(DEBUG_EN), .PLIC_SOURCES(PLIC_SOURCES),")
-    w("          .FCLKIN(FCLKIN), .PLL_IDIV_SEL(PLL_IDIV_SEL), .PLL_FBDIV_SEL(PLL_FBDIV_SEL), .PLL_ODIV_SEL(PLL_ODIV_SEL))")
+    w("          .FCLKIN(FCLKIN), .PLL_DEVICE(PLL_DEVICE), .PLL_IDIV_SEL(PLL_IDIV_SEL), .PLL_FBDIV_SEL(PLL_FBDIV_SEL), .PLL_ODIV_SEL(PLL_ODIV_SEL))")
     w("        cpu (.clk(" + net["clk"] + "), .rst_n(" + net["rst"] + "),")
     w("             .tck_pad_i(tck_pad_i), .tms_pad_i(tms_pad_i), .tdi_pad_i(tdi_pad_i), .tdo_pad_o(tdo_pad_o),")
     w("             .clk_per(clk_per), .rst_per(rst_per),")
@@ -869,9 +930,10 @@ def gen_cst(m, dev, cfg_rel):
     sigs = [s for s in signals(m) if s["pin"] is not None]
     L = [
         "//Physical Constraints file",
-        "//Part Number: " + m.get("device", dev["part"]),
-        "//Device: GW1NR-9",
-        "//Device Version: C",
+        "//Part Number: " + dev["part"],
+        "//Device: " + dev["series"],
+        "//Device Version: " + dev["version"],
+        "//Board: " + board_title(m),
         f"//ФАЙЛ СОЗДАН КОНФИГУРАТОРОМ ПЛИС (sw/socgen/socgen.py) из {cfg_rel} - не редактируйте вручную.",
         "",
     ]
@@ -915,6 +977,11 @@ def gen_soc_h(m, bases, cfg_rel):
     w(" */")
     w("#ifndef __SOC_H")
     w("#define __SOC_H")
+    w("")
+    w("/* Плата и ПЛИС */")
+    w(cdef("SOC_BOARD", json.dumps(board_title(m), ensure_ascii=False)))
+    w(cdef("SOC_FPGA", json.dumps(dev_of(m)["part"]), dev_of(m)["series"]))
+    w(cdef("SOC_FPGA_EMBEDDED_FLASH", "1" if dev_of(m)["embeddedFlash"] else "0", "Есть встроенная flash конфигурации"))
     w("")
     w("/* Ядро и память */")
     w(cdef("SOC_CORE_PIPELINE", str(0 if core.get('coreType') == 'singlecycle' else 1), "1 - конвейерное, 0 - однотактное"))
@@ -1030,9 +1097,9 @@ def gen_soc_h(m, bases, cfg_rel):
 
 
 def sync_sdc_clock(hw, net):
-    """Ограничение такта кварца в riscv.sdc ссылается на порт top.sv - его имя задаёт конфигуратор (цепь вывода
+    """Ограничение такта кварца в riscv.sdc платы ссылается на порт top.sv - его имя задаёт конфигуратор (цепь вывода
     кварца). Генератор меняет в строке create_clock -name clk только имя порта; остальное правится вручную."""
-    sdc = hw / "src" / "riscv.sdc"
+    sdc = hw / "riscv.sdc"
     if not sdc.exists() or not net:
         return None
     t = sdc.read_bytes().decode("utf-8")
@@ -1112,6 +1179,7 @@ def build_oss(m, hw, cst, oss_arg, fmax_mhz):
     env = dict(os.environ)
     env["PATH"] = os.pathsep.join([str(oss / "bin"), str(oss / "lib"), env.get("PATH", "")])
     env["YOSYSHQ_ROOT"] = str(oss) + os.sep
+    dev = dev_of(m)
     out = hw / "impl_oss"
     out.mkdir(exist_ok=True)
     srcs = gprj_sources(hw / "riscv.gprj")
@@ -1119,7 +1187,8 @@ def build_oss(m, hw, cst, oss_arg, fmax_mhz):
     ys = out / "synth.ys"
     rel = [os.path.relpath(s, out).replace("\\", "/") for s in srcs]
     # Примитивы Gowin, которые встречаются в исходниках, - описания (* blackbox *) с параметрами из Yosys
-    lib = [oss / "share" / "yosys" / "gowin" / f for f in ("cells_sim.v", "cells_xtra_gw1n.v")]
+    xtra = "cells_xtra_gw2a.v" if dev["family"].startswith("GW2A") else "cells_xtra_gw1n.v"
+    lib = [oss / "share" / "yosys" / "gowin" / f for f in ("cells_sim.v", xtra) if (oss / "share" / "yosys" / "gowin" / f).exists()]
     src_text = "\n".join(s.read_text(encoding="utf-8", errors="replace") for s in srcs)
     prims = []
     for lf in lib:
@@ -1131,15 +1200,21 @@ def build_oss(m, hw, cst, oss_arg, fmax_mhz):
     (out / "gowin_prims.v").write_text("// Создано socgen.py: примитивы Gowin из библиотеки Yosys (" +
                                        ", ".join(n for n, _ in prims) + ")\n\n" +
                                        "\n\n".join(t for _, t in prims) + "\n", encoding="utf-8", newline="\n")
-    # apicula 0.34 не умеет примитив GW_JTAG для GW1N-9C (только для GW2A-18C): сборка без отладчика
-    defs = ""
-    if m["core"].get("debug", True):
-        print("Предупреждение: apicula не поддерживает GW_JTAG для GW1N-9C - отладчик в этой сборке выключен (DEBUG_EN=0)")
+    # apicula 0.34 умеет примитив GW_JTAG только для GW2A-18C: для GW1N-9C - сборка без отладчика
+    defs, nojtag = "", "-D GWSOC_NO_JTAG_PINS "
+    if m["core"].get("debug", True) and not dev["apicula"]["jtag"]:
+        print(f"Предупреждение: apicula не поддерживает GW_JTAG для {dev['family']} - отладчик в этой сборке выключен (DEBUG_EN=0)")
         defs = "-G DEBUG_EN=0 "
+    elif m["core"].get("debug", True):
+        nojtag = ""
+    if dev["family"].startswith("GW2A"):
+        print("Предупреждение: apicula и GW2A-18 - битовый поток собирается, отладчик JTAG работает, но память BSRAM "
+              "(IMEM, DMEM) на плате не работает: IMEM читается нулями (проверено на Tang Primer 20K 2026-10-02). "
+              "Для работы программы собирайте в Gowin EDA")
     ys.write_text(
-        "# Создано socgen.py: синтез askoRV32 для GW1NR-9C открытым маршрутом\n"
+        f"# Создано socgen.py: синтез askoRV32 для {dev['family']} открытым маршрутом\n"
         "# Примитивы Gowin (rPLL, SP, ...) остаются ячейками с параметрами - их знает synth_gowin\n"
-        f"read_slang --top top --empty-blackboxes -D GWSOC_NO_JTAG_PINS {defs}gowin_prims.v " + " ".join(rel) + "\n"
+        f"read_slang --top top --empty-blackboxes {nojtag}{defs}gowin_prims.v " + " ".join(rel) + "\n"
         "# syn_ramstyle=\"distributed_ram\" - значение GowinSynthesis, Yosys его не знает: выбор памяти за ним\n"
         "setattr -unset syn_ramstyle a:syn_ramstyle\n"
         "# Этап map_luts (abc9) в сборке Yosys для Windows падает на assert в write_xaiger2 (aiger.cc),\n"
@@ -1152,6 +1227,15 @@ def build_oss(m, hw, cst, oss_arg, fmax_mhz):
     print("Синтез (yosys + slang):", flush=True)
     progress(3, "Синтез (yosys)")
     run_tool([oss / "bin" / "yosys.exe", "-m", "slang", "-q", "-l", "yosys.log", "-s", "synth.ys"], env, out / "yosys.out", out)
+    #Отладчик в открытом маршруте (GW2A-18): nextpnr требует привязать порты примитива GW_JTAG к выводам JTAG ПЛИС,
+    #а Gowin EDA, наоборот, их назначения не принимает - поэтому привязки только в копии .cst для nextpnr
+    if nojtag == "":
+        port = {"TCK": "tck_pad_i", "TMS": "tms_pad_i", "TDI": "tdi_pad_i", "TDO": "tdo_pad_o"}
+        extra = "".join(f'IO_LOC "{port[f]}" {n};\n' for n, f in dev["jtag"].items())
+        oss_cst = out / "riscv_oss.cst"
+        oss_cst.write_text(cst.read_text(encoding="utf-8") + "\n//Выводы JTAG для GW_JTAG (только открытый маршрут, создано socgen.py)\n"
+                           + extra, encoding="utf-8", newline="\n")
+        cst = oss_cst
     print("Размещение и трассировка (nextpnr-himbaechel):", flush=True)
     progress(40, "Размещение (nextpnr)")
 
@@ -1161,19 +1245,19 @@ def build_oss(m, hw, cst, oss_arg, fmax_mhz):
         elif re.search(r"Info: (Routing|Running router|Router1|Router2)", line):
             progress(70, "Трассировка (nextpnr)")
     run_tool([oss / "bin" / "nextpnr-himbaechel.exe", "--json", "top.json", "--write", "pnr.json",
-              "--device", m.get("device", "GW1NR-LV9QN88PC6/I5"), "--vopt", "family=GW1N-9C",
+              "--device", dev["part"], "--vopt", "family=" + dev["apicula"]["family"],
               "--vopt", "cst=" + os.path.relpath(cst, out).replace("\\", "/"),
               "--freq", fmt_mhz(fmax_mhz), "--timing-allow-fail", "--report", "report.json"],
              env, out / "nextpnr.log", out, pnr_line)
     print("Битовый поток (apicula gowin_pack):", flush=True)
     progress(92, "Битовый поток (gowin_pack)")
-    dp = [DUAL_PURPOSE[k][1] for k, on in dual_purpose(m, load_device()).items() if on]
+    dp = [dev["dualPurpose"][k][1] for k, on in dual_purpose(m, dev).items() if on]
     lr = str((m.get("build") or {}).get("loadingRate", ""))
     if lr and LOADING_RATES[lr] != 100:
         print(f"Предупреждение: apicula не задаёт Loading Rate - битовый поток читается из флеш на 2.5 МГц, не {lr} МГц")
-    run_tool([oss / "bin" / "gowin_pack.exe", "-d", "GW1N-9C", *dp, "-o", "riscv.fs", "pnr.json"], env, out / "gowin_pack.log", out)
+    run_tool([oss / "bin" / "gowin_pack.exe", "-d", dev["apicula"]["family"], *dp, "-o", "riscv.fs", "pnr.json"], env, out / "gowin_pack.log", out)
     fs = out / "riscv.fs"
-    print(f"Готово: {os.path.relpath(fs, hw.parent)} ({fs.stat().st_size} Байт)")
+    print(f"Готово: {os.path.relpath(fs, ROOT)} ({fs.stat().st_size} Байт)")
     rep = out / "report.json"
     if rep.exists():
         r = json.loads(rep.read_text(encoding="utf-8"))
@@ -1187,8 +1271,8 @@ def build_oss(m, hw, cst, oss_arg, fmax_mhz):
         a = lambda k: util.get(k, {}).get("available", 0)
         save_resources(hw, "apicula", {
             "lut": [u("LUT4") + u("ALU"), a("LUT4")], "reg": [u("DFF"), a("DFF")], "bsram": [u("BSRAM"), a("BSRAM")],
-            "dsp": [u("MULT36X36") * 2 + u("MULT18X18"), a("MULT18X18") or 10], "io": [io, IO_USER_TOTAL],
-            "pll": [u("rPLL"), a("rPLL") or 2]},
+            "dsp": [u("MULT36X36") * 2 + u("MULT18X18"), a("MULT18X18") or dev["resources"]["dsp"]], "io": [io, dev["resources"]["io"]],
+            "pll": [u("rPLL"), a("rPLL") or dev["resources"]["pll"]]},
             {clk: v.get("achieved", 0) for clk, v in (r.get("fmax") or {}).items()})
         slow = []
         for clk, v in (r.get("fmax") or {}).items():
@@ -1202,8 +1286,7 @@ def build_oss(m, hw, cst, oss_arg, fmax_mhz):
             for idiv in range(64):
                 for fbdiv in range(64):
                     f = fin * (fbdiv + 1) / (idiv + 1)
-                    if f <= min(slow) and not pll_eval(fin, idiv, fbdiv, 16)[3] or \
-                       f <= min(slow) and any(not pll_eval(fin, idiv, fbdiv, o)[3] for o in ODIV_SET):
+                    if f <= min(slow) and any(not pll_eval(fin, idiv, fbdiv, o, dev["pll"])[3] for o in ODIV_SET):
                         best = max(best or 0, f)
             print(f"Предупреждение: открытый маршрут не держит {fmt_mhz(fmax_mhz)} МГц - битовый поток собран, "
                   f"но на плате при этой частоте возможны сбои." +
@@ -1213,11 +1296,8 @@ def build_oss(m, hw, cst, oss_arg, fmax_mhz):
 # ============================================================================================
 # Сборка в Gowin EDA (gw_sh - командная строка IDE, проект hw/riscv.gprj)
 # ============================================================================================
-IO_USER_TOTAL = 71         #Пользовательских выводов I/O у GW1NR-9 в корпусе QN88 (как в отчёте Gowin)
-
-
 def save_resources(hw, toolchain, items, fmax):
-    """Занятые ресурсы последней сборки - для панели ресурсов конфигуратора (hw/impl/socgen/resources.json)."""
+    """Занятые ресурсы последней сборки - для панели ресурсов конфигуратора (impl/socgen/resources.json платы)."""
     d = hw / "impl" / "socgen"
     d.mkdir(parents=True, exist_ok=True)
     (d / "resources.json").write_text(json.dumps({
@@ -1247,7 +1327,7 @@ def html_text(path):
 
 def sdc_target_mhz(hw):
     """Цель такта ядра из riscv.sdc (МГц) или None."""
-    sdc = hw / "src" / "riscv.sdc"
+    sdc = hw / "riscv.sdc"
     if not sdc.exists():
         return None
     mm = re.search(r"create_clock\s+-name\s+clk_core\s+-period\s+([\d.]+)", sdc.read_text(encoding="utf-8"))
@@ -1303,8 +1383,8 @@ def set_loading_rate(cfg, mhz):
 
 
 def set_dual_purpose(cfg, flags):
-    """Выводы двойного назначения (MSPI - флеш на выводах 59..62) - флажки в настройке процесса Gowin EDA.
-    Файл правится заменой значений, как Place_Option."""
+    """Выводы двойного назначения (MSPI - флеш конфигурации, у GW2A и SSPI, READY, DONE, RECONFIG_N) - флажки
+    в настройке процесса Gowin EDA. Файл правится заменой значений, как Place_Option."""
     if not cfg.exists():
         return
     t = cfg.read_text(encoding="utf-8")
@@ -1314,6 +1394,35 @@ def set_dual_purpose(cfg, flags):
     if new != t:
         cfg.write_text(new, encoding="utf-8", newline="")
     print("  Выводы двойного назначения: " + ", ".join(f"{k} {'- обычные I/O' if v else 'не используются'}" for k, v in flags.items()))
+
+
+def set_vcc(cfg, vcc):
+    """Напряжение ядра кристалла (VCC в настройке процесса): GW1NR-9 - 1.2 В, GW2A-18 - 1.0 В."""
+    if not cfg.exists():
+        return
+    t = cfg.read_text(encoding="utf-8")
+    new = re.sub(r'("VCC"\s*:\s*)"[^"]*"', lambda mm: f'{mm.group(1)}"{vcc}"', t)
+    if new != t:
+        cfg.write_text(new, encoding="utf-8", newline="")
+        print(f"  VCC = {vcc} В (напряжение ядра {dev_vcc_note(vcc)})")
+
+
+def dev_vcc_note(vcc):
+    return {"1.2": "GW1NR-9", "1.0": "GW2A-18"}.get(vcc, "кристалла")
+
+
+def sync_gprj_device(gprj, dev):
+    """Кристалл проекта Gowin (элемент Device в riscv.gprj) - по "device" в .gwsoc: смена ПЛИС в конфигураторе
+    переносится в проект сама. Остальное содержимое файла не меняется."""
+    if not gprj.exists():
+        return None
+    t = gprj.read_text(encoding="utf-8")
+    line = f'<Device name="{dev["family"]}" pn="{dev["part"]}">{dev["deviceId"]}</Device>'
+    new, n = re.subn(r"<Device\b[^>]*>[^<]*</Device>", line, t, count=1)
+    if not n or new == t:
+        return False
+    gprj.write_text(new, encoding="utf-8", newline="")
+    return True
 
 
 def build_gowin(m, hw, gowin_arg, fout):
@@ -1327,7 +1436,8 @@ def build_gowin(m, hw, gowin_arg, fout):
     impl = hw / "impl"
     impl.mkdir(exist_ok=True)
     set_place_option(impl / "riscv_process_config.json", (m.get("build") or {}).get("placeOption"))
-    set_dual_purpose(impl / "riscv_process_config.json", dual_purpose(m, load_device()))
+    set_dual_purpose(impl / "riscv_process_config.json", dual_purpose(m, dev_of(m)))
+    set_vcc(impl / "riscv_process_config.json", dev_of(m)["vcc"])
     set_loading_rate(impl / "riscv_process_config.json", (m.get("build") or {}).get("loadingRate"))
     tcl = impl / "socgen_build.tcl"
     tcl.write_text("# Создано socgen.py: сборка проекта Gowin EDA из командной строки\n"
@@ -1366,8 +1476,8 @@ def build_gowin(m, hw, gowin_arg, fout):
     log = (impl / "socgen_gw_sh.log").read_text(encoding="utf-8", errors="replace")
     errs = [l for l in log.splitlines() if l.startswith("ERROR")]
     if errs or not fs.exists() or fs.stat().st_mtime < t0:
-        raise ConfigError(f"Gowin EDA: ошибок {len(errs)}, битовый поток не создан (журнал hw/impl/socgen_gw_sh.log)")
-    print(f"Готово: {os.path.relpath(fs, hw.parent)} ({fs.stat().st_size} Байт)")
+        raise ConfigError(f"Gowin EDA: ошибок {len(errs)}, битовый поток не создан (журнал {os.path.relpath(impl / 'socgen_gw_sh.log', ROOT)})")
+    print(f"Готово: {os.path.relpath(fs, ROOT)} ({fs.stat().st_size} Байт)")
     rpt = impl / "pnr" / "riscv.rpt.txt"
     res = {}
     if rpt.exists():
@@ -1399,7 +1509,7 @@ def build_gowin(m, hw, gowin_arg, fout):
         for name, v, n in tns:
             if name == "clk_core" and core_ok.get(name):
                 continue    #Нарушение только относительно цели выше рабочей частоты
-            print(f"Предупреждение: отрицательный запас по {name}: TNS {v} нс, путей {n} - см. hw/impl/pnr/riscv.tr.html")
+            print(f"Предупреждение: отрицательный запас по {name}: TNS {v} нс, путей {n} - см. {os.path.relpath(impl / 'pnr' / 'riscv.tr.html', ROOT)}")
     if res:
         save_resources(hw, "gowin", res, fmax)
 
@@ -1423,7 +1533,12 @@ def main():
         m.setdefault(k, v)
     migrate(m)
     m["clock"].setdefault("pll", {"mode": "auto", "targetMHz": 27})
-    dev = load_device()
+    try:
+        dev = load_device(m.get("device"))
+    except ConfigError as e:
+        print("ОШИБКА: " + str(e))
+        return 1
+    m["_dev"] = dev
 
     errors, warns, _, bases = validate(m, dev)
     for w_ in warns:
@@ -1434,12 +1549,14 @@ def main():
         print(f"Генерация остановлена: ошибок {len(errors)}")
         return 1
 
+    #Каталог платы (paths.hw): проект Gowin riscv.gprj, top.sv, riscv.cst, riscv.sdc, impl/
     hw = (cfg.parent / m["paths"].get("hw", "../hw")).resolve()
-    top = hw / m["paths"].get("top", "src/top.sv")
-    cst = hw / m["paths"].get("cst", "src/riscv.cst")
-    cfg_rel = os.path.relpath(cfg, hw.parent).replace("\\", "/")
+    top = hw / m["paths"].get("top", "top.sv")
+    cst = hw / m["paths"].get("cst", "riscv.cst")
+    cfg_rel = os.path.relpath(cfg, ROOT).replace("\\", "/")
     pfd, fout, vco, _ = resolve_pll(m)
     print(f"Конфигурация: {cfg_rel}")
+    print(f"  Плата: {board_title(m)}, ПЛИС {dev['part']} ({dev['family']})")
     print(f"  rPLL: {fmt_mhz(float(m['clock']['xtalMHz']))} МГц -> {fmt_mhz(fout)} МГц "
           f"(IDIV {m['clock']['pll']['idiv']}, FBDIV {m['clock']['pll']['fbdiv']}, ODIV {m['clock']['pll']['odiv']}, VCO {fmt_mhz(vco)})")
     irqs = irq_map(m)
@@ -1460,10 +1577,15 @@ def main():
     for path, text, enc in ((top, gen_top(m, bases, cfg_rel), "utf-8"), (cst, gen_cst(m, dev, cfg_rel), "utf-8"),
                             (soc, gen_soc_h(m, bases, cfg_rel), "cp1251")):
         changed = write_if_changed(path, text, enc)
-        print(f"  {os.path.relpath(path, hw.parent)}: {'обновлён' if changed else 'без изменений'}")
-    xnet = net_of(m, m["clock"].get("xtalPin"))
+        print(f"  {os.path.relpath(path, ROOT)}: {'обновлён' if changed else 'без изменений'}")
+    gprj = hw / "riscv.gprj"
+    if sync_gprj_device(gprj, dev):
+        print(f"  {os.path.relpath(gprj, ROOT)}: кристалл {dev['part']}")
+    elif not gprj.exists():
+        print(f"Предупреждение: нет проекта Gowin {os.path.relpath(gprj, ROOT)} - сборка в Gowin EDA невозможна")
+    xnet = net_of(m, pin_key(m["clock"].get("xtalPin")))
     if sync_sdc_clock(hw, xnet):
-        print(f"  hw\\src\\riscv.sdc: такт кварца - порт {xnet}")
+        print(f"  {os.path.relpath(hw / 'riscv.sdc', ROOT)}: такт кварца - порт {xnet}")
 
     if a.build:
         toolchain = a.toolchain or (m.get("build") or {}).get("toolchain", "gowin")

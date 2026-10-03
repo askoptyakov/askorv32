@@ -1,19 +1,45 @@
-// Конфигуратор ПЛИС askoRV32 (GW1NR-LV9QN88P): модель .gwsoc, структурная схема, изображение корпуса,
-// настройки блоков справа, библиотека периферии.
+// Конфигуратор ПЛИС askoRV32 (GW1NR-LV9QN88P - Tang Nano 9K, GW2A-LV18PG256 - Tang Primer 20K): модель .gwsoc,
+// структурная схема, изображение корпуса (QFN - выводы по краям, BGA - сетка шариков), настройки блоков справа,
+// библиотека периферии. Кристалл - "device" в .gwsoc, его выводы и свойства - в devices.js (sw/socgen/mkdevices.py).
 // Правила (адреса, rPLL, проверки, имена) продублированы в socgen.py - при изменении править оба места.
 'use strict';
 
 // ============================================================================================
 // Данные кристалла и постоянные правила
 // ============================================================================================
-const DEV = window.GWSOC_DEVICE;
-const PIN = {};
-DEV.pins.forEach(p => { PIN[p.n] = p; });
-const IO_PINS = DEV.pins.filter(p => p.type === 'io').map(p => p.n);
-const JTAG_PINS = { 5: 'TMS', 6: 'TCK', 7: 'TDI', 8: 'TDO' };   //Заняты примитивом GW_JTAG при включённом отладчике
+const DEVICES = window.GWSOC_DEVICES;
+const DEFAULT_DEVICE = 'GW1NR-LV9QN88PC6/I5';
+//Текущий кристалл (setDevice): выводы корпуса и свойства семейства (пределы rPLL, BSRAM, область битового потока во флеш)
+let DEV = null, PIN = {}, IO_PINS = [], JTAG_PINS = {}, PLL = null, BSRAM_TOTAL = 0, CFG_REGION = 0, CFG_USER = 0;
+//Вывод: номер у QFN (число), имя шарика у BGA ("H11"); значения из DOM - строки
+const pinv = v => (v === '' || v == null) ? null : (/^\d+$/.test(String(v)) ? Number(v) : String(v));
+//Порядок выводов: по номеру; у BGA - по ряду (A, B, ... T), затем по столбцу
+function pinCmp(a, b) {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  const ra = /^([A-Z]+)(\d+)$/.exec(String(a)), rb = /^([A-Z]+)(\d+)$/.exec(String(b));
+  if (!ra || !rb) return String(a).localeCompare(String(b));
+  return (ra[1].length - rb[1].length) || ra[1].localeCompare(rb[1]) || (Number(ra[2]) - Number(rb[2]));
+}
+function setDevice(part) {
+  DEV = DEVICES[part] || DEVICES[DEFAULT_DEVICE];
+  PIN = {};
+  DEV.pins.forEach(p => { PIN[p.n] = p; });
+  IO_PINS = DEV.pins.filter(p => p.type === 'io').map(p => p.n).sort(pinCmp);
+  //Выводы JTAG ПЛИС: заняты примитивом GW_JTAG при включённом отладчике
+  JTAG_PINS = {};
+  for (const f of ['TMS', 'TCK', 'TDI', 'TDO'])
+    for (const p of DEV.pins) if ((p.cfg || '').split('/').includes(f)) JTAG_PINS[p.n] = f;
+  PLL = DEV.pll;
+  BSRAM_TOTAL = DEV.resources.bsram;
+  CFG_REGION = DEV.cfgRegion;
+  CFG_USER = DEV.cfgUser;
+  layoutChip();
+}
+const jtagText = () => Object.entries(JTAG_PINS).map(([n, f]) => `${f} ${n}`).join(', ');
+//Вывод с функцией конфигурации (MCLK, MCS_N, MO, MI...) - для выводов флеш по умолчанию
+const pinWithCfg = f => { const p = DEV.pins.find(x => (x.cfg || '').split('/').includes(f)); return p ? p.n : null; };
 
 const ODIV_SET = [2, 4, 8, 16, 32, 48, 64, 80, 96, 112, 128];
-const PLL = { inMin: 3, inMax: 400, pfdMin: 3, pfdMax: 400, vcoMin: 400, vcoMax: 1200, outMin: 3.125, outMax: 600 };
 
 const IO_TYPES = ['LVCMOS33', 'LVCMOS25', 'LVCMOS18', 'LVCMOS15', 'LVCMOS12'];
 const PULLS = ['UP', 'DOWN', 'NONE', 'KEEPER'];
@@ -42,23 +68,21 @@ const TYPES = {
     about: 'Приёмопередатчик UART: FIFO 8–32 байта, чётность, 1–2 стоп-бита, прерывания по заполнению FIFO и по ошибке приёма.',
     defaults: () => ({ tx: null, rx: null, baud: 115200, parity: 'none', stop: 1, fifo: 16, irq: 'plic' }) },
   spiflash: { title: 'SPIFLASH', ru: 'Флеш-память SPI', cat: 'iface', slot: 0x15, irq: false,
-    about: 'Контроллер внешней SPI-флеш: загрузка программы в IMEM/DMEM после сброса (образ записывает openFPGALoader), обмен с флеш из программы - хранение параметров. На Tang Nano 9K - микросхема P25Q32U, выводы 59..62.',
+    about: 'Контроллер внешней SPI-флеш: загрузка программы в IMEM/DMEM после сброса (образ записывает openFPGALoader), обмен с флеш из программы - хранение параметров. По умолчанию - выводы MSPI (флеш конфигурации ПЛИС): Tang Nano 9K - 59..62, Tang Primer 20K - L10, M9, R10, P10.',
     defaults: () => ({ sck: null, cs: null, mosi: null, miso: null, sizeMB: 4, div: 1, fpgaConfig: false, bootAddr: '0x100000' }),
-    boardPins: { sck: 59, cs: 60, mosi: 61, miso: 62 } },
+    cfgPins: { sck: 'MCLK', cs: 'MCS_N', mosi: 'MO', miso: 'MI' } },
 };
 const UART_BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
 const UART_PARITY = { none: 'нет', even: 'чётность (even)', odd: 'нечётность (odd)' };
 const FIFO_DEPTHS = [8, 16, 32];
 const FLASH_MB = [1, 2, 4, 8, 16];
 const BOOT_REGION = 0x10000;   //Область образа программы во флеш: 64 кБайт (как в socgen.py)
-const CFG_REGION = 0x80000, CFG_USER = 0x100000;   //Конфигурация ПЛИС во флеш (MSPI): битовый поток с 0 (как в socgen.py)
 const MEM_KB = [8, 16, 32];
-const BSRAM_TOTAL = 26;    //Блоков BSRAM (18 кбит, 2 кБайт данных) в GW1NR-9
 const IRQ_ROUTES = { plic: 'PLIC (по умолчанию)', local: 'локальная линия LI', none: 'не подключено' };
 //Place_Option Gowin EDA (build.placeOption; пусто - как записано в hw/impl/riscv_process_config.json)
 const PLACE_OPTIONS = [['', 'Place: как в проекте'], ['0', 'Place 0 - быстрее компиляция'], ['1', 'Place 1 - трассируемость'], ['2', 'Place 2 - тайминги']];
 //Loading Rate (build.loadingRate, МГц): частота чтения битового потока из флеш при AUTO BOOT и MSPI.
-//GW1N-9: 250 МГц / N (SUG100, табл. 4-3); пусто - как в hw/impl/riscv_process_config.json (по умолчанию 2.5 МГц)
+//GW1N-9 и GW2A-18: 250 МГц / N (SUG100, табл. 4-3); пусто - как в impl/riscv_process_config.json платы (по умолчанию 2.5 МГц)
 const LOADING_RATES = ['2.500', '5.435', '5.682', '5.952', '6.250', '6.579', '6.944', '7.353', '7.812', '8.333', '8.929', '9.615',
   '10.417', '11.364', '12.500', '13.889', '15.625', '17.857', '20.833', '25.000', '31.250', '41.667', '62.500'];
 const LOADING_OPTIONS = [['', 'Загрузка: как в проекте'], ...LOADING_RATES.map(r => [r, `Загрузка ${+r} МГц` + (r === '2.500' ? ' (по умолчанию)' : '')])];
@@ -80,9 +104,9 @@ const RESERVED_NETS = new Set(['tck_pad_i', 'tms_pad_i', 'tdi_pad_i', 'tdo_pad_o
   'clk_per', 'rst_per', 'bus_per_Write', 'bus_per_Read', 'bus_per_Addr', 'bus_per_WData', 'bus_per_RData', 'irq_local', 'irq_src',
   'sRead', 'top', 'cpu', 'permux', 'memmux', 'gpio_top', 'stim_top', 'tm1638_top', 'uart_top',
   'spiflash_top', 'boot_hold', 'boot_Write', 'boot_Addr', 'boot_WData',
-  'CORE_TYPE', 'M_EXT', 'DIV_BPC', 'IMEM_TYPE', 'BSRAM_IMEM_SIZE', 'SYNTH_IMEM_SIZE', 'IMEM_INIT_FILE',
+  'CORE_TYPE', 'M_EXT', 'DIV_BPC', 'RF_TYPE', 'IMEM_TYPE', 'BSRAM_IMEM_SIZE', 'SYNTH_IMEM_SIZE', 'IMEM_INIT_FILE',
   'DMEM_TYPE', 'BSRAM_DMEM_SIZE', 'SYNTH_DMEM_SIZE', 'DMEM_INIT_FILE', 'DEBUG_EN', 'PLIC_SOURCES',
-  'FCLKIN', 'XTAL_KHZ', 'PLL_IDIV_SEL', 'PLL_FBDIV_SEL', 'PLL_ODIV_SEL', 'WIN_MASK', 'CLK_BASE_MHZ', 'CLK_DMEM_MHZ']);
+  'FCLKIN', 'PLL_DEVICE', 'XTAL_KHZ', 'PLL_IDIV_SEL', 'PLL_FBDIV_SEL', 'PLL_ODIV_SEL', 'WIN_MASK', 'CLK_BASE_MHZ', 'CLK_DMEM_MHZ']);
 //Имена устройств, занятые в прошивке (как RESERVED_C в socgen.py)
 const RESERVED_C = new Set(['CLINT', 'PLIC', 'SOC', 'SYSCLK_HZ', 'MTIME_HZ', 'LI', 'IRQ', 'NULL', 'MODE', 'OUT', 'IN']);
 
@@ -123,11 +147,11 @@ function migrate(m) {
 
 function normalize(m) {
   migrate(m);
-  m.core = Object.assign({ coreType: 'pipeline', mExt: true, divBpc: 2, debug: true, plicSources: 8 }, m.core);
+  m.core = Object.assign({ coreType: 'pipeline', mExt: true, divBpc: 2, rfType: 'lut', debug: true, plicSources: 8 }, m.core);
   m.core.imem = Object.assign({ type: 'bsram', kb: 8, synthWords: 256, init: 'mem_init/i.mem' }, m.core.imem);
   m.core.dmem = Object.assign({ type: 'bsram', kb: 8, synthWords: 256, init: 'mem_init/d.mem' }, m.core.dmem);
   m.banks = m.banks || {};
-  m.clock = m.clock || { xtalMHz: 27, xtalPin: 52, pll: {} };
+  m.clock = m.clock || { xtalMHz: 27, xtalPin: null, pll: {} };
   m.clock.pll = Object.assign({ mode: 'auto', targetMHz: 27, idiv: 0, fbdiv: 0, odiv: 32 }, m.clock.pll);
   m.reset = m.reset || { pin: null };
   //Ключи экземпляра в файле: тип, имя, адрес, затем настройки
@@ -182,7 +206,7 @@ function signals(m) {
 const sigColor = s => s.inst ? instColor(s.inst) : 'var(--c-sys)';
 
 function setSignalPin(m, sig, pin) {
-  pin = (pin === '' || pin == null) ? null : Number(pin);
+  pin = pinv(pin);
   if (sig.id === 'clk') m.clock.xtalPin = pin;
   else if (sig.id === 'rst') m.reset.pin = pin;
   else if (sig.key.startsWith('line')) sig.inst.lines[Number(sig.key.slice(4))] = pin;
@@ -194,7 +218,7 @@ function movePin(sig, pin) {
   const old = sig.pin, oldNet = old != null ? netOf(model, old) : '';
   setSignalPin(model, sig, pin);
   if (pin === '' || pin == null) return;
-  const n = Number(pin);
+  const n = pinv(pin);
   if (oldNet && !netOf(model, n) && old !== n) { setNet(model, old, ''); setNet(model, n, oldNet); }
   else ensureNet(model, { pin: n, def: sig.def });
 }
@@ -279,10 +303,12 @@ function flashInfo(m, f) {
   return { div, sck: sysclkHz(m) / (2 * (div + 1)), size, boot, bootAddr, fpgaConfig, user, userSize: Math.max(0, size - user) };
 }
 const hex6 = v => '0x' + (v >>> 0).toString(16).toUpperCase().padStart(6, '0');
+//Регистровый файл на BSRAM (как rf_bsram в socgen.py): только у конвейерного ядра
+const rfBsram = m => (m.core.rfType === 'bsram' || m.core.rfType === 'bsram-edge') && m.core.coreType !== 'singlecycle';
 function bsramBlocks(m) {
   let used = 0;
   for (const k of ['imem', 'dmem']) if (m.core[k].type === 'bsram') used += Math.floor(Number(m.core[k].kb) / 2);
-  return used + insts(m, 'tm1638').length;
+  return used + insts(m, 'tm1638').length + (rfBsram(m) ? 2 : 0);
 }
 const irqText = r => !r ? 'не подключено' : r.route === 'plic' ? `PLIC ${r.n}` : `LI${r.n}`;
 //Стандарт вывода: свои настройки вывода, иначе банка, иначе общие
@@ -371,7 +397,7 @@ function applyPllAuto(m) {
   if (r) Object.assign(p, { idiv: r.idiv, fbdiv: r.fbdiv, odiv: r.odiv });
 }
 const pllOf = m => pllEval(Number(m.clock.xtalMHz), m.clock.pll.idiv, m.clock.pll.fbdiv, m.clock.pll.odiv);
-const clockCapable = n => { const c = PIN[n] && PIN[n].cfg || ''; return /GCLK|PLL_T_IN/.test(c); };
+const clockCapable = n => { const c = PIN[n] && PIN[n].cfg || ''; return /GCLK|PLL\d?_T_IN/i.test(c); };
 
 // --- Проверка ---
 function validate(m) {
@@ -502,7 +528,9 @@ function validate(m) {
   const cfgs = insts(m, 'spiflash').filter(f => f.fpgaConfig).map(f => f.name);
   if (cfgs.length > 1) out.push({ lvl: 'err', text: `Конфигурацию ПЛИС может хранить только одна флеш (выводы MSPI): ${cfgs.join(', ')}`, inst: cfgs[1] });
   if (m.build.toolchain === 'apicula' && m.core.debug)
-    out.push({ lvl: 'warn', text: 'apicula: отладчик JTAG в этой сборке будет выключен (GW_JTAG для GW1N-9C не поддерживается)' });
+    if (!DEV.apicula.jtag) out.push({ lvl: 'warn', text: `apicula: отладчик JTAG в этой сборке будет выключен (GW_JTAG для ${DEV.family} не поддерживается)` });
+  if (m.build.toolchain === 'apicula' && DEV.family.startsWith('GW2A'))
+    out.push({ lvl: 'warn', text: 'apicula и GW2A-18: отладчик работает, но память BSRAM (IMEM, DMEM) на плате не работает - для программы собирайте в Gowin EDA' });
   if (m.build.toolchain === 'apicula' && !pll.errs.length && pll.fout > 31.5)
     out.push({ lvl: 'warn', text: `apicula: ${fmt(pll.fout)} МГц - открытый маршрут держит около 31 МГц, Gowin EDA - 45 МГц` });
   out.push(...addressMap(m).issues);
@@ -523,12 +551,24 @@ function el(tag, attrs, parent, text) {
 const BANK_COLOR = b => `var(--bank${b})`;
 
 //Схема: слева микросхема с выводами, справа структура (процессор, шины, периферия и её выводы)
-const G = { pitch: 22, pad: 16, marg: 22, label: 116 };
-G.body = DEV.perSide * G.pitch + 2 * G.marg;
-G.o = G.label + G.pad + 8;
-G.size = G.body + 2 * G.o;
+//Размеры корпуса: QFN - выводы по четырём сторонам (номер внутри, имя цепи снаружи), BGA - сетка шариков
+let G = null;
+function layoutChip() {
+  if (DEV.pkgType === 'ARRAY') {
+    G = { array: true, cell: 44, marg: 16, o: 30, head: 34 };
+    G.body = Math.max(DEV.cols, DEV.rows.length) * G.cell + 2 * G.marg;
+    G.top = G.o + G.head;                       //Верх корпуса: над ним - название и номера столбцов
+    G.size = G.body + G.o + G.top;
+  } else {
+    G = { pitch: 22, pad: 16, marg: 22, label: 116 };
+    G.body = DEV.perSide * G.pitch + 2 * G.marg;
+    G.o = G.label + G.pad + 8;
+    G.top = G.o;
+    G.size = G.body + 2 * G.o;
+  }
+}
 const SG = { sysX: 112, sysW: 214, busX: 380, clkX: 398, perX: 420, perW: 196, pinX: 654, top: 20, gap: 14, row: 20, w: 850 };
-const STRUCT_X = G.size + 20;     //Структура - правее микросхемы
+const structX = () => G.size + 20;  //Структура - правее микросхемы
 let hover = null;                 //Блок под указателем: подсветка его выводов на микросхеме
 
 function render() {
@@ -536,8 +576,8 @@ function render() {
   const svg = document.getElementById('chip');
   svg.textContent = '';
   drawChip(el('g', { class: 'chip-part' }, svg), v);
-  const sh = drawStruct(el('g', { class: 'struct-part', transform: `translate(${STRUCT_X} 0)` }, svg), v);
-  svgW = STRUCT_X + SG.w;
+  const sh = drawStruct(el('g', { class: 'struct-part', transform: `translate(${structX()} 0)` }, svg), v);
+  svgW = structX() + SG.w;
   svgH = Math.max(G.size, sh);
   svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
   applyZoom();
@@ -570,6 +610,11 @@ function hoverOn(g, name) {
 
 // --- Микросхема: номера выводов внутри корпуса, имена цепей снаружи ---
 function pinGeom(n) {
+  if (G.array) {
+    const mm = /^([A-Z]+)(\d+)$/.exec(String(n));
+    const r = DEV.rows.indexOf(mm[1]), c = Number(mm[2]) - 1;
+    return { side: 'A', x: G.o + G.marg + c * G.cell + G.cell / 2, y: G.top + G.marg + r * G.cell + G.cell / 2 };
+  }
   const N = DEV.perSide, o = G.o, B = G.body;
   const side = Math.floor((n - 1) / N), k = (n - 1) % N;
   const c = G.marg + G.pitch * k + G.pitch / 2;
@@ -585,13 +630,40 @@ function drawChip(svg, v) {
   const sigByPin = new Map();
   signals(model).forEach(s => { if (s.pin != null) { if (!sigByPin.has(s.pin)) sigByPin.set(s.pin, []); sigByPin.get(s.pin).push(s); } });
   const conflictPins = new Set(v.issues.filter(i => i.conflict).map(i => i.pin));
-  const body = el('rect', { class: 'body-rect', x: G.o, y: G.o, width: G.body, height: G.body, rx: 10 }, svg);
+  const body = el('rect', { class: 'body-rect', x: G.o, y: G.top, width: G.body, height: G.body, rx: 10 }, svg);
   el('title', {}, body, 'Двойной щелчок - показать все выводы');
   body.addEventListener('dblclick', () => { hover = null; if (sel) select(null); else applyHighlight(); });
-  el('circle', { class: 'pin1', cx: G.o + 14, cy: G.o + 14, r: 5 }, svg);
-  el('text', { class: 'chip-title', x: G.o + G.body / 2, y: G.o + G.body / 2 - 6 }, svg, 'GW1NR-LV9QN88P');
-  el('text', { class: 'chip-sub', x: G.o + G.body / 2, y: G.o + G.body / 2 + 14 }, svg, `вид сверху · ${DEV.pins.length} выводов`);
+  if (G.array) {
+    //BGA: название над корпусом, буквы рядов слева, номера столбцов сверху, метка A1
+    el('text', { class: 'chip-title', x: G.o + G.body / 2, y: G.o - 4 }, svg, `${DEV.title} · вид сверху · ${DEV.pins.length} шариков`);
+    DEV.rows.forEach((r, i) => el('text', { class: 'chip-axis', x: G.o - 10, y: G.top + G.marg + i * G.cell + G.cell / 2, 'dominant-baseline': 'central' }, svg, r));
+    for (let c = 0; c < DEV.cols; c++) el('text', { class: 'chip-axis', x: G.o + G.marg + c * G.cell + G.cell / 2, y: G.top - 8 }, svg, String(c + 1));
+    el('path', { class: 'pin1', d: `M${G.o} ${G.top + 18} V${G.top + 10} Q${G.o} ${G.top} ${G.o + 10} ${G.top} H${G.o + 18} Z` }, svg);
+  } else {
+    el('circle', { class: 'pin1', cx: G.o + 14, cy: G.o + 14, r: 5 }, svg);
+    el('text', { class: 'chip-title', x: G.o + G.body / 2, y: G.o + G.body / 2 - 6 }, svg, DEV.title);
+    el('text', { class: 'chip-sub', x: G.o + G.body / 2, y: G.o + G.body / 2 + 14 }, svg, `вид сверху · ${DEV.pins.length} выводов`);
+  }
   for (const p of DEV.pins) drawPin(svg, p, sigByPin.get(p.n) || [], conflictPins.has(p.n));
+}
+
+//Шарик BGA: кружок цвета банка, внутри - имя шарика и имя цепи (коротко), кольцо цвета блока - вывод занят
+function drawBall(gp, p, g, sigs, conflict, net, jtag) {
+  const R = 18;
+  const fill = p.type === 'gnd' ? 'var(--gnd)' : p.type === 'pwr' ? 'var(--pwr)' : BANK_COLOR(p.bank);
+  if (p.type === 'io') {
+    const mk = el('circle', { class: 'mark ring', cx: g.x, cy: g.y, r: R + 2.5 }, gp);
+    if (sigs.length && !conflict) mk.style.stroke = sigColor(sigs[0]);
+    else if (jtag && !sigs.length) mk.style.stroke = 'var(--c-jtag)';
+  }
+  el('circle', { class: 'cell', cx: g.x, cy: g.y, r: R, fill }, gp);
+  el('text', { class: 'num', x: g.x, y: g.y - (p.type === 'io' ? 6 : 0), 'text-anchor': 'middle', 'dominant-baseline': 'central' }, gp,
+     p.type === 'io' ? String(p.n) : (p.type === 'gnd' ? '⏚' : 'V'));
+  let label = net || (jtag && p.type === 'io' ? jtag : '');
+  const lab = el('text', { class: 'label ball-label', x: g.x, y: g.y + 7, 'text-anchor': 'middle', 'dominant-baseline': 'central' }, gp,
+                 label.length > 7 ? label.slice(0, 6) + '…' : label);
+  const hitEl = el('rect', { class: 'hit', x: g.x - G.cell / 2, y: g.y - G.cell / 2, width: G.cell, height: G.cell }, gp);
+  return { lab, hitEl };
 }
 
 function drawPin(svg, p, sigs, conflict) {
@@ -606,6 +678,11 @@ function drawPin(svg, p, sigs, conflict) {
   if (net) cls.push('labeled');
   if (conflict) cls.push('conflict');
   const gp = el('g', { class: cls.join(' '), 'data-pin': p.n }, svg);
+  if (G.array) {
+    const { lab, hitEl } = drawBall(gp, p, g, sigs, conflict, net, jtag);
+    pinEvents(gp, p, sigs, net, lab, hitEl);
+    return;
+  }
 
   //Ячейка вывода снаружи корпуса (цвет - банк), кружок в ней (цвет - группа блока, если вывод занят)
   const C = 16, out = G.pad + 2;
@@ -645,6 +722,10 @@ function drawPin(svg, p, sigs, conflict) {
             : g.side === 'B' ? { x: g.x - G.pitch / 2, y: g.y + out - span, width: G.pitch, height: span }
             :                  { x: g.x - G.pitch / 2, y: g.y - out, width: G.pitch, height: span };
   const hitEl = el('rect', Object.assign({ class: 'hit' }, hit), gp);
+  pinEvents(gp, p, sigs, net, lab, hitEl);
+}
+//Подсказка и действия вывода микросхемы: двойной щелчок - диалог, щелчок - блок, перетаскивание, имя цепи
+function pinEvents(gp, p, sigs, net, lab, hitEl) {
   const info = [`Вывод ${p.n} · ${p.name}`];
   if (p.bank != null) info.push(`банк ${p.bank}`);
   if (p.cfg) info.push(p.cfg);
@@ -670,7 +751,7 @@ function svgPoint(e) {
 function pinUnder(e) {
   const t = document.elementFromPoint(e.clientX, e.clientY);
   const g = t && t.closest && t.closest('#chip .pin');
-  return g ? Number(g.dataset.pin) : null;
+  return g ? pinv(g.dataset.pin) : null;
 }
 const canDrop = n => PIN[n] && PIN[n].type === 'io' && !(model.core.debug && JTAG_PINS[n]);
 function startPinDrag(e, from) {
@@ -764,7 +845,7 @@ function drawStruct(svg, v) {
   if (core.debug) {
     const yd = cpu.y + 30 + 5 * 24 + 10;
     Object.entries(JTAG_PINS).forEach(([n, t], i) =>
-      leftPin(svg, cpu.x, yd - 24 + i * 16, { id: 'jtag', pin: Number(n), def: t, fixed: true }, new Set()));
+      leftPin(svg, cpu.x, yd - 24 + i * 16, { id: 'jtag', pin: pinv(n), def: t, fixed: true }, new Set()));
   }
   el('path', { class: 'clk-line', d: `M${ck.x + ck.w / 2} ${ck.y + ck.h} V${cpu.y}` }, gBus);
   el('text', { class: 'bus-label clk', x: ck.x + ck.w / 2 + 6, y: ck.y + ck.h + 20 }, gBus, 'clk_core');
@@ -950,7 +1031,7 @@ function renderAddressMap() {
 
 //Нижняя таблица - как «I/O Constraints» во FloorPlanner
 function renderIoTable(v) {
-  const sigs = signals(model).filter(s => s.pin != null).sort((a, b) => a.pin - b.pin);
+  const sigs = signals(model).filter(s => s.pin != null).sort((a, b) => pinCmp(a.pin, b.pin));
   const d = model.ioDefaults;
   const sel_ = (pin, key, list, cur, def) => `<select data-pin="${pin}" data-key="${key}">` +
     `<option value="">${def}*</option>` + list.map(x => `<option${x === cur ? ' selected' : ''}>${x}</option>`).join('') + '</select>';
@@ -972,14 +1053,14 @@ function renderIoTable(v) {
     <th>Площадка</th><th>Банк</th><th>IO_TYPE</th><th>DRIVE</th><th>PULL_MODE</th><th>BANK_VCCIO</th></tr>` + rows;
   document.getElementById('ioCount').textContent = `· ${sigs.length} · * - значение по умолчанию`;
   document.querySelectorAll('#iotab select').forEach(se => se.addEventListener('change', () => {
-    const n = Number(se.dataset.pin), np = model.pins[n] || {};
+    const n = pinv(se.dataset.pin), np = model.pins[n] || {};
     if (se.value) np[se.dataset.key] = se.value; else delete np[se.dataset.key];
     model.pins[n] = np;
     changed();
   }));
   document.querySelectorAll('#iotab tr[data-pin]').forEach(tr => {
-    tr.addEventListener('click', e => { if (e.target.tagName !== 'SELECT') flashPin(Number(tr.dataset.pin)); });
-    tr.addEventListener('dblclick', e => { if (e.target.tagName !== 'SELECT') pinDialog(Number(tr.dataset.pin)); });
+    tr.addEventListener('click', e => { if (e.target.tagName !== 'SELECT') flashPin(pinv(tr.dataset.pin)); });
+    tr.addEventListener('dblclick', e => { if (e.target.tagName !== 'SELECT') pinDialog(pinv(tr.dataset.pin)); });
   });
 }
 
@@ -991,7 +1072,7 @@ function flashPin(n) {
 }
 
 // --- Ресурсы ПЛИС (правый верхний угол): занято / всего ---
-//Логика, регистры, DSP и Fmax - по последней сборке (hw/impl/socgen/resources.json); BSRAM, выводы, PLL - по конфигурации
+//Логика, регистры, DSP и Fmax - по последней сборке (impl/socgen/resources.json платы); BSRAM, выводы, PLL - по конфигурации
 let lastRes = null;
 const ICONS = {
   lut: '<rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1"/><rect x="9" y="9" width="5.5" height="5.5" rx="1"/>',
@@ -1012,8 +1093,8 @@ function renderResources() {
     { k: 'reg', name: 'Регистры (триггеры)', v: r.reg, src: when },
     { k: 'bsram', name: 'Блоки памяти BSRAM (2 кБайт каждый): IMEM, DMEM, шрифты TM1638', v: [bsramBlocks(model), BSRAM_TOTAL], src: 'по конфигурации' },
     { k: 'dsp', name: 'Блоки DSP (умножители MULT18X18)', v: r.dsp, src: when },
-    { k: 'io', name: 'Выводы I/O (с выводами JTAG отладчика)', v: [ioUsed, 71], src: 'по конфигурации' },
-    { k: 'pll', name: 'Блоки rPLL', v: [1, 2], src: 'по конфигурации' },
+    { k: 'io', name: 'Выводы I/O (с выводами JTAG отладчика)', v: [ioUsed, DEV.resources.io], src: 'по конфигурации' },
+    { k: 'pll', name: 'Блоки rPLL', v: [1, DEV.resources.pll], src: 'по конфигурации' },
   ];
   let h = items.map(it => {
     const has = Array.isArray(it.v) && it.v[1] > 0;
@@ -1129,7 +1210,7 @@ document.getElementById('dlg').addEventListener('close', () => {
 function pinOptions(selected, forSigId, freeFirst) {
   const owner = new Map();
   signals(model).forEach(s => { if (s.pin != null && s.id !== forSigId) owner.set(s.pin, s.name); });
-  const list = freeFirst ? [...IO_PINS].sort((a, b) => (owner.has(a) - owner.has(b)) || a - b) : IO_PINS;
+  const list = freeFirst ? [...IO_PINS].sort((a, b) => (owner.has(a) - owner.has(b)) || pinCmp(a, b)) : IO_PINS;
   let h = `<option value="">— не подключён —</option>`;
   for (const n of list) {
     const p = PIN[n];
@@ -1153,14 +1234,14 @@ function pinPicker(sig) {
     body => {
       const pin = body.querySelector('[name=pin]').value;
       if (pin === '') return;
-      const n = Number(pin), net = body.querySelector('[name=net]').value.trim();
+      const n = pinv(pin), net = body.querySelector('[name=net]').value.trim();
       if (sig.key === 'newline') { sig.inst.lines.push(n); }
       else setSignalPin(model, sig, n);
       if (net) setNet(model, n, net); else ensureNet(model, { pin: n, def: sig.def });
     },
     body => {
       const s = body.querySelector('[name=pin]'), net = body.querySelector('[name=net]');
-      s.addEventListener('change', () => { net.value = s.value ? netOf(model, Number(s.value)) : ''; });
+      s.addEventListener('change', () => { net.value = s.value ? netOf(model, pinv(s.value)) : ''; });
     });
 }
 
@@ -1227,7 +1308,8 @@ function ioDefaultsDialog() {
       ${banks.map(bk => row('Банк ' + bk, `b${bk}_`, model.banks[bk] || {}, true, BANK_COLOR(bk))).join('')}
     </table>
     <p class="note">Порядок: собственные настройки вывода → настройки банка → общие. Напряжение VCCIO банка задаёт
-    плата (на Tang Nano 9K банки 0–2 - 3,3 В, банк 3 - 1,8 В): IO_TYPE выводов банка должен ему соответствовать,
+    плата (Tang Nano 9K: банки 0–2 - 3,3 В, банк 3 - 1,8 В; Tang Primer 20K: банки 0–3 и 7 - 3,3 В, 4–6 - 1,5 В под DDR3):
+    IO_TYPE выводов банка должен ему соответствовать,
     иначе Gowin EDA остановит размещение. DRIVE пишется только для выходов.</p>`,
     body => {
       for (const [k] of KEYS) d[k] = body.querySelector(`[name=d_${k}]`).value;
@@ -1305,7 +1387,7 @@ function instForm(inst, v) {
     if (fi.div > 7) divs.push([fi.div, `DIV ${fi.div}`]);
     h += `<label>Объём флеш</label><select name="sizeMB">${opts(FLASH_MB.map(x => [x, x + ' МБайт']), inst.sizeMB)}</select>
       <label>Частота SCK</label><select name="div">${opts(divs, inst.div)}</select>
-      <label>Конфигурация и программа</label><select name="fpgaConfig">${opts([['0', 'в SRAM или встроенной flash'], ['1', 'в этой флеш, загрузка по MSPI']], fi.fpgaConfig ? '1' : '0')}</select>
+      <label>Конфигурация и программа</label><select name="fpgaConfig">${opts([['0', DEV.embeddedFlash ? 'в SRAM или встроенной flash' : 'в SRAM'], ['1', 'в этой флеш, загрузка по MSPI']], fi.fpgaConfig ? '1' : '0')}</select>
       <label>Адрес образа</label><input type="text" class="mono" name="bootAddr" style="width:116px" value="${esc(inst.bootAddr)}" ${fi.boot ? '' : 'disabled'}>
       <div class="full readout">${fi.fpgaConfig ? `ПЛИС: <b>0x000000</b>.. · ` : ''}${fi.boot ? `образ: <b>${hex6(fi.bootAddr)}</b>..${hex6(fi.bootAddr + BOOT_REGION - 1)} · ` : ''}свободно: <b>${hex6(fi.user)}</b>, ${Math.round(fi.userSize / 1024)} кБайт</div>`;
   }
@@ -1335,14 +1417,16 @@ function instForm(inst, v) {
     h += pinRowsHtml(inst, rows, false);
   }
   if (inst.type === 'uart') h += `<p class="note">Скорость, чётность и стоп-биты - значения после сброса (параметры uart_top и ${esc(inst.name)}_BAUD...
-    в soc.h); прошивка может сменить их регистрами. На Tang Nano 9K к UART программатора BL702 идут выводы 17 (TX) и 18 (RX).</p>`;
+    в soc.h); прошивка может сменить их регистрами. UART программатора платы: Tang Nano 9K (BL702) - выводы 17 (TX) и 18 (RX),
+    Tang Primer 20K (BL616 на Dock) - M11 (TX) и T13 (RX).</p>`;
   if (inst.type === 'tm1638') h += `<p class="note">Знакогенератор занимает 1 блок BSRAM; делители интерфейса считаются от частоты шины.</p>`;
-  if (inst.type === 'spiflash') h += `<p class="note">Конфигурация и программа хранятся одним из трёх способов. <b>SRAM</b> («riscv FPGA SRAM»)
-    и <b>встроенная flash</b> («riscv FPGA Flash», MODE1 = MODE0 = 0) - программа в битовом потоке, флеш - только для данных программы.
-    <b>Эта флеш, загрузка по MSPI</b> (MODE1 = 1: на Tang Nano 9K - подтяжка вывода 87 к 1.8 В; у GW2A - всегда) - битовый поток с адреса 0,
-    программа - образом с адреса образа; после сброса загрузчик копирует её в IMEM/DMEM. Пишет «riscv SPI-FLASH».
-    Свободная область - ${esc(inst.name)}_USER_ADDR в soc.h. На Tang Nano 9K флеш U3 (P25Q32U) - выводы 59 SCLK, 60 CS#, 61 MOSI, 62 MISO;
-    это выводы MSPI, генератор сам включает в Gowin EDA «MSPI как обычные I/O».</p>`;
+  if (inst.type === 'spiflash') h += `<p class="note">Конфигурация и программа хранятся одним из способов. <b>SRAM</b> («riscv FPGA SRAM»)
+    ${DEV.embeddedFlash ? 'и <b>встроенная flash</b> («riscv FPGA Flash», MODE1 = MODE0 = 0) - программа в битовом потоке' :
+      `- битовый поток и программа (у ${esc(DEV.series)} встроенной flash нет)`}, флеш - только для данных программы.
+    <b>Эта флеш, загрузка по MSPI</b> (Tang Nano 9K - MODE1 = 1, подтяжка вывода 87 к 1.8 В; Tang Primer 20K - всегда) - битовый поток с адреса 0
+    (${esc(DEV.series)}: до ${hex6(CFG_REGION)}), программа - образом с адреса образа; после сброса загрузчик копирует её в IMEM/DMEM.
+    Пишет «riscv SPI-FLASH». Свободная область - ${esc(inst.name)}_USER_ADDR в soc.h. Выводы MSPI: Tang Nano 9K (P25Q32U) - 59 SCLK, 60 CS#,
+    61 MOSI, 62 MISO; Tang Primer 20K - L10, M9, R10, P10. Генератор сам включает в Gowin EDA «MSPI как обычные I/O».</p>`;
   h += `<div class="pane-actions"><button type="button" data-act="readme">Описание модуля</button>
         <button type="button" class="danger" data-act="remove">Удалить блок</button></div>`;
   return h;
@@ -1368,7 +1452,7 @@ function wireInstForm(box, inst) {
   if (q('fpgaConfig')) q('fpgaConfig').addEventListener('change', e => {
     inst.fpgaConfig = e.target.value === '1';
     //Битовый поток с адреса 0: образ программы сдвигается выше него (1 МБайт), если стоял ниже
-    if (inst.fpgaConfig && (parseBase(inst.bootAddr) || 0) < CFG_REGION) inst.bootAddr = '0x100000';
+    if (inst.fpgaConfig && (parseBase(inst.bootAddr) || 0) < CFG_REGION) inst.bootAddr = hex6(Math.max(0x100000, CFG_REGION));
     changed();
   });
   if (q('bootAddr')) q('bootAddr').addEventListener('change', e => { inst.bootAddr = e.target.value.trim().replace(/_/g, ''); changed(); });
@@ -1421,7 +1505,7 @@ function clockForm() {
       <label>Имя цепи сброса</label><input type="text" class="mono net" name="rstNet" value="${esc(model.reset.pin != null ? netOf(model, model.reset.pin) : '')}">
     </div>
     <p class="note">★ - выводы с глобальным тактом (GCLK) или входом PLL. f<sub>out</sub> = f<sub>кв</sub>·(FBDIV+1)/(IDIV+1);
-    PFD ≥ 3 МГц; VCO = f<sub>out</sub>·ODIV = 400..1200 МГц. SYSCLK_HZ в soc.h пересчитывается сам; цель в riscv.sdc держите выше рабочей частоты.</p>`;
+    PFD ≥ ${PLL.pfdMin} МГц; VCO = f<sub>out</sub>·ODIV = ${PLL.vcoMin}..${PLL.vcoMax} МГц (${esc(DEV.series)}). SYSCLK_HZ в soc.h пересчитывается сам; цель в riscv.sdc держите выше рабочей частоты.</p>`;
 }
 function wireClockForm(box) {
   const c = model.clock, p = c.pll, q = name => box.querySelector(`[name="${name}"]`);
@@ -1431,9 +1515,9 @@ function wireClockForm(box) {
   num('target', x => { p.targetMHz = x; });
   num('idiv', x => { p.idiv = x; }); num('fbdiv', x => { p.fbdiv = x; }); num('odiv', x => { p.odiv = x; });
   q('mode').addEventListener('change', e => { p.mode = e.target.value; applyPllAuto(model); changed(); });
-  q('xtalPin').addEventListener('change', e => { c.xtalPin = Number(e.target.value); ensureNet(model, { pin: c.xtalPin, def: 'clk' }); changed(); });
+  q('xtalPin').addEventListener('change', e => { c.xtalPin = pinv(e.target.value); ensureNet(model, { pin: c.xtalPin, def: 'clk' }); changed(); });
   q('xtalNet').addEventListener('change', e => { setNet(model, c.xtalPin, e.target.value); changed(); });
-  q('rstPin').addEventListener('change', e => { model.reset.pin = e.target.value === '' ? null : Number(e.target.value);
+  q('rstPin').addEventListener('change', e => { model.reset.pin = pinv(e.target.value);
     if (model.reset.pin != null) ensureNet(model, { pin: model.reset.pin, def: 'rst_n' }); changed(); });
   q('rstNet').addEventListener('change', e => { if (model.reset.pin != null) { setNet(model, model.reset.pin, e.target.value); changed(); } });
 }
@@ -1449,16 +1533,18 @@ function coreForm() {
       <label>Тип ядра</label><select name="coreType">${opts([['pipeline', 'конвейерное (5 стадий)'], ['singlecycle', 'однотактное']], c.coreType)}</select>
       <label>Расширение M</label><div><label class="chk"><input type="checkbox" name="mExt"${c.mExt ? ' checked' : ''}> mul/div</label>
         <select name="divBpc" ${c.mExt ? '' : 'disabled'}>${opts([[1, '1 бит'], [2, '2 бита'], [4, '4 бита']], c.divBpc)}</select> <span class="muted">за такт</span></div>
+      <label>Регистровый файл</label><select name="rfType" ${c.coreType === 'singlecycle' ? 'disabled' : ''}>${opts([['lut', 'LUT (распределённая память)'], ['bsram', 'BSRAM, чтение по спаду (2 блока SDPB)'], ['bsram-edge', 'BSRAM, чтение на фронте D→E (сравнение)']], c.rfType)}</select>
       ${mem('imem', 'IMEM')}
       ${mem('dmem', 'DMEM')}
-      <label>Отладчик JTAG</label><label class="chk"><input type="checkbox" name="debug"${c.debug ? ' checked' : ''}> выводы 5–8</label>
+      <label>Отладчик JTAG</label><label class="chk"><input type="checkbox" name="debug"${c.debug ? ' checked' : ''}> ${esc(jtagText())}</label>
       <label>Источников PLIC</label><div><input type="number" name="plicSources" min="1" max="31" value="${c.plicSources}" style="width:64px">
         <span class="muted"> нужно ${need}</span></div>
       <div class="full readout">Шина периферии: <b>${pll.errs.length ? '—' : fmt(sysclkHz(model) / 1e6) + ' МГц'}</b> ·
         BSRAM: <b class="${nbs > BSRAM_TOTAL ? 'bad' : 'good'}">${nbs} из ${BSRAM_TOTAL}</b></div>
     </div>
     <p class="note">Параметры попадают в параметры cpu в top.sv и в soc.h. Однотактное ядро с BSRAM делит частоту rPLL на 3.
-    Размер IMEM/DMEM ограничивает и компоновщик (GW1NR9.lds).</p>`;
+    Регистровый файл на BSRAM (только конвейер): 2 блока SDPB вместо ~230 LUT распределённой памяти. Чтение по спаду в середине стадии D (RF_TYPE = 2) - для GW2A-18 рекомендуется; на GW1NR-9 45 МГц только при Place 1/2. Чтение на фронте D→E (RF_TYPE = 1) - для сравнения.
+    Размер IMEM/DMEM ограничивает и компоновщик (GW1NR9.lds, общий для плат).</p>`;
 }
 function wireCoreForm(box) {
   const c = model.core, q = name => box.querySelector(`[name="${name}"]`);
@@ -1467,6 +1553,7 @@ function wireCoreForm(box) {
   on('coreType', e => { c.coreType = e.value; });
   on('mExt', e => { c.mExt = e.checked; });
   on('divBpc', e => { c.divBpc = Number(e.value); });
+  on('rfType', e => { c.rfType = e.value; });
   on('debug', e => { c.debug = e.checked; });
   on('plicSources', e => { c.plicSources = Math.max(1, Math.min(31, Number(e.value) || 8)); });
   for (const k of ['imem', 'dmem']) {
@@ -1502,6 +1589,17 @@ function showLibraryList() {
   body.querySelectorAll('[data-readme]').forEach(b => b.addEventListener('click', () => showReadme(b.dataset.readme)));
   body.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => addInstance(b.dataset.add)));
 }
+//Выводы блока по умолчанию - выводы конфигурации кристалла (у SPIFLASH - MSPI: MCLK, MCS_N, MO, MI), если свободны
+function defaultCfgPins(m, inst) {
+  const cp = TYPES[inst.type].cfgPins || {};
+  const busy = new Set(signals(m).filter(x => x.pin != null).map(x => x.pin));
+  for (const [k, f] of Object.entries(cp)) {
+    const n = pinWithCfg(f);
+    if (inst[k] == null && n != null && !busy.has(n) && !(m.core.debug && JTAG_PINS[n])) {
+      inst[k] = n; ensureNet(m, { pin: n, def: defNet(inst, k) });
+    }
+  }
+}
 function addInstance(type) {
   const same = insts(model, type), t = TYPES[type].title;
   if (same.length === 1 && same[0].name === t && !model.periph.some(i => i.name.toLowerCase() === (t + '0').toLowerCase())) {
@@ -1513,11 +1611,8 @@ function addInstance(type) {
   const ordered = { type, name: inst.name, base: 'auto' };
   for (const k of Object.keys(inst)) if (!(k in ordered)) ordered[k] = inst[k];
   model.periph.push(ordered);
-  //Выводы платы по умолчанию (флеш Tang Nano 9K) - только свободные
-  const bp = TYPES[type].boardPins || {};
-  const busy = new Set(signals(model).filter(x => x.pin != null).map(x => x.pin));
-  for (const [k, n] of Object.entries(bp))
-    if (!busy.has(n) && !(model.core.debug && JTAG_PINS[n])) { ordered[k] = n; ensureNet(model, { pin: n, def: defNet(ordered, k) }); }
+  //Выводы по умолчанию (SPIFLASH - выводы MSPI флеш конфигурации) - только свободные
+  defaultCfgPins(model, ordered);
   document.getElementById('lib').close();
   sel = { kind: 'inst', name: ordered.name };
   changed();
@@ -1528,8 +1623,8 @@ const readmeWait = {};
 function loadReadme(type) {
   if (inHost()) return new Promise(res => { readmeWait[type] = res; host('readme', type); });
   const cfg = new URLSearchParams(location.search).get('cfg') || '';
-  const hw = (model.paths && model.paths.hw) || '../hw';
-  const url = new URL(`${hw}/src/periph/${type}/README.md`, new URL(cfg, location.href));
+  const src = (model.paths && model.paths.src) || `${(model.paths && model.paths.hw) || '../hw'}/src`;
+  const url = new URL(`${src}/periph/${type}/README.md`, new URL(cfg, location.href));
   return fetch(url).then(r => r.ok ? r.text() : Promise.reject(new Error(r.status))).catch(e => `Описание не найдено (${url.pathname}): ${e.message}`);
 }
 function showReadme(type) {
@@ -1610,12 +1705,12 @@ function toJson(v, ind = '') {
 }
 function pinsSorted(p) {
   const o = {};
-  Object.keys(p).sort((a, b) => Number(a) - Number(b)).forEach(k => { o[k] = p[k]; });
+  Object.keys(p).sort((a, b) => pinCmp(pinv(a), pinv(b))).forEach(k => { o[k] = p[k]; });
   return o;
 }
 //Порядок разделов в файле
 function ordered(m) {
-  const keys = ['format', 'version', 'device', 'paths', 'core', 'clock', 'reset', 'periph', 'ioDefaults', 'banks', 'pins', 'build'];
+  const keys = ['format', 'version', 'board', 'device', 'paths', 'core', 'clock', 'reset', 'periph', 'ioDefaults', 'banks', 'pins', 'build'];
   const o = {};
   for (const k of keys) if (k in m) o[k] = m[k];
   for (const k of Object.keys(m)) if (!(k in o)) o[k] = m[k];
@@ -1631,11 +1726,13 @@ window.gwsoc = {
   load(text) {
     try {
       model = normalize(JSON.parse(text));
+      setDevice(model.device || DEFAULT_DEVICE);
       applyPllAuto(model);
       dirty = false;
       const ren = unnumberSingles(model);
       if (sel && sel.kind === 'inst' && !instByName(sel.name)) sel = null;
-      document.getElementById('devname').textContent = model.device || DEV.part;
+      document.getElementById('devname').textContent = (model.board && model.board.title) || '';
+      document.getElementById('device').value = DEV.part;
       document.getElementById('toolchain').value = model.build.toolchain;
       render();
       setStatus('', '');
@@ -1678,6 +1775,35 @@ function doBuild() {
   host('build', window.gwsoc.getJson());
 }
 
+//Смена ПЛИС (кристалл платы): номера выводов у корпусов разные - назначения, которых нет в новом корпусе, снимаются,
+//сигналы остаются без выводов (их назначают заново, ошибки в «Проверка» подсказывают, какие). Выводы флеш SPIFLASH -
+//на выводы MSPI нового кристалла, если свободны. Проект Gowin (riscv.gprj) и VCC генератор перепишет при сборке
+function changeDevice(part) {
+  if (!model || part === DEV.part) return;
+  const to = DEVICES[part];
+  const lost = signals(model).filter(s => s.pin != null && !to.pins.some(p => p.n === s.pin && p.type === 'io'));
+  if (lost.length && !confirm(`Сменить ПЛИС на ${to.title} (${to.family})?
+
+У корпуса ${to.package} другие выводы: назначения ` +
+      `${lost.length} сигналов будут сняты, их нужно будет назначить заново. Отменить смену можно, не сохраняя файл.`)) {
+    document.getElementById('device').value = DEV.part;
+    return;
+  }
+  lost.forEach(s => setSignalPin(model, s, null));
+  for (const k of Object.keys(model.pins)) if (!to.pins.some(p => String(p.n) === k)) delete model.pins[k];
+  const banks = new Set(to.pins.filter(p => p.bank != null).map(p => String(p.bank)));
+  for (const k of Object.keys(model.banks)) if (!banks.has(k)) delete model.banks[k];
+  model.device = part;
+  setDevice(part);
+  insts(model, 'spiflash').forEach(f => defaultCfgPins(model, f));
+  sel = null;
+  changed();
+  setStatus(`ПЛИС: ${DEV.title} (${DEV.family})${lost.length ? ` - снято назначений: ${lost.length}, назначьте выводы заново` : ''}. Сохраните и соберите`, lost.length ? 'err' : 'ok');
+}
+document.getElementById('device').innerHTML = Object.values(DEVICES).map(d =>
+  `<option value="${esc(d.part)}">${esc(d.title)} · ${esc(d.family)}</option>`).join('');
+document.getElementById('device').addEventListener('change', e => changeDevice(e.target.value));
+setDevice(DEFAULT_DEVICE);
 document.getElementById('save').addEventListener('click', doSave);
 document.getElementById('toolchain').addEventListener('change', e => { if (model) { model.build.toolchain = e.target.value; changed(); } });
 document.getElementById('placeOpt').addEventListener('change', e => {

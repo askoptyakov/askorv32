@@ -25,6 +25,10 @@
   --bank1: #bfe6c5;
   --bank2: #bcd3f7;
   --bank3: #fbd6a0;
+  --bank4: #d9c8f2;
+  --bank5: #c4ece9;
+  --bank6: #f6e3a1;
+  --bank7: #f7c5bb;
   --pwr: #8c939d;
   --gnd: #5b616b;
   --shadow: 0 1px 2px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.08);
@@ -67,7 +71,8 @@ code { font-family: Consolas, monospace; font-size: 12px; background: var(--surf
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--line);
 }
-.bar-title { display: flex; gap: 8px; align-items: baseline; }
+.bar-title { display: flex; gap: 8px; align-items: baseline; white-space: nowrap; flex-shrink: 0; }
+#device { max-width: 230px; }
 .bar-title strong { font-size: 15px; }
 .bar-tools { display: flex; gap: 6px; align-items: center; }
 .bar-tools .sep { width: 1px; height: 20px; background: var(--line); margin: 0 6px; }
@@ -126,6 +131,13 @@ main { flex: 1; display: flex; min-height: 0; }
 .chip-title { fill: #1d2330; font-size: 15px; font-weight: 600; text-anchor: middle; }
 .chip-sub { fill: #6b7280; font-size: 11px; text-anchor: middle; }
 .pin1 { fill: #3a3f47; }
+.chip-axis { fill: #6b7280; font-size: 11px; font-family: Consolas, monospace; text-anchor: middle; }
+/* BGA: кольцо вокруг шарика - вывод занят (цвет блока), подпись цепи - внутри шарика */
+.pin .mark.ring { fill: none; stroke: transparent; stroke-width: 3.5; }
+.pin.conflict .mark.ring { fill: none !important; stroke: var(--error) !important; }
+#chip.hl .pin.on .mark.ring { stroke-width: 4.5; }
+.pin .ball-label { font-size: 8px; fill: #1d2330; cursor: text; }
+.pin.power .num { fill: #ffffff; font-size: 11px; }
 .pin .cell { stroke: rgba(0,0,0,.18); stroke-width: 1; }
 .pin .mark { fill: #ffffff; stroke: #6b7280; stroke-width: 1.2; }
 .pin.used .mark { stroke: #1d2330; stroke-width: 1.5; }
@@ -143,6 +155,8 @@ main { flex: 1; display: flex; min-height: 0; }
 .pin.dim { opacity: .2; }
 .pin.flash .mark { animation: flash .9s 3; }
 @keyframes flash { 50% { fill: #ffd000; r: 9; } }
+.pin.flash .mark.ring { animation: flashring .9s 3; }
+@keyframes flashring { 50% { stroke: #ffd000; stroke-width: 7; } }
 
 .tile-fo { overflow: visible; }
 .tile {

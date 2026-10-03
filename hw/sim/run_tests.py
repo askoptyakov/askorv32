@@ -150,10 +150,10 @@ def build_program(name, prefix, imem_kb=8, text_base=0):
 # ----------------------------------------------------------------------------------------
 # Моделирование
 # ----------------------------------------------------------------------------------------
-def compile_tb(core, prim_sim, imem_kb=8, dmem_kb=8, boot=False):
-    vvp = BUILD_DIR / f"tb_core_{core}_i{imem_kb}_d{dmem_kb}{'_boot' if boot else ''}.vvp"
+def compile_tb(core, prim_sim, imem_kb=8, dmem_kb=8, boot=False, rf_bsram=0):
+    vvp = BUILD_DIR / f"tb_core_{core}_i{imem_kb}_d{dmem_kb}{'_boot' if boot else ''}{f'_rfb{rf_bsram}' if rf_bsram else ''}.vvp"
     r = run([need("iverilog"), "-g2012", "-o", vvp, "-s", "tb_core", f"-I{SIM_DIR}", *(["-DTB_BOOT"] if boot else []),
-             f"-Ptb_core.CORE_TYPE={CORES[core]}", f"-Ptb_core.IMEM_KB={imem_kb}",
+             f"-Ptb_core.CORE_TYPE={CORES[core]}", f"-Ptb_core.RF_TYPE={rf_bsram}", f"-Ptb_core.IMEM_KB={imem_kb}",
              f"-Ptb_core.DMEM_KB={dmem_kb}", *[f"-DTB_{m}_{kb}K" for m, kb in (("IMEM", imem_kb), ("DMEM", dmem_kb)) if kb > 8],
              TB, *RTL, prim_sim])
     errors = [l for l in r.stderr.splitlines() if "constant selects in always_" not in l
@@ -198,6 +198,9 @@ def main():
                     help="адрес начала кода тестов, например 0x1f00 - код пересекает границу кластеров BSRAM")
     ap.add_argument("--boot", action="store_true",
                     help="программа - образом во внешней SPI-флеш: копирует загрузчик контроллера spiflash_top")
+    ap.add_argument("--rf-bsram", type=int, nargs="?", const=2, default=0, choices=[1, 2],
+                    help="регистровый файл конвейерного ядра на BSRAM (два блока SDPB): 1 - чтение на фронте D->E, "
+                         "2 - по спаду в D (по умолчанию для ключа без значения)")
     ap.add_argument("-j", "--jobs", type=int, default=os.cpu_count() or 4)
     a = ap.parse_args()
 
@@ -225,13 +228,13 @@ def main():
             progs[name] = info
 
     # 2. Компиляция тестбенча и прогон
-    vvps = {c: compile_tb(c, prim_sim, a.imem_kb, boot=a.boot) for c in cores}
+    vvps = {c: compile_tb(c, prim_sim, a.imem_kb, boot=a.boot, rf_bsram=a.rf_bsram) for c in cores}
     jobs = [(n, c) for n in names for c in cores]
     with ThreadPoolExecutor(a.jobs) as ex:
         results = dict(zip(jobs, ex.map(lambda j: simulate(vvps[j[1]], j[0], j[1], a.vcd, a.rf_garbage, a.boot), jobs)))
 
     # 3. Отчёт
-    print(f"\nТесты RV32I, память BSRAM (IMEM {a.imem_kb} кБайт, код с 0x{a.text_base:x}){', из SPI-флеш' if a.boot else ''}. Ядра: {', '.join(cores)}\n")
+    print(f"\nТесты RV32I, память BSRAM (IMEM {a.imem_kb} кБайт, код с 0x{a.text_base:x}){', из SPI-флеш' if a.boot else ''}{f', регистровый файл конвейера - BSRAM (RF_TYPE = {a.rf_bsram})' if a.rf_bsram else ''}. Ядра: {', '.join(cores)}\n")
     head = f"{'Инструкция':<11}{'Тестов':>7}  " + "".join(f"{c:<22}" for c in cores)
     print(head)
     print("-" * len(head))

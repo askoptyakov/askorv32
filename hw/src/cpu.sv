@@ -22,13 +22,15 @@
 //  0x1100_0000..0x1FFF_FFFF - порт bus_per (пользовательская периферия; 0x1F00_0000 - устройства тестбенча)
 //Загрузчик программы из внешней флеш (контроллер SPI-флеш в top.sv, hw/src/periph/spiflash) подключается
 //к порту boot_*: пока он копирует программу в IMEM и DMEM, ядро держится в сбросе.
-//Верхний уровень платы top.sv создаёт конфигуратор ПЛИС (sw/socgen) из fw/riscv.gwsoc: он
+//Верхний уровень платы hw/boards/<плата>/top.sv создаёт конфигуратор ПЛИС (sw/socgen) из
+//fw/boards/<плата>/<плата>.gwsoc: он
 //переопределяет параметры cpu и подключает периферию. Тесты ядра (hw/sim) моделируют cpu без
 //top.sv, поэтому от конфигурации платы не зависят. Этот файл правится вручную, top.sv - нет.
 module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
                 //Расширение M (умножение и деление)
              parameter bit M_EXT           =                 1, //1 - mul/mulh*/div*/rem*; 0 - RV32I (такие инструкции недопустимы)
              parameter int DIV_BPC         =                 2, //Бит частного за такт: 1, 2, 4 (деление 32/DIV_BPC + 3 такта)
+             parameter int RF_TYPE         =                 0, //Регистровый файл: 0 - LUT; BSRAM (2 блока SDPB, конвейер): 1 - чтение на фронте D->E, 2 - по спаду в D
                 //Настройки памяти инструкций
              parameter bit IMEM_TYPE       =        `BSRAM_MEM,
              parameter int BSRAM_IMEM_SIZE =                 8, //кБайт (поддерживаемые значения 8/16/32)
@@ -44,6 +46,7 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
              parameter int PLIC_SOURCES    =                 8, //Число источников PLIC (1..31)
                 //Такт ядра от rPLL: FCLKIN * (FBDIV+1) / (IDIV+1), см. clk_pll в clock.sv
              parameter     FCLKIN          =              "27", //Частота кварца, МГц (строка, как у rPLL)
+             parameter     PLL_DEVICE      =        "GW1NR-9C", //Кристалл для rPLL: "GW1NR-9C", "GW2A-18C" (задаёт top.sv платы)
              parameter int PLL_IDIV_SEL    =                 2,
              parameter int PLL_FBDIV_SEL   =                 4, //27 * 5 / 3 = 45 МГц
              parameter int PLL_ODIV_SEL    =                16) //VCO = 45 * 16 = 720 МГц
@@ -73,7 +76,7 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     //с тремя тактами на одну инструкцию. Тактируем imem и dmem 2ым и 3ьим тактом.
     //Базовый такт - от PLL по глобальной тактовой сети (раньше - триггер-делитель clk/2)
     logic clk_base, pll_lock;
-    clk_pll #(FCLKIN, PLL_IDIV_SEL, PLL_FBDIV_SEL, PLL_ODIV_SEL) clk_pll (.clkin(clk), .clkout(clk_base), .lock(pll_lock));
+    clk_pll #(FCLKIN, PLL_DEVICE, PLL_IDIV_SEL, PLL_FBDIV_SEL, PLL_ODIV_SEL) clk_pll (.clkin(clk), .clkout(clk_base), .lock(pll_lock));
 
     logic clk_core, clk_imem, clk_dmem;
     generate if ((IMEM_TYPE | DMEM_TYPE) & CORE_TYPE) begin   //#1 - Для однотактного ядра с BSRAM
@@ -140,7 +143,7 @@ module cpu #(parameter bit CORE_TYPE       =    `PIPELINE_CORE,
     logic [31:0] sb_addr, sb_wdata;
         //Ядро
 
-    core #(CORE_TYPE, IMEM_TYPE, DMEM_TYPE, M_EXT, DIV_BPC)
+    core #(CORE_TYPE, IMEM_TYPE, DMEM_TYPE, M_EXT, DIV_BPC, RF_TYPE)
            riscv
           (.clk(clk_core), .rst(rst_core),                                                       //Системные
            .imem_data(imem_data), .imem_re(imem_re), .imem_rst(imem_rst), .imem_addr(imem_addr), //Интерфейс памяти команд

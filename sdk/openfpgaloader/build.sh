@@ -1,5 +1,6 @@
 #!/bin/bash
-# Сборка openFPGALoader v1.1.1 с исправлениями gowin_spi_flush.patch и gowin_gw1n_erase.patch
+# Сборка openFPGALoader v1.1.1 с исправлениями gowin_spi_flush.patch, gowin_gw1n_erase.patch
+# и bl616_bitmode_tail.patch
 # в sdk/openfpgaloader/bin (README.md).
 # Запуск - в оболочке MSYS2 UCRT64 (C:\msys64\ucrt64.exe) или из PowerShell:
 #   $env:MSYSTEM='UCRT64'; C:\msys64\usr\bin\bash.exe -l <путь к этому файлу>
@@ -14,6 +15,7 @@ cd openFPGALoader
 git checkout -q -- src
 git apply "$HERE/gowin_spi_flush.patch"
 git apply "$HERE/gowin_gw1n_erase.patch"
+git apply "$HERE/bl616_bitmode_tail.patch"
 git diff --stat
 rm -rf build && mkdir build && cd build
 cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_UDEV=OFF -DENABLE_LIBGPIOD=OFF -DENABLE_CMSISDAP=ON .. > cmake.log 2>&1 \

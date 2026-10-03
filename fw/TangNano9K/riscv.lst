@@ -1,0 +1,2076 @@
+
+riscv.elf:     file format elf32-littleriscv
+riscv.elf
+architecture: riscv:rv32, flags 0x00000112:
+EXEC_P, HAS_SYMS, D_PAGED
+start address 0x00000000
+
+Program Header:
+0x70000003 off    0x00003068 vaddr 0x00000000 paddr 0x00000000 align 2**0
+         filesz 0x00000037 memsz 0x00000000 flags r--
+    LOAD off    0x00001000 vaddr 0x00000000 paddr 0x00000000 align 2**12
+         filesz 0x00001284 memsz 0x00001284 flags r-x
+    LOAD off    0x00003000 vaddr 0x10000000 paddr 0x00008000 align 2**12
+         filesz 0x00000068 memsz 0x00000910 flags rw-
+   STACK off    0x00000000 vaddr 0x00000000 paddr 0x00000000 align 2**4
+         filesz 0x00000000 memsz 0x00000000 flags rw-
+
+Sections:
+Idx Name              Size      VMA       LMA       File off  Algn  Flags
+  0 .text             00001284  00000000  00000000  00001000  2**8  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .data             00000068  10000000  00008000  00003000  2**2  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  2 .bss              000000a0  10000068  00008068  00003068  2**2  ALLOC
+  3 .stack            00000808  10000108  00008108  00003068  2**0  ALLOC
+  4 .riscv.attributes 00000037  00000000  00000000  00003068  2**0  CONTENTS, READONLY
+  5 .comment          00000033  00000000  00000000  0000309f  2**0  CONTENTS, READONLY
+  6 .debug_line       00001c57  00000000  00000000  000030d2  2**0  CONTENTS, READONLY, DEBUGGING, OCTETS
+  7 .debug_line_str   00000341  00000000  00000000  00004d29  2**0  CONTENTS, READONLY, DEBUGGING, OCTETS
+  8 .debug_info       00001843  00000000  00000000  0000506a  2**0  CONTENTS, READONLY, DEBUGGING, OCTETS
+  9 .debug_abbrev     00000a22  00000000  00000000  000068ad  2**0  CONTENTS, READONLY, DEBUGGING, OCTETS
+ 10 .debug_aranges    000001e0  00000000  00000000  000072d0  2**3  CONTENTS, READONLY, DEBUGGING, OCTETS
+ 11 .debug_str        00004eec  00000000  00000000  000074b0  2**0  CONTENTS, READONLY, DEBUGGING, OCTETS
+ 12 .debug_rnglists   0000017a  00000000  00000000  0000c39c  2**0  CONTENTS, READONLY, DEBUGGING, OCTETS
+ 13 .debug_macro      00000645  00000000  00000000  0000c516  2**0  CONTENTS, READONLY, DEBUGGING, OCTETS
+ 14 .debug_frame      00000650  00000000  00000000  0000cb5c  2**2  CONTENTS, READONLY, DEBUGGING, OCTETS
+SYMBOL TABLE:
+00000000 l    d  .text	00000000 .text
+10000000 l    d  .data	00000000 .data
+10000068 l    d  .bss	00000000 .bss
+10000108 l    d  .stack	00000000 .stack
+00000000 l    d  .riscv.attributes	00000000 .riscv.attributes
+00000000 l    d  .comment	00000000 .comment
+00000000 l    d  .debug_line	00000000 .debug_line
+00000000 l    d  .debug_line_str	00000000 .debug_line_str
+00000000 l    d  .debug_info	00000000 .debug_info
+00000000 l    d  .debug_abbrev	00000000 .debug_abbrev
+00000000 l    d  .debug_aranges	00000000 .debug_aranges
+00000000 l    d  .debug_str	00000000 .debug_str
+00000000 l    d  .debug_rnglists	00000000 .debug_rnglists
+00000000 l    d  .debug_macro	00000000 .debug_macro
+00000000 l    d  .debug_frame	00000000 .debug_frame
+00000000 l    df *ABS*	00000000 start.o
+0000003c l       .text	00000000 end_init_bss
+00000030 l       .text	00000000 loop_init_bss
+00000200 l       .text	00000000 Default_Handler
+00000204 l       .text	00000000 Default_Exception_Handler
+00000000 l    df *ABS*	00000000 gpio.c
+00000000 l    df *ABS*	00000000 main.c
+00000244 l     F .text	00000028 __enable_irq
+0000026c l     F .text	0000004c LED_Toggle
+00000500 l     F .text	00000078 it_write_all
+00000578 l     F .text	000000c4 utoa10
+0000063c l     F .text	000002c0 Example_Run
+00000000 l    df *ABS*	00000000 plic.c
+00000000 l    df *ABS*	00000000 tim.c
+00000000 l    df *ABS*	00000000 tm1638.c
+00000adc l     F .text	000000ec write_codes
+00000000 l    df *ABS*	00000000 uart.c
+00000db4 l     F .text	00000038 IRQ_Enable
+00000f70 g     F .text	0000010c UART_IT_Start
+00000200  w      .text	00000000 PLIC_SRC17_IRQHandler
+100007f0 g       .data	00000000 __global_pointer$
+00000200  w      .text	00000000 PLIC_SRC11_IRQHandler
+00000204  w      .text	00000000 Exception_Handler
+00000200  w      .text	00000000 PLIC_SRC5_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC10_IRQHandler
+100000b4 g     O .bss	0000004c uart_tx_ring
+00000200  w      .text	00000000 MEI_IRQHandler
+00001284 g       .text	00000000 _etext
+10000068 g       .bss	00000000 _sbss
+00000200  w      .text	00000000 LI15_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC23_IRQHandler
+00000dec g     F .text	000000e8 UART_Init
+00000208 g     F .text	0000003c GPIO_Init
+00000200  w      .text	00000000 LI4_IRQHandler
+10000000 g       .data	00000000 _sdata
+00000200  w      .text	00000000 LI8_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC14_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC16_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC31_IRQHandler
+10000108 g       .bss	00000000 _ebss
+00000200  w      .text	00000000 PLIC_SRC24_IRQHandler
+00000200  w      .text	00000000 LI3_IRQHandler
+00000200  w      .text	00000000 LI10_IRQHandler
+0000039c g     F .text	00000164 PLIC_SRC2_IRQHandler
+000002b8 g     F .text	000000e4 PLIC_SRC1_IRQHandler
+00000200  w      .text	00000000 LI7_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC20_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC7_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC22_IRQHandler
+00000ed4 g     F .text	0000009c UART_Utf8ToCp1251
+00000100 g       .text	00000000 __vector_table
+00000200  w      .text	00000000 PLIC_SRC8_IRQHandler
+00000800 g       *ABS*	00000000 _stack_size
+00000200  w      .text	00000000 PLIC_SRC25_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC6_IRQHandler
+10000100 g     O .bss	00000004 blink_count
+00000200  w      .text	00000000 PLIC_SRC18_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC19_IRQHandler
+00000994 g     F .text	00000090 PLIC_Init
+000008fc g     F .text	00000098 main
+00000200  w      .text	00000000 PLIC_SRC3_IRQHandler
+10000104 g     O .bss	00000004 seconds
+00000a90 g     F .text	0000004c TM1638_Init
+0000107c g     F .text	000000c4 UART_IT_Write
+00000200  w      .text	00000000 PLIC_SRC21_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC27_IRQHandler
+00000200  w      .text	00000000 LI0_IRQHandler
+00000cd4 g     F .text	000000e0 TM1638_WriteNumber
+00000200  w      .text	00000000 LI6_IRQHandler
+00000200  w      .text	00000000 LI2_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC9_IRQHandler
+00000200  w      .text	00000000 MSI_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC30_IRQHandler
+10000910 g       .stack	00000000 _estack
+00000200  w      .text	00000000 PLIC_SRC4_IRQHandler
+00000200  w      .text	00000000 MTI_IRQHandler
+000011e0 g     F .text	000000a4 UART_IT_Read
+10000068 g       .data	00000000 _edata
+00001140 g     F .text	000000a0 UART_IT_PutText
+00000200  w      .text	00000000 PLIC_SRC15_IRQHandler
+00000a24 g     F .text	0000006c STIM_InitPeriodic
+00000200  w      .text	00000000 PLIC_SRC13_IRQHandler
+00000000 g       .text	00000000 start
+10000068 g     O .bss	0000004c uart_rx_ring
+00000200  w      .text	00000000 PLIC_SRC26_IRQHandler
+00000200  w      .text	00000000 LI14_IRQHandler
+00000200  w      .text	00000000 LI13_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC12_IRQHandler
+00000200  w      .text	00000000 LI12_IRQHandler
+00000200  w      .text	00000000 LI5_IRQHandler
+00000200  w      .text	00000000 LI9_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC29_IRQHandler
+00000200  w      .text	00000000 PLIC_SRC28_IRQHandler
+00000200  w      .text	00000000 LI11_IRQHandler
+00000bc8 g     F .text	0000010c TM1638_WriteText
+00000200  w      .text	00000000 LI1_IRQHandler
+
+
+
+Disassembly of section .text:
+
+00000000 <start>:
+start():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:19
+	.global main
+
+start:
+	.option push
+	.option norelax
+	la gp, __global_pointer$
+       0:	10000197          	auipc	gp,0x10000
+       4:	7f018193          	addi	gp,gp,2032 # 100007f0 <__global_pointer$>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:21
+	.option pop
+	la sp, _estack
+       8:	10001117          	auipc	sp,0x10001
+       c:	90810113          	addi	sp,sp,-1784 # 10000910 <_estack>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:25
+
+	/* Ловушки: векторный режим (mtvec.MODE = 1). Прерывание с кодом N -> __vector_table + 4*N,
+	   исключения -> __vector_table. Прерывания разрешает программа (mie, mstatus.MIE) */
+	la t0, __vector_table
+      10:	00000297          	auipc	t0,0x0
+      14:	0f028293          	addi	t0,t0,240 # 100 <__vector_table>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:26
+	ori t0, t0, 1
+      18:	0012e293          	ori	t0,t0,1
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:27
+	csrw mtvec, t0
+      1c:	30529073          	csrw	mtvec,t0
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:30
+
+	/* Инициализация секции bss нулевыми значениями */
+	la a0, _sbss
+      20:	87818513          	addi	a0,gp,-1928 # 10000068 <uart_rx_ring>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:31
+	la a1, _ebss
+      24:	10000597          	auipc	a1,0x10000
+      28:	0e458593          	addi	a1,a1,228 # 10000108 <_ebss>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:32
+	bge a0, a1, end_init_bss
+      2c:	00b55863          	bge	a0,a1,3c <end_init_bss>
+
+00000030 <loop_init_bss>:
+loop_init_bss():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:34
+loop_init_bss:
+	sw zero, 0(a0)
+      30:	00052023          	sw	zero,0(a0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:35
+	addi a0, a0, 4
+      34:	00450513          	addi	a0,a0,4
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:36
+	blt a0, a1, loop_init_bss
+      38:	feb54ce3          	blt	a0,a1,30 <loop_init_bss>
+
+0000003c <end_init_bss>:
+end_init_bss():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:40
+end_init_bss:
+
+	/* Переход в функцию main */
+	call main
+      3c:	0c1000ef          	jal	8fc <main>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:41
+1:	j 1b
+      40:	0000006f          	j	40 <end_init_bss+0x4>
+	...
+
+00000100 <__vector_table>:
+__vector_table():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:60
+	.option norelax
+	.balign 256
+	.option pop
+	.globl __vector_table
+__vector_table:
+	j Exception_Handler		/*  0 Исключения */
+     100:	1040006f          	j	204 <Exception_Handler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:61
+	j Default_Handler		/*  1 */
+     104:	0fc0006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:62
+	j Default_Handler		/*  2 */
+     108:	0f80006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:63
+	j MSI_IRQHandler		/*  3 Программное прерывание (CLINT) */
+     10c:	0f40006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:64
+	j Default_Handler		/*  4 */
+     110:	0f00006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:65
+	j Default_Handler		/*  5 */
+     114:	0ec0006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:66
+	j Default_Handler		/*  6 */
+     118:	0e80006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:67
+	j MTI_IRQHandler		/*  7 Машинный таймер (CLINT) */
+     11c:	0e40006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:68
+	j Default_Handler		/*  8 */
+     120:	0e00006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:69
+	j Default_Handler		/*  9 */
+     124:	0dc0006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:70
+	j Default_Handler		/* 10 */
+     128:	0d80006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:71
+	j MEI_IRQHandler		/* 11 Внешнее прерывание PLIC - только без векторного режима PLIC */
+     12c:	0d40006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:72
+	j Default_Handler		/* 12 */
+     130:	0d00006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:73
+	j Default_Handler		/* 13 */
+     134:	0cc0006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:74
+	j Default_Handler		/* 14 */
+     138:	0c80006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:75
+	j Default_Handler		/* 15 */
+     13c:	0c40006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:76
+	j LI0_IRQHandler		/* 16..31 LI0..LI15 - локальные линии (какое устройство на какой - soc.h) */
+     140:	0c00006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:77
+	j LI1_IRQHandler
+     144:	0bc0006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:78
+	j LI2_IRQHandler
+     148:	0b80006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:79
+	j LI3_IRQHandler
+     14c:	0b40006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:80
+	j LI4_IRQHandler
+     150:	0b00006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:81
+	j LI5_IRQHandler
+     154:	0ac0006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:82
+	j LI6_IRQHandler
+     158:	0a80006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:83
+	j LI7_IRQHandler
+     15c:	0a40006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:84
+	j LI8_IRQHandler
+     160:	0a00006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:85
+	j LI9_IRQHandler
+     164:	09c0006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:86
+	j LI10_IRQHandler
+     168:	0980006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:87
+	j LI11_IRQHandler
+     16c:	0940006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:88
+	j LI12_IRQHandler
+     170:	0900006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:89
+	j LI13_IRQHandler
+     174:	08c0006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:90
+	j LI14_IRQHandler
+     178:	0880006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:91
+	j LI15_IRQHandler		/* 31 */
+     17c:	0840006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:93
+	/* 32..63 - источники PLIC в векторном режиме (PLIC_Init): MEI от источника S -> вход 32 + S */
+	j Default_Handler		/* 32 Источник 0 не существует */
+     180:	0800006f          	j	200 <LI0_IRQHandler>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:95
+	.irp n, 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
+	j PLIC_SRC\n\()_IRQHandler	/* 33..63 Источники 1..31 (какое устройство на каком - soc.h) */
+     184:	1340006f          	j	2b8 <PLIC_SRC1_IRQHandler>
+     188:	2140006f          	j	39c <PLIC_SRC2_IRQHandler>
+     18c:	0740006f          	j	200 <LI0_IRQHandler>
+     190:	0700006f          	j	200 <LI0_IRQHandler>
+     194:	06c0006f          	j	200 <LI0_IRQHandler>
+     198:	0680006f          	j	200 <LI0_IRQHandler>
+     19c:	0640006f          	j	200 <LI0_IRQHandler>
+     1a0:	0600006f          	j	200 <LI0_IRQHandler>
+     1a4:	05c0006f          	j	200 <LI0_IRQHandler>
+     1a8:	0580006f          	j	200 <LI0_IRQHandler>
+     1ac:	0540006f          	j	200 <LI0_IRQHandler>
+     1b0:	0500006f          	j	200 <LI0_IRQHandler>
+     1b4:	04c0006f          	j	200 <LI0_IRQHandler>
+     1b8:	0480006f          	j	200 <LI0_IRQHandler>
+     1bc:	0440006f          	j	200 <LI0_IRQHandler>
+     1c0:	0400006f          	j	200 <LI0_IRQHandler>
+     1c4:	03c0006f          	j	200 <LI0_IRQHandler>
+     1c8:	0380006f          	j	200 <LI0_IRQHandler>
+     1cc:	0340006f          	j	200 <LI0_IRQHandler>
+     1d0:	0300006f          	j	200 <LI0_IRQHandler>
+     1d4:	02c0006f          	j	200 <LI0_IRQHandler>
+     1d8:	0280006f          	j	200 <LI0_IRQHandler>
+     1dc:	0240006f          	j	200 <LI0_IRQHandler>
+     1e0:	0200006f          	j	200 <LI0_IRQHandler>
+     1e4:	01c0006f          	j	200 <LI0_IRQHandler>
+     1e8:	0180006f          	j	200 <LI0_IRQHandler>
+     1ec:	0140006f          	j	200 <LI0_IRQHandler>
+     1f0:	0100006f          	j	200 <LI0_IRQHandler>
+     1f4:	00c0006f          	j	200 <LI0_IRQHandler>
+     1f8:	0080006f          	j	200 <LI0_IRQHandler>
+     1fc:	0040006f          	j	200 <LI0_IRQHandler>
+
+00000200 <LI0_IRQHandler>:
+Default_Handler():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:107
+ * причину можно посмотреть отладчиком в mcause, адрес инструкции - в mepc.
+ */
+	.section .text
+	.balign 4
+Default_Handler:
+	j Default_Handler
+     200:	0000006f          	j	200 <LI0_IRQHandler>
+
+00000204 <Exception_Handler>:
+Default_Exception_Handler():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Startup/start.S:109
+Default_Exception_Handler:
+	j Default_Exception_Handler
+     204:	0000006f          	j	204 <Exception_Handler>
+
+00000208 <GPIO_Init>:
+GPIO_Init():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/gpio.c:14
+
+#include "gpio.h"
+
+#if GPIO_PRESENT
+
+void GPIO_Init(void) {
+     208:	ff010113          	addi	sp,sp,-16
+     20c:	00112623          	sw	ra,12(sp)
+     210:	00812423          	sw	s0,8(sp)
+     214:	01010413          	addi	s0,sp,16
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/gpio.c:15
+	GPIO->MODE = 0;
+     218:	110007b7          	lui	a5,0x11000
+     21c:	0007a023          	sw	zero,0(a5) # 11000000 <_estack+0xfff6f0>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/gpio.c:16
+	GPIO->OUT  = 0;
+     220:	110007b7          	lui	a5,0x11000
+     224:	0007a223          	sw	zero,4(a5) # 11000004 <_estack+0xfff6f4>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/gpio.c:17
+	GPIO->IN   = 0;
+     228:	110007b7          	lui	a5,0x11000
+     22c:	0007a423          	sw	zero,8(a5) # 11000008 <_estack+0xfff6f8>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/gpio.c:18
+}
+     230:	00000013          	nop
+     234:	00c12083          	lw	ra,12(sp)
+     238:	00812403          	lw	s0,8(sp)
+     23c:	01010113          	addi	sp,sp,16
+     240:	00008067          	ret
+
+00000244 <__enable_irq>:
+__enable_irq():
+C:\GitHub\askorv32\fw\Core\Inc/core_riscv.h:79
+
+/* Атрибут обработчика прерывания: компилятор сохраняет используемые регистры и выходит по mret */
+#define __IRQ                  __attribute__((interrupt("machine")))
+
+/* Глобальное разрешение и запрет прерываний (mstatus.MIE) */
+static inline void __enable_irq(void)  { CSR_SET(mstatus, MSTATUS_MIE); }
+     244:	ff010113          	addi	sp,sp,-16
+     248:	00112623          	sw	ra,12(sp)
+     24c:	00812423          	sw	s0,8(sp)
+     250:	01010413          	addi	s0,sp,16
+     254:	30046073          	csrsi	mstatus,8
+     258:	00000013          	nop
+     25c:	00c12083          	lw	ra,12(sp)
+     260:	00812403          	lw	s0,8(sp)
+     264:	01010113          	addi	sp,sp,16
+     268:	00008067          	ret
+
+0000026c <LED_Toggle>:
+LED_Toggle():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:44
+unsigned int dig_transform(unsigned int digit);
+
+#if EXAMPLE != 0
+volatile unsigned int blink_count = 0;	//Число переключений светодиода
+
+__attribute__((unused)) static void LED_Toggle(void) {
+     26c:	ff010113          	addi	sp,sp,-16
+     270:	00112623          	sw	ra,12(sp)
+     274:	00812423          	sw	s0,8(sp)
+     278:	01010413          	addi	s0,sp,16
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:45
+	GPIO->OUT ^= (1U << LED0_PIN);
+     27c:	110007b7          	lui	a5,0x11000
+     280:	0047a703          	lw	a4,4(a5) # 11000004 <_estack+0xfff6f4>
+     284:	110007b7          	lui	a5,0x11000
+     288:	00174713          	xori	a4,a4,1
+     28c:	00e7a223          	sw	a4,4(a5) # 11000004 <_estack+0xfff6f4>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:46
+	blink_count++;
+     290:	91018793          	addi	a5,gp,-1776 # 10000100 <blink_count>
+     294:	0007a783          	lw	a5,0(a5)
+     298:	00178713          	addi	a4,a5,1
+     29c:	91018793          	addi	a5,gp,-1776 # 10000100 <blink_count>
+     2a0:	00e7a023          	sw	a4,0(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:47
+}
+     2a4:	00000013          	nop
+     2a8:	00c12083          	lw	ra,12(sp)
+     2ac:	00812403          	lw	s0,8(sp)
+     2b0:	01010113          	addi	sp,sp,16
+     2b4:	00008067          	ret
+
+000002b8 <PLIC_SRC1_IRQHandler>:
+PLIC_SRC1_IRQHandler():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:182
+ *    байты копятся в кольцевых буферах драйвера, основной цикл не ждёт UART;
+ *  - принятая строка показывается на TM1638 и возвращается на ПК.
+ */
+volatile uint32_t seconds = 0;
+
+__IRQ void PLIC_STIM_IRQHandler(void) {
+     2b8:	fa010113          	addi	sp,sp,-96
+     2bc:	04112e23          	sw	ra,92(sp)
+     2c0:	04512c23          	sw	t0,88(sp)
+     2c4:	04612a23          	sw	t1,84(sp)
+     2c8:	04712823          	sw	t2,80(sp)
+     2cc:	04812623          	sw	s0,76(sp)
+     2d0:	04a12423          	sw	a0,72(sp)
+     2d4:	04b12223          	sw	a1,68(sp)
+     2d8:	04c12023          	sw	a2,64(sp)
+     2dc:	02d12e23          	sw	a3,60(sp)
+     2e0:	02e12c23          	sw	a4,56(sp)
+     2e4:	02f12a23          	sw	a5,52(sp)
+     2e8:	03012823          	sw	a6,48(sp)
+     2ec:	03112623          	sw	a7,44(sp)
+     2f0:	03c12423          	sw	t3,40(sp)
+     2f4:	03d12223          	sw	t4,36(sp)
+     2f8:	03e12023          	sw	t5,32(sp)
+     2fc:	01f12e23          	sw	t6,28(sp)
+     300:	06010413          	addi	s0,sp,96
+STIM_CLEAR_FLAG_UPDATE():
+C:\GitHub\askorv32\fw\Core\Inc/tim.h:97
+}
+
+/* Сброс флага записью 1. В обработчике прерывания флаг нужно сбросить, иначе после выхода
+   прерывание сразу возникнет снова */
+__INLINE void STIM_CLEAR_FLAG_UPDATE(void) {
+	STIM->SR = STIM_SR_UIF;
+     304:	130007b7          	lui	a5,0x13000
+     308:	00100713          	li	a4,1
+     30c:	00e7aa23          	sw	a4,20(a5) # 13000014 <_estack+0x2fff704>
+C:\GitHub\askorv32\fw\Core\Inc/tim.h:98
+}
+     310:	00000013          	nop
+PLIC_SRC1_IRQHandler():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:184
+	STIM_CLEAR_FLAG_UPDATE();
+	seconds++;
+     314:	91418793          	addi	a5,gp,-1772 # 10000104 <seconds>
+     318:	0007a783          	lw	a5,0(a5)
+     31c:	00178713          	addi	a4,a5,1
+     320:	91418793          	addi	a5,gp,-1772 # 10000104 <seconds>
+     324:	00e7a023          	sw	a4,0(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:185
+	LED_Toggle();
+     328:	f45ff0ef          	jal	26c <LED_Toggle>
+     32c:	00100793          	li	a5,1
+     330:	faf42623          	sw	a5,-84(s0)
+PLIC_Complete():
+C:\GitHub\askorv32\fw\Core\Inc/plic.h:77
+__PLIC_INLINE void PLIC_SetThreshold(uint32_t thr) { PLIC->THRESHOLD = thr; }
+
+/* Complete: источник обслужен, можно принимать от него новый запрос.
+   Claim (номер ожидающего источника с наибольшим приоритетом и снятие ожидания) в векторном
+   режиме выполняет сам PLIC; чтение нужно только без векторного режима */
+__PLIC_INLINE void     PLIC_Complete(PLIC_SRC_Type src) { PLIC->CLAIM = src; }
+     334:	0c000737          	lui	a4,0xc000
+     338:	002007b7          	lui	a5,0x200
+     33c:	00f707b3          	add	a5,a4,a5
+     340:	fac42703          	lw	a4,-84(s0)
+     344:	00e7a223          	sw	a4,4(a5) # 200004 <_etext+0x1fed80>
+     348:	00000013          	nop
+PLIC_SRC1_IRQHandler():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:187
+	PLIC_Complete(PLIC_SRC_STIM);
+}
+     34c:	00000013          	nop
+     350:	05c12083          	lw	ra,92(sp)
+     354:	05812283          	lw	t0,88(sp)
+     358:	05412303          	lw	t1,84(sp)
+     35c:	05012383          	lw	t2,80(sp)
+     360:	04c12403          	lw	s0,76(sp)
+     364:	04812503          	lw	a0,72(sp)
+     368:	04412583          	lw	a1,68(sp)
+     36c:	04012603          	lw	a2,64(sp)
+     370:	03c12683          	lw	a3,60(sp)
+     374:	03812703          	lw	a4,56(sp)
+     378:	03412783          	lw	a5,52(sp)
+     37c:	03012803          	lw	a6,48(sp)
+     380:	02c12883          	lw	a7,44(sp)
+     384:	02812e03          	lw	t3,40(sp)
+     388:	02412e83          	lw	t4,36(sp)
+     38c:	02012f03          	lw	t5,32(sp)
+     390:	01c12f83          	lw	t6,28(sp)
+     394:	06010113          	addi	sp,sp,96
+     398:	30200073          	mret
+
+0000039c <PLIC_SRC2_IRQHandler>:
+PLIC_SRC2_IRQHandler():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:189
+
+__IRQ void PLIC_UART_IRQHandler(void) {
+     39c:	fd010113          	addi	sp,sp,-48
+     3a0:	02112623          	sw	ra,44(sp)
+     3a4:	02812423          	sw	s0,40(sp)
+     3a8:	02d12223          	sw	a3,36(sp)
+     3ac:	02e12023          	sw	a4,32(sp)
+     3b0:	00f12e23          	sw	a5,28(sp)
+     3b4:	03010413          	addi	s0,sp,48
+UART_IRQ_Service():
+C:\GitHub\askorv32\fw\Core\Inc/uart.h:135
+/* Обслуживание FIFO в обработчике прерывания: принятое - в буфер приёма, из буфера передачи -
+   в FIFO передачи; когда передавать нечего, прерывание передачи выключается. Встраиваемая функция:
+   обработчик __IRQ сохраняет только свои регистры (вызов функции заставил бы сохранять все) */
+__INLINE void UART_IRQ_Service(void) {
+	uint32_t d;
+	while (!((d = UART->RXDATA) & UART_RXDATA_EMPTY)) {
+     3b8:	06c0006f          	j	424 <PLIC_SRC2_IRQHandler+0x88>
+C:\GitHub\askorv32\fw\Core\Inc/uart.h:136
+		if (uart_rx_ring.head - uart_rx_ring.tail < UART_RING_SIZE) {
+     3bc:	87818793          	addi	a5,gp,-1928 # 10000068 <uart_rx_ring>
+     3c0:	0407a703          	lw	a4,64(a5)
+     3c4:	87818793          	addi	a5,gp,-1928 # 10000068 <uart_rx_ring>
+     3c8:	0447a783          	lw	a5,68(a5)
+     3cc:	40f70733          	sub	a4,a4,a5
+     3d0:	03f00793          	li	a5,63
+     3d4:	02e7ee63          	bltu	a5,a4,410 <PLIC_SRC2_IRQHandler+0x74>
+C:\GitHub\askorv32\fw\Core\Inc/uart.h:137
+			uart_rx_ring.buf[uart_rx_ring.head & (UART_RING_SIZE - 1U)] = (uint8_t)d;
+     3d8:	87818793          	addi	a5,gp,-1928 # 10000068 <uart_rx_ring>
+     3dc:	0407a783          	lw	a5,64(a5)
+     3e0:	03f7f793          	andi	a5,a5,63
+     3e4:	fd842703          	lw	a4,-40(s0)
+     3e8:	0ff77713          	zext.b	a4,a4
+     3ec:	87818693          	addi	a3,gp,-1928 # 10000068 <uart_rx_ring>
+     3f0:	00f687b3          	add	a5,a3,a5
+     3f4:	00e78023          	sb	a4,0(a5)
+C:\GitHub\askorv32\fw\Core\Inc/uart.h:138
+			uart_rx_ring.head++;
+     3f8:	87818793          	addi	a5,gp,-1928 # 10000068 <uart_rx_ring>
+     3fc:	0407a783          	lw	a5,64(a5)
+     400:	00178713          	addi	a4,a5,1
+     404:	87818793          	addi	a5,gp,-1928 # 10000068 <uart_rx_ring>
+     408:	04e7a023          	sw	a4,64(a5)
+     40c:	0180006f          	j	424 <PLIC_SRC2_IRQHandler+0x88>
+C:\GitHub\askorv32\fw\Core\Inc/uart.h:139
+		} else uart_rx_ring.lost++;
+     410:	87818793          	addi	a5,gp,-1928 # 10000068 <uart_rx_ring>
+     414:	0487a783          	lw	a5,72(a5)
+     418:	00178713          	addi	a4,a5,1
+     41c:	87818793          	addi	a5,gp,-1928 # 10000068 <uart_rx_ring>
+     420:	04e7a423          	sw	a4,72(a5)
+C:\GitHub\askorv32\fw\Core\Inc/uart.h:135
+	while (!((d = UART->RXDATA) & UART_RXDATA_EMPTY)) {
+     424:	140007b7          	lui	a5,0x14000
+     428:	0047a783          	lw	a5,4(a5) # 14000004 <_estack+0x3fff6f4>
+     42c:	fcf42c23          	sw	a5,-40(s0)
+     430:	fd842783          	lw	a5,-40(s0)
+     434:	f807d4e3          	bgez	a5,3bc <PLIC_SRC2_IRQHandler+0x20>
+C:\GitHub\askorv32\fw\Core\Inc/uart.h:141
+	}
+	while (uart_tx_ring.tail != uart_tx_ring.head && !(UART->TXDATA & UART_TXDATA_FULL)) {
+     438:	03c0006f          	j	474 <PLIC_SRC2_IRQHandler+0xd8>
+C:\GitHub\askorv32\fw\Core\Inc/uart.h:142
+		UART->TXDATA = uart_tx_ring.buf[uart_tx_ring.tail & (UART_RING_SIZE - 1U)];
+     43c:	8c418793          	addi	a5,gp,-1852 # 100000b4 <uart_tx_ring>
+     440:	0447a783          	lw	a5,68(a5)
+     444:	03f7f793          	andi	a5,a5,63
+     448:	8c418713          	addi	a4,gp,-1852 # 100000b4 <uart_tx_ring>
+     44c:	00f707b3          	add	a5,a4,a5
+     450:	0007c783          	lbu	a5,0(a5)
+     454:	0ff7f713          	zext.b	a4,a5
+     458:	140007b7          	lui	a5,0x14000
+     45c:	00e7a023          	sw	a4,0(a5) # 14000000 <_estack+0x3fff6f0>
+C:\GitHub\askorv32\fw\Core\Inc/uart.h:143
+		uart_tx_ring.tail++;
+     460:	8c418793          	addi	a5,gp,-1852 # 100000b4 <uart_tx_ring>
+     464:	0447a783          	lw	a5,68(a5)
+     468:	00178713          	addi	a4,a5,1
+     46c:	8c418793          	addi	a5,gp,-1852 # 100000b4 <uart_tx_ring>
+     470:	04e7a223          	sw	a4,68(a5)
+C:\GitHub\askorv32\fw\Core\Inc/uart.h:141
+	while (uart_tx_ring.tail != uart_tx_ring.head && !(UART->TXDATA & UART_TXDATA_FULL)) {
+     474:	8c418793          	addi	a5,gp,-1852 # 100000b4 <uart_tx_ring>
+     478:	0447a703          	lw	a4,68(a5)
+     47c:	8c418793          	addi	a5,gp,-1852 # 100000b4 <uart_tx_ring>
+     480:	0407a783          	lw	a5,64(a5)
+     484:	00f70863          	beq	a4,a5,494 <PLIC_SRC2_IRQHandler+0xf8>
+C:\GitHub\askorv32\fw\Core\Inc/uart.h:141 (discriminator 1)
+     488:	140007b7          	lui	a5,0x14000
+     48c:	0007a783          	lw	a5,0(a5) # 14000000 <_estack+0x3fff6f0>
+     490:	fa07d6e3          	bgez	a5,43c <PLIC_SRC2_IRQHandler+0xa0>
+C:\GitHub\askorv32\fw\Core\Inc/uart.h:145
+	}
+	if (uart_tx_ring.tail == uart_tx_ring.head)
+     494:	8c418793          	addi	a5,gp,-1852 # 100000b4 <uart_tx_ring>
+     498:	0447a703          	lw	a4,68(a5)
+     49c:	8c418793          	addi	a5,gp,-1852 # 100000b4 <uart_tx_ring>
+     4a0:	0407a783          	lw	a5,64(a5)
+     4a4:	00f71c63          	bne	a4,a5,4bc <PLIC_SRC2_IRQHandler+0x120>
+C:\GitHub\askorv32\fw\Core\Inc/uart.h:146
+		UART->IE &= ~UART_IT_TXWM;
+     4a8:	140007b7          	lui	a5,0x14000
+     4ac:	0107a703          	lw	a4,16(a5) # 14000010 <_estack+0x3fff700>
+     4b0:	140007b7          	lui	a5,0x14000
+     4b4:	ffe77713          	andi	a4,a4,-2
+     4b8:	00e7a823          	sw	a4,16(a5) # 14000010 <_estack+0x3fff700>
+C:\GitHub\askorv32\fw\Core\Inc/uart.h:147
+}
+     4bc:	00000013          	nop
+     4c0:	00200793          	li	a5,2
+     4c4:	fcf42e23          	sw	a5,-36(s0)
+PLIC_Complete():
+C:\GitHub\askorv32\fw\Core\Inc/plic.h:77
+     4c8:	0c000737          	lui	a4,0xc000
+     4cc:	002007b7          	lui	a5,0x200
+     4d0:	00f707b3          	add	a5,a4,a5
+     4d4:	fdc42703          	lw	a4,-36(s0)
+     4d8:	00e7a223          	sw	a4,4(a5) # 200004 <_etext+0x1fed80>
+     4dc:	00000013          	nop
+PLIC_SRC2_IRQHandler():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:192
+	UART_IRQ_Service();									//FIFO <-> кольцевые буферы
+	PLIC_Complete(PLIC_SRC_UART);
+}
+     4e0:	00000013          	nop
+     4e4:	02c12083          	lw	ra,44(sp)
+     4e8:	02812403          	lw	s0,40(sp)
+     4ec:	02412683          	lw	a3,36(sp)
+     4f0:	02012703          	lw	a4,32(sp)
+     4f4:	01c12783          	lw	a5,28(sp)
+     4f8:	03010113          	addi	sp,sp,48
+     4fc:	30200073          	mret
+
+00000500 <it_write_all>:
+it_write_all():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:196
+
+/* Передать всё: UART_IT_Write кладёт в буфер сколько поместится, остальное дописываем по мере
+   освобождения места (буфер опустошает обработчик прерывания) */
+static void it_write_all(const char *data, int len) {
+     500:	fd010113          	addi	sp,sp,-48
+     504:	02112623          	sw	ra,44(sp)
+     508:	02812423          	sw	s0,40(sp)
+     50c:	03010413          	addi	s0,sp,48
+     510:	fca42e23          	sw	a0,-36(s0)
+     514:	fcb42c23          	sw	a1,-40(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:197
+	for (int i = 0; i < len; ) i += UART_IT_Write(&data[i], len - i);
+     518:	fe042623          	sw	zero,-20(s0)
+     51c:	0380006f          	j	554 <it_write_all+0x54>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:197 (discriminator 4)
+     520:	fec42783          	lw	a5,-20(s0)
+     524:	fdc42703          	lw	a4,-36(s0)
+     528:	00f706b3          	add	a3,a4,a5
+     52c:	fd842703          	lw	a4,-40(s0)
+     530:	fec42783          	lw	a5,-20(s0)
+     534:	40f707b3          	sub	a5,a4,a5
+     538:	00078593          	mv	a1,a5
+     53c:	00068513          	mv	a0,a3
+     540:	33d000ef          	jal	107c <UART_IT_Write>
+     544:	00050713          	mv	a4,a0
+     548:	fec42783          	lw	a5,-20(s0)
+     54c:	00e787b3          	add	a5,a5,a4
+     550:	fef42623          	sw	a5,-20(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:197 (discriminator 3)
+     554:	fec42703          	lw	a4,-20(s0)
+     558:	fd842783          	lw	a5,-40(s0)
+     55c:	fcf742e3          	blt	a4,a5,520 <it_write_all+0x20>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:198
+}
+     560:	00000013          	nop
+     564:	00000013          	nop
+     568:	02c12083          	lw	ra,44(sp)
+     56c:	02812403          	lw	s0,40(sp)
+     570:	03010113          	addi	sp,sp,48
+     574:	00008067          	ret
+
+00000578 <utoa10>:
+utoa10():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:201
+
+/* Число в строку: возвращает длину */
+static int utoa10(uint32_t u, char *out) {
+     578:	fc010113          	addi	sp,sp,-64
+     57c:	02112e23          	sw	ra,60(sp)
+     580:	02812c23          	sw	s0,56(sp)
+     584:	04010413          	addi	s0,sp,64
+     588:	fca42623          	sw	a0,-52(s0)
+     58c:	fcb42423          	sw	a1,-56(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:203
+	char d[10];
+	int m = 0, k = 0;
+     590:	fe042623          	sw	zero,-20(s0)
+     594:	fe042423          	sw	zero,-24(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:204 (discriminator 1)
+	do { d[m++] = (char)('0' + u % 10U); u /= 10U; } while (u);
+     598:	fcc42703          	lw	a4,-52(s0)
+     59c:	00a00793          	li	a5,10
+     5a0:	02f777b3          	remu	a5,a4,a5
+     5a4:	0ff7f713          	zext.b	a4,a5
+     5a8:	fec42783          	lw	a5,-20(s0)
+     5ac:	00178693          	addi	a3,a5,1
+     5b0:	fed42623          	sw	a3,-20(s0)
+     5b4:	03070713          	addi	a4,a4,48 # c000030 <_etext+0xbffedac>
+     5b8:	0ff77713          	zext.b	a4,a4
+     5bc:	ff078793          	addi	a5,a5,-16
+     5c0:	008787b3          	add	a5,a5,s0
+     5c4:	fee78623          	sb	a4,-20(a5)
+     5c8:	fcc42703          	lw	a4,-52(s0)
+     5cc:	00a00793          	li	a5,10
+     5d0:	02f757b3          	divu	a5,a4,a5
+     5d4:	fcf42623          	sw	a5,-52(s0)
+     5d8:	fcc42783          	lw	a5,-52(s0)
+     5dc:	fa079ee3          	bnez	a5,598 <utoa10+0x20>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:205
+	while (m) out[k++] = d[--m];
+     5e0:	03c0006f          	j	61c <utoa10+0xa4>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:205 (discriminator 2)
+     5e4:	fec42783          	lw	a5,-20(s0)
+     5e8:	fff78793          	addi	a5,a5,-1
+     5ec:	fef42623          	sw	a5,-20(s0)
+     5f0:	fe842783          	lw	a5,-24(s0)
+     5f4:	00178713          	addi	a4,a5,1
+     5f8:	fee42423          	sw	a4,-24(s0)
+     5fc:	00078713          	mv	a4,a5
+     600:	fc842783          	lw	a5,-56(s0)
+     604:	00e787b3          	add	a5,a5,a4
+     608:	fec42703          	lw	a4,-20(s0)
+     60c:	ff070713          	addi	a4,a4,-16
+     610:	00870733          	add	a4,a4,s0
+     614:	fec74703          	lbu	a4,-20(a4)
+     618:	00e78023          	sb	a4,0(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:205 (discriminator 1)
+     61c:	fec42783          	lw	a5,-20(s0)
+     620:	fc0792e3          	bnez	a5,5e4 <utoa10+0x6c>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:206
+	return k;
+     624:	fe842783          	lw	a5,-24(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:207
+}
+     628:	00078513          	mv	a0,a5
+     62c:	03c12083          	lw	ra,60(sp)
+     630:	03812403          	lw	s0,56(sp)
+     634:	04010113          	addi	sp,sp,64
+     638:	00008067          	ret
+
+0000063c <Example_Run>:
+Example_Run():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:209
+
+static void Example_Run(void) {
+     63c:	f3010113          	addi	sp,sp,-208
+     640:	0c112623          	sw	ra,204(sp)
+     644:	0c812423          	sw	s0,200(sp)
+     648:	0d010413          	addi	s0,sp,208
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:211
+	char line[64], text[64], msg[16];
+	int  n = 0;
+     64c:	fe042623          	sw	zero,-20(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:212
+	uint32_t shown = 0;
+     650:	fe042423          	sw	zero,-24(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:214
+
+	UART_InitDefault();
+     654:	00100613          	li	a2,1
+     658:	00000593          	li	a1,0
+     65c:	0001c7b7          	lui	a5,0x1c
+     660:	20078513          	addi	a0,a5,512 # 1c200 <_etext+0x1af7c>
+     664:	788000ef          	jal	dec <UART_Init>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:215
+	TM1638_Init();
+     668:	428000ef          	jal	a90 <TM1638_Init>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:216
+	PLIC_Init();
+     66c:	328000ef          	jal	994 <PLIC_Init>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:217
+	STIM_InitPeriodic(SYSCLK_HZ / 1000U - 1U, 1000U - 1U);	//Событие раз в 1 с
+     670:	3e700593          	li	a1,999
+     674:	0000b7b7          	lui	a5,0xb
+     678:	fc778513          	addi	a0,a5,-57 # afc7 <_etext+0x9d43>
+     67c:	3a8000ef          	jal	a24 <STIM_InitPeriodic>
+     680:	00100793          	li	a5,1
+     684:	fcf42823          	sw	a5,-48(s0)
+STIM_IT_STATE():
+C:\GitHub\askorv32\fw\Core\Inc/tim.h:87
+	STIM->CR_UIE = ItState;
+     688:	130007b7          	lui	a5,0x13000
+     68c:	fd042703          	lw	a4,-48(s0)
+     690:	00177713          	andi	a4,a4,1
+     694:	0ff77713          	zext.b	a4,a4
+     698:	00177713          	andi	a4,a4,1
+     69c:	00471713          	slli	a4,a4,0x4
+     6a0:	0047c683          	lbu	a3,4(a5) # 13000004 <_estack+0x2fff6f4>
+     6a4:	fef6f693          	andi	a3,a3,-17
+     6a8:	00e6e733          	or	a4,a3,a4
+     6ac:	00e78223          	sb	a4,4(a5)
+C:\GitHub\askorv32\fw\Core\Inc/tim.h:88
+}
+     6b0:	00000013          	nop
+     6b4:	00100793          	li	a5,1
+     6b8:	fcf42c23          	sw	a5,-40(s0)
+     6bc:	00100793          	li	a5,1
+     6c0:	fcf42a23          	sw	a5,-44(s0)
+PLIC_SetPriority():
+C:\GitHub\askorv32\fw\Core\Inc/plic.h:61
+__PLIC_INLINE void PLIC_SetPriority(PLIC_SRC_Type src, uint32_t prio) { PLIC->PRIORITY[src] = prio; }
+     6c4:	0c000737          	lui	a4,0xc000
+     6c8:	fd842783          	lw	a5,-40(s0)
+     6cc:	00279793          	slli	a5,a5,0x2
+     6d0:	00f707b3          	add	a5,a4,a5
+     6d4:	fd442703          	lw	a4,-44(s0)
+     6d8:	00e7a023          	sw	a4,0(a5)
+     6dc:	00000013          	nop
+     6e0:	00100793          	li	a5,1
+     6e4:	fcf42e23          	sw	a5,-36(s0)
+PLIC_Enable():
+C:\GitHub\askorv32\fw\Core\Inc/plic.h:65
+__PLIC_INLINE void PLIC_Enable(PLIC_SRC_Type src)  { PLIC->ENABLE |=  (1U << src); }
+     6e8:	0c000737          	lui	a4,0xc000
+     6ec:	000027b7          	lui	a5,0x2
+     6f0:	00f707b3          	add	a5,a4,a5
+     6f4:	0007a703          	lw	a4,0(a5) # 2000 <_etext+0xd7c>
+     6f8:	fdc42783          	lw	a5,-36(s0)
+     6fc:	00100693          	li	a3,1
+     700:	00f697b3          	sll	a5,a3,a5
+     704:	0c0006b7          	lui	a3,0xc000
+     708:	00f76733          	or	a4,a4,a5
+     70c:	000027b7          	lui	a5,0x2
+     710:	00f687b3          	add	a5,a3,a5
+     714:	00e7a023          	sw	a4,0(a5) # 2000 <_etext+0xd7c>
+     718:	00000013          	nop
+Example_Run():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:221
+	STIM_IT_STATE(TIM_ENABLE);
+	PLIC_SetPriority(PLIC_SRC_STIM, 1);
+	PLIC_Enable(PLIC_SRC_STIM);
+	UART_IT_Start(0);									//Прерывание приёма на каждый байт
+     71c:	00000513          	li	a0,0
+     720:	051000ef          	jal	f70 <UART_IT_Start>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:222
+	__enable_irq();
+     724:	b21ff0ef          	jal	244 <__enable_irq>
+     728:	00100793          	li	a5,1
+     72c:	fef42023          	sw	a5,-32(s0)
+STIM_STATE():
+C:\GitHub\askorv32\fw\Core\Inc/tim.h:62
+	STIM->CR_EN = TimState;
+     730:	130007b7          	lui	a5,0x13000
+     734:	fe042703          	lw	a4,-32(s0)
+     738:	00177713          	andi	a4,a4,1
+     73c:	0ff77713          	zext.b	a4,a4
+     740:	00177713          	andi	a4,a4,1
+     744:	00371713          	slli	a4,a4,0x3
+     748:	0047c683          	lbu	a3,4(a5) # 13000004 <_estack+0x2fff6f4>
+     74c:	ff76f693          	andi	a3,a3,-9
+     750:	00e6e733          	or	a4,a3,a4
+     754:	00e78223          	sb	a4,4(a5)
+C:\GitHub\askorv32\fw\Core\Inc/tim.h:63
+}
+     758:	00000013          	nop
+Example_Run():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:224
+	STIM_STATE(TIM_ENABLE);
+	UART_IT_PutText("\r\naskoRV32: пример 4, UART на прерываниях. Каждую секунду - счётчик, введите строку:\r\n");
+     75c:	81018513          	addi	a0,gp,-2032 # 10000000 <_sdata>
+     760:	1e1000ef          	jal	1140 <UART_IT_PutText>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:227
+
+	while (1) {
+		if (seconds != shown) {							//Секунда прошла
+     764:	91418793          	addi	a5,gp,-1772 # 10000104 <seconds>
+     768:	0007a783          	lw	a5,0(a5)
+     76c:	fe842703          	lw	a4,-24(s0)
+     770:	16f70863          	beq	a4,a5,8e0 <_stack_size+0xe0>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:228
+			shown = seconds;
+     774:	91418793          	addi	a5,gp,-1772 # 10000104 <seconds>
+     778:	0007a783          	lw	a5,0(a5)
+     77c:	fef42423          	sw	a5,-24(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:229
+			int k = 0;
+     780:	fe042223          	sw	zero,-28(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:230
+			msg[k++] = '[';
+     784:	fe442783          	lw	a5,-28(s0)
+     788:	00178713          	addi	a4,a5,1
+     78c:	fee42223          	sw	a4,-28(s0)
+     790:	ff078793          	addi	a5,a5,-16
+     794:	008787b3          	add	a5,a5,s0
+     798:	05b00713          	li	a4,91
+     79c:	f4e78823          	sb	a4,-176(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:231
+			k += utoa10(shown, &msg[k]);
+     7a0:	f4040713          	addi	a4,s0,-192
+     7a4:	fe442783          	lw	a5,-28(s0)
+     7a8:	00f707b3          	add	a5,a4,a5
+     7ac:	00078593          	mv	a1,a5
+     7b0:	fe842503          	lw	a0,-24(s0)
+     7b4:	dc5ff0ef          	jal	578 <utoa10>
+     7b8:	00050713          	mv	a4,a0
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:231 (discriminator 1)
+     7bc:	fe442783          	lw	a5,-28(s0)
+     7c0:	00e787b3          	add	a5,a5,a4
+     7c4:	fef42223          	sw	a5,-28(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:232
+			msg[k++] = ']'; msg[k++] = ' ';
+     7c8:	fe442783          	lw	a5,-28(s0)
+     7cc:	00178713          	addi	a4,a5,1
+     7d0:	fee42223          	sw	a4,-28(s0)
+     7d4:	ff078793          	addi	a5,a5,-16
+     7d8:	008787b3          	add	a5,a5,s0
+     7dc:	05d00713          	li	a4,93
+     7e0:	f4e78823          	sb	a4,-176(a5)
+     7e4:	fe442783          	lw	a5,-28(s0)
+     7e8:	00178713          	addi	a4,a5,1
+     7ec:	fee42223          	sw	a4,-28(s0)
+     7f0:	ff078793          	addi	a5,a5,-16
+     7f4:	008787b3          	add	a5,a5,s0
+     7f8:	02000713          	li	a4,32
+     7fc:	f4e78823          	sb	a4,-176(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:233
+			it_write_all(msg, k);
+     800:	f4040793          	addi	a5,s0,-192
+     804:	fe442583          	lw	a1,-28(s0)
+     808:	00078513          	mv	a0,a5
+     80c:	cf5ff0ef          	jal	500 <it_write_all>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:234
+			if (n == 0) TM1638_WriteNumber((int32_t)shown);
+     810:	fec42783          	lw	a5,-20(s0)
+     814:	0c079663          	bnez	a5,8e0 <_stack_size+0xe0>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:234 (discriminator 1)
+     818:	fe842783          	lw	a5,-24(s0)
+     81c:	00078513          	mv	a0,a5
+     820:	4b4000ef          	jal	cd4 <TM1638_WriteNumber>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:237
+		}
+		char c;
+		while (UART_IT_Read(&c, 1)) {					//Принятое - из буфера, без ожидания
+     824:	0bc0006f          	j	8e0 <_stack_size+0xe0>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:238
+			if (c == '\r' || c == '\n') {
+     828:	f3f44703          	lbu	a4,-193(s0)
+     82c:	00d00793          	li	a5,13
+     830:	00f70863          	beq	a4,a5,840 <_stack_size+0x40>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:238 (discriminator 1)
+     834:	f3f44703          	lbu	a4,-193(s0)
+     838:	00a00793          	li	a5,10
+     83c:	06f71663          	bne	a4,a5,8a8 <_stack_size+0xa8>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:239
+				if (n == 0) continue;
+     840:	fec42783          	lw	a5,-20(s0)
+     844:	00079463          	bnez	a5,84c <_stack_size+0x4c>
+     848:	0980006f          	j	8e0 <_stack_size+0xe0>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:240
+				line[n] = '\0';
+     84c:	fec42783          	lw	a5,-20(s0)
+     850:	ff078793          	addi	a5,a5,-16
+     854:	008787b3          	add	a5,a5,s0
+     858:	fa078023          	sb	zero,-96(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:241
+				UART_Utf8ToCp1251(line, text, sizeof text);
+     85c:	f5040713          	addi	a4,s0,-176
+     860:	f9040793          	addi	a5,s0,-112
+     864:	04000613          	li	a2,64
+     868:	00070593          	mv	a1,a4
+     86c:	00078513          	mv	a0,a5
+     870:	664000ef          	jal	ed4 <UART_Utf8ToCp1251>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:242
+				TM1638_WriteText(text);
+     874:	f5040793          	addi	a5,s0,-176
+     878:	00078513          	mv	a0,a5
+     87c:	34c000ef          	jal	bc8 <TM1638_WriteText>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:243
+				UART_IT_PutText("\r\nПринято: ");
+     880:	86818513          	addi	a0,gp,-1944 # 10000058 <_sdata+0x58>
+     884:	0bd000ef          	jal	1140 <UART_IT_PutText>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:244
+				it_write_all(line, n);
+     888:	f9040793          	addi	a5,s0,-112
+     88c:	fec42583          	lw	a1,-20(s0)
+     890:	00078513          	mv	a0,a5
+     894:	c6dff0ef          	jal	500 <it_write_all>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:245
+				UART_IT_PutText("\r\n");
+     898:	87418513          	addi	a0,gp,-1932 # 10000064 <_sdata+0x64>
+     89c:	0a5000ef          	jal	1140 <UART_IT_PutText>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:246
+				n = 0;
+     8a0:	fe042623          	sw	zero,-20(s0)
+     8a4:	03c0006f          	j	8e0 <_stack_size+0xe0>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:247
+			} else if (n < (int)sizeof line - 1) {
+     8a8:	fec42703          	lw	a4,-20(s0)
+     8ac:	03e00793          	li	a5,62
+     8b0:	02e7c863          	blt	a5,a4,8e0 <_stack_size+0xe0>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:248
+				line[n++] = c;
+     8b4:	fec42783          	lw	a5,-20(s0)
+     8b8:	00178713          	addi	a4,a5,1
+     8bc:	fee42623          	sw	a4,-20(s0)
+     8c0:	f3f44703          	lbu	a4,-193(s0)
+     8c4:	ff078793          	addi	a5,a5,-16
+     8c8:	008787b3          	add	a5,a5,s0
+     8cc:	fae78023          	sb	a4,-96(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:249
+				it_write_all(&c, 1);					//Эхо
+     8d0:	f3f40793          	addi	a5,s0,-193
+     8d4:	00100593          	li	a1,1
+     8d8:	00078513          	mv	a0,a5
+     8dc:	c25ff0ef          	jal	500 <it_write_all>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:237
+		while (UART_IT_Read(&c, 1)) {					//Принятое - из буфера, без ожидания
+     8e0:	f3f40793          	addi	a5,s0,-193
+     8e4:	00100593          	li	a1,1
+     8e8:	00078513          	mv	a0,a5
+     8ec:	0f5000ef          	jal	11e0 <UART_IT_Read>
+     8f0:	00050793          	mv	a5,a0
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:237 (discriminator 1)
+     8f4:	f2079ae3          	bnez	a5,828 <_stack_size+0x28>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:226
+	while (1) {
+     8f8:	e6dff06f          	j	764 <Example_Run+0x128>
+
+000008fc <main>:
+main():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:397
+		delay_ms(500);
+	}
+}
+#endif
+
+int main(void) {
+     8fc:	fe010113          	addi	sp,sp,-32
+     900:	00112e23          	sw	ra,28(sp)
+     904:	00812c23          	sw	s0,24(sp)
+     908:	02010413          	addi	s0,sp,32
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:436
+		TM1638_WriteSegs(dig_transform(global_count));
+#endif
+		//Вся работа - в обработчике прерывания; здесь может выполняться основная программа
+	}
+#else
+	GPIO_Init();
+     90c:	8fdff0ef          	jal	208 <GPIO_Init>
+     910:	fe042623          	sw	zero,-20(s0)
+     914:	00100793          	li	a5,1
+     918:	fef42423          	sw	a5,-24(s0)
+GPIO_PinMode():
+C:\GitHub\askorv32\fw\Core\Inc/gpio.h:44
+typedef uint32_t GPIO_PinName;
+
+void GPIO_Init(void);
+
+__INLINE void GPIO_PinMode(GPIO_PinName GPIO_Pin, GPIO_PinDirection PinDir) {
+	if (PinDir) GPIO->MODE |=  (1 << GPIO_Pin);
+     91c:	fe842783          	lw	a5,-24(s0)
+     920:	02078663          	beqz	a5,94c <main+0x50>
+C:\GitHub\askorv32\fw\Core\Inc/gpio.h:44 (discriminator 1)
+     924:	110007b7          	lui	a5,0x11000
+     928:	0007a703          	lw	a4,0(a5) # 11000000 <_estack+0xfff6f0>
+     92c:	fec42783          	lw	a5,-20(s0)
+     930:	00100693          	li	a3,1
+     934:	00f697b3          	sll	a5,a3,a5
+     938:	00078693          	mv	a3,a5
+     93c:	110007b7          	lui	a5,0x11000
+     940:	00d76733          	or	a4,a4,a3
+     944:	00e7a023          	sw	a4,0(a5) # 11000000 <_estack+0xfff6f0>
+C:\GitHub\askorv32\fw\Core\Inc/gpio.h:46
+	else		GPIO->MODE &= ~(1 << GPIO_Pin);
+}
+     948:	02c0006f          	j	974 <main+0x78>
+C:\GitHub\askorv32\fw\Core\Inc/gpio.h:45
+	else		GPIO->MODE &= ~(1 << GPIO_Pin);
+     94c:	110007b7          	lui	a5,0x11000
+     950:	0007a703          	lw	a4,0(a5) # 11000000 <_estack+0xfff6f0>
+     954:	fec42783          	lw	a5,-20(s0)
+     958:	00100693          	li	a3,1
+     95c:	00f697b3          	sll	a5,a3,a5
+     960:	fff7c793          	not	a5,a5
+     964:	00078693          	mv	a3,a5
+     968:	110007b7          	lui	a5,0x11000
+     96c:	00d77733          	and	a4,a4,a3
+     970:	00e7a023          	sw	a4,0(a5) # 11000000 <_estack+0xfff6f0>
+C:\GitHub\askorv32\fw\Core\Inc/gpio.h:46
+}
+     974:	00000013          	nop
+main():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:438
+	GPIO_PinMode(LED0_PIN, GPIO_MODE_OUTPUT);
+	Example_Run();
+     978:	cc5ff0ef          	jal	63c <Example_Run>
+     97c:	00000793          	li	a5,0
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/main.c:440
+#endif
+}
+     980:	00078513          	mv	a0,a5
+     984:	01c12083          	lw	ra,28(sp)
+     988:	01812403          	lw	s0,24(sp)
+     98c:	02010113          	addi	sp,sp,32
+     990:	00008067          	ret
+
+00000994 <PLIC_Init>:
+PLIC_Init():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/plic.c:12
+ *****************************************************************************************
+ */
+
+#include "plic.h"
+
+void PLIC_Init(void) {
+     994:	fe010113          	addi	sp,sp,-32
+     998:	00112e23          	sw	ra,28(sp)
+     99c:	00812c23          	sw	s0,24(sp)
+     9a0:	02010413          	addi	s0,sp,32
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/plic.c:13
+	PLIC->ENABLE = 0;
+     9a4:	0c000737          	lui	a4,0xc000
+     9a8:	000027b7          	lui	a5,0x2
+     9ac:	00f707b3          	add	a5,a4,a5
+     9b0:	0007a023          	sw	zero,0(a5) # 2000 <_etext+0xd7c>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/plic.c:14
+	PLIC->THRESHOLD = 0;
+     9b4:	0c000737          	lui	a4,0xc000
+     9b8:	002007b7          	lui	a5,0x200
+     9bc:	00f707b3          	add	a5,a4,a5
+     9c0:	0007a023          	sw	zero,0(a5) # 200000 <_etext+0x1fed7c>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/plic.c:15
+	for (uint32_t i = 1; i <= PLIC_NUM_SOURCES; i++)
+     9c4:	00100793          	li	a5,1
+     9c8:	fef42623          	sw	a5,-20(s0)
+     9cc:	0240006f          	j	9f0 <PLIC_Init+0x5c>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/plic.c:16
+		PLIC->PRIORITY[i] = 0;
+     9d0:	0c000737          	lui	a4,0xc000
+     9d4:	fec42783          	lw	a5,-20(s0)
+     9d8:	00279793          	slli	a5,a5,0x2
+     9dc:	00f707b3          	add	a5,a4,a5
+     9e0:	0007a023          	sw	zero,0(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/plic.c:15 (discriminator 3)
+	for (uint32_t i = 1; i <= PLIC_NUM_SOURCES; i++)
+     9e4:	fec42783          	lw	a5,-20(s0)
+     9e8:	00178793          	addi	a5,a5,1
+     9ec:	fef42623          	sw	a5,-20(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/plic.c:15 (discriminator 1)
+     9f0:	fec42703          	lw	a4,-20(s0)
+     9f4:	00800793          	li	a5,8
+     9f8:	fce7fce3          	bgeu	a5,a4,9d0 <PLIC_Init+0x3c>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/plic.c:17
+	PLIC->VECTOR = 1;		//MEI от источника S - сразу на вход 32 + S таблицы векторов
+     9fc:	0c000737          	lui	a4,0xc000
+     a00:	002007b7          	lui	a5,0x200
+     a04:	00f707b3          	add	a5,a4,a5
+     a08:	00100713          	li	a4,1
+     a0c:	00e7a423          	sw	a4,8(a5) # 200008 <_etext+0x1fed84>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/plic.c:18
+}
+     a10:	00000013          	nop
+     a14:	01c12083          	lw	ra,28(sp)
+     a18:	01812403          	lw	s0,24(sp)
+     a1c:	02010113          	addi	sp,sp,32
+     a20:	00008067          	ret
+
+00000a24 <STIM_InitPeriodic>:
+STIM_InitPeriodic():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tim.c:34
+
+}
+
+/* Периодический режим: счёт вверх, событие обновления каждые (Prescaler + 1) * (Period + 1)
+   тактов SYSCLK_HZ. Таймер не запускается - см. STIM_STATE(TIM_ENABLE) */
+void STIM_InitPeriodic(uint32_t Prescaler, uint32_t Period) {
+     a24:	fe010113          	addi	sp,sp,-32
+     a28:	00112e23          	sw	ra,28(sp)
+     a2c:	00812c23          	sw	s0,24(sp)
+     a30:	02010413          	addi	s0,sp,32
+     a34:	fea42623          	sw	a0,-20(s0)
+     a38:	feb42423          	sw	a1,-24(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tim.c:36
+
+	STIM->CR  = 0;
+     a3c:	130007b7          	lui	a5,0x13000
+     a40:	0007a223          	sw	zero,4(a5) # 13000004 <_estack+0x2fff6f4>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tim.c:37
+	STIM->PR  = Prescaler;
+     a44:	130007b7          	lui	a5,0x13000
+     a48:	fec42703          	lw	a4,-20(s0)
+     a4c:	00e7a023          	sw	a4,0(a5) # 13000000 <_estack+0x2fff6f0>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tim.c:38
+	STIM->PER = Period;
+     a50:	130007b7          	lui	a5,0x13000
+     a54:	fe842703          	lw	a4,-24(s0)
+     a58:	00e7a423          	sw	a4,8(a5) # 13000008 <_estack+0x2fff6f8>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tim.c:39
+	STIM->CR_CM = STIM_COUNTER_MODE_UP;
+     a5c:	130007b7          	lui	a5,0x13000
+     a60:	0047c703          	lbu	a4,4(a5) # 13000004 <_estack+0x2fff6f4>
+     a64:	ffc77713          	andi	a4,a4,-4
+     a68:	00e78223          	sb	a4,4(a5)
+STIM_CLEAR_FLAG_UPDATE():
+C:\GitHub\askorv32\fw\Core\Inc/tim.h:97
+	STIM->SR = STIM_SR_UIF;
+     a6c:	130007b7          	lui	a5,0x13000
+     a70:	00100713          	li	a4,1
+     a74:	00e7aa23          	sw	a4,20(a5) # 13000014 <_estack+0x2fff704>
+C:\GitHub\askorv32\fw\Core\Inc/tim.h:98
+}
+     a78:	00000013          	nop
+STIM_InitPeriodic():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tim.c:42
+	STIM_CLEAR_FLAG_UPDATE();
+
+}
+     a7c:	00000013          	nop
+     a80:	01c12083          	lw	ra,28(sp)
+     a84:	01812403          	lw	s0,24(sp)
+     a88:	02010113          	addi	sp,sp,32
+     a8c:	00008067          	ret
+
+00000a90 <TM1638_Init>:
+TM1638_Init():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:14
+
+#include "tm1638.h"
+
+#if TM1638_PRESENT
+
+void TM1638_Init(void) {
+     a90:	ff010113          	addi	sp,sp,-16
+     a94:	00112623          	sw	ra,12(sp)
+     a98:	00812423          	sw	s0,8(sp)
+     a9c:	01010413          	addi	s0,sp,16
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:15
+	TM1638->SEGS  = 0;
+     aa0:	120007b7          	lui	a5,0x12000
+     aa4:	0007a023          	sw	zero,0(a5) # 12000000 <_estack+0x1fff6f0>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:16
+	TM1638->LEDS  = 0;
+     aa8:	120007b7          	lui	a5,0x12000
+     aac:	0007a223          	sw	zero,4(a5) # 12000004 <_estack+0x1fff6f4>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:17
+	TM1638->CTRL  = 0;			//Режим HEX, без точек
+     ab0:	120007b7          	lui	a5,0x12000
+     ab4:	0007a623          	sw	zero,12(a5) # 1200000c <_estack+0x1fff6fc>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:18
+	TM1638->TEXT0 = 0;
+     ab8:	120007b7          	lui	a5,0x12000
+     abc:	0007a823          	sw	zero,16(a5) # 12000010 <_estack+0x1fff700>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:19
+	TM1638->TEXT1 = 0;
+     ac0:	120007b7          	lui	a5,0x12000
+     ac4:	0007aa23          	sw	zero,20(a5) # 12000014 <_estack+0x1fff704>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:20
+}
+     ac8:	00000013          	nop
+     acc:	00c12083          	lw	ra,12(sp)
+     ad0:	00812403          	lw	s0,8(sp)
+     ad4:	01010113          	addi	sp,sp,16
+     ad8:	00008067          	ret
+
+00000adc <write_codes>:
+write_codes():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:23
+
+/* 8 кодов символов в регистры TEXT0/TEXT1: байт 0 TEXT0 - левый символ */
+static void write_codes(const uint8_t c[8], uint32_t mode, uint32_t dots) {
+     adc:	fe010113          	addi	sp,sp,-32
+     ae0:	00112e23          	sw	ra,28(sp)
+     ae4:	00812c23          	sw	s0,24(sp)
+     ae8:	02010413          	addi	s0,sp,32
+     aec:	fea42623          	sw	a0,-20(s0)
+     af0:	feb42423          	sw	a1,-24(s0)
+     af4:	fec42223          	sw	a2,-28(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:24
+	TM1638->TEXT0 = c[0] | ((uint32_t)c[1] << 8) | ((uint32_t)c[2] << 16) | ((uint32_t)c[3] << 24);
+     af8:	fec42783          	lw	a5,-20(s0)
+     afc:	0007c783          	lbu	a5,0(a5)
+     b00:	00078713          	mv	a4,a5
+     b04:	fec42783          	lw	a5,-20(s0)
+     b08:	00178793          	addi	a5,a5,1
+     b0c:	0007c783          	lbu	a5,0(a5)
+     b10:	00879793          	slli	a5,a5,0x8
+     b14:	00f76733          	or	a4,a4,a5
+     b18:	fec42783          	lw	a5,-20(s0)
+     b1c:	00278793          	addi	a5,a5,2
+     b20:	0007c783          	lbu	a5,0(a5)
+     b24:	01079793          	slli	a5,a5,0x10
+     b28:	00f766b3          	or	a3,a4,a5
+     b2c:	fec42783          	lw	a5,-20(s0)
+     b30:	00378793          	addi	a5,a5,3
+     b34:	0007c783          	lbu	a5,0(a5)
+     b38:	01879713          	slli	a4,a5,0x18
+     b3c:	120007b7          	lui	a5,0x12000
+     b40:	00e6e733          	or	a4,a3,a4
+     b44:	00e7a823          	sw	a4,16(a5) # 12000010 <_estack+0x1fff700>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:25
+	TM1638->TEXT1 = c[4] | ((uint32_t)c[5] << 8) | ((uint32_t)c[6] << 16) | ((uint32_t)c[7] << 24);
+     b48:	fec42783          	lw	a5,-20(s0)
+     b4c:	00478793          	addi	a5,a5,4
+     b50:	0007c783          	lbu	a5,0(a5)
+     b54:	00078713          	mv	a4,a5
+     b58:	fec42783          	lw	a5,-20(s0)
+     b5c:	00578793          	addi	a5,a5,5
+     b60:	0007c783          	lbu	a5,0(a5)
+     b64:	00879793          	slli	a5,a5,0x8
+     b68:	00f76733          	or	a4,a4,a5
+     b6c:	fec42783          	lw	a5,-20(s0)
+     b70:	00678793          	addi	a5,a5,6
+     b74:	0007c783          	lbu	a5,0(a5)
+     b78:	01079793          	slli	a5,a5,0x10
+     b7c:	00f766b3          	or	a3,a4,a5
+     b80:	fec42783          	lw	a5,-20(s0)
+     b84:	00778793          	addi	a5,a5,7
+     b88:	0007c783          	lbu	a5,0(a5)
+     b8c:	01879713          	slli	a4,a5,0x18
+     b90:	120007b7          	lui	a5,0x12000
+     b94:	00e6e733          	or	a4,a3,a4
+     b98:	00e7aa23          	sw	a4,20(a5) # 12000014 <_estack+0x1fff704>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:26
+	TM1638->CTRL  = mode | (dots << 8);
+     b9c:	fe442783          	lw	a5,-28(s0)
+     ba0:	00879693          	slli	a3,a5,0x8
+     ba4:	120007b7          	lui	a5,0x12000
+     ba8:	fe842703          	lw	a4,-24(s0)
+     bac:	00e6e733          	or	a4,a3,a4
+     bb0:	00e7a623          	sw	a4,12(a5) # 1200000c <_estack+0x1fff6fc>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:27
+}
+     bb4:	00000013          	nop
+     bb8:	01c12083          	lw	ra,28(sp)
+     bbc:	01812403          	lw	s0,24(sp)
+     bc0:	02010113          	addi	sp,sp,32
+     bc4:	00008067          	ret
+
+00000bc8 <TM1638_WriteText>:
+TM1638_WriteText():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:29
+
+void TM1638_WriteText(const char *s) {
+     bc8:	fc010113          	addi	sp,sp,-64
+     bcc:	02112e23          	sw	ra,60(sp)
+     bd0:	02812c23          	sw	s0,56(sp)
+     bd4:	04010413          	addi	s0,sp,64
+     bd8:	fca42623          	sw	a0,-52(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:30
+	uint8_t  c[8] = {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
+     bdc:	202027b7          	lui	a5,0x20202
+     be0:	02078793          	addi	a5,a5,32 # 20202020 <_estack+0x10201710>
+     be4:	fcf42e23          	sw	a5,-36(s0)
+     be8:	202027b7          	lui	a5,0x20202
+     bec:	02078793          	addi	a5,a5,32 # 20202020 <_estack+0x10201710>
+     bf0:	fef42023          	sw	a5,-32(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:31
+	uint32_t dots = 0;
+     bf4:	fe042623          	sw	zero,-20(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:32
+	int      n = 0;
+     bf8:	fe042423          	sw	zero,-24(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:33
+	while (*s) {
+     bfc:	09c0006f          	j	c98 <TM1638_WriteText+0xd0>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:34
+		char ch = *s++;
+     c00:	fcc42783          	lw	a5,-52(s0)
+     c04:	00178713          	addi	a4,a5,1
+     c08:	fce42623          	sw	a4,-52(s0)
+     c0c:	0007c783          	lbu	a5,0(a5)
+     c10:	fef403a3          	sb	a5,-25(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:35
+		if ((ch == '.' || ch == ',') && n > 0 && !(dots & (1U << (n - 1)))) {
+     c14:	fe744703          	lbu	a4,-25(s0)
+     c18:	02e00793          	li	a5,46
+     c1c:	00f70863          	beq	a4,a5,c2c <TM1638_WriteText+0x64>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:35 (discriminator 2)
+     c20:	fe744703          	lbu	a4,-25(s0)
+     c24:	02c00793          	li	a5,44
+     c28:	04f71463          	bne	a4,a5,c70 <TM1638_WriteText+0xa8>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:35 (discriminator 3)
+     c2c:	fe842783          	lw	a5,-24(s0)
+     c30:	04f05063          	blez	a5,c70 <TM1638_WriteText+0xa8>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:35 (discriminator 4)
+     c34:	fe842783          	lw	a5,-24(s0)
+     c38:	fff78793          	addi	a5,a5,-1
+     c3c:	00100713          	li	a4,1
+     c40:	00f71733          	sll	a4,a4,a5
+     c44:	fec42783          	lw	a5,-20(s0)
+     c48:	00f777b3          	and	a5,a4,a5
+     c4c:	02079263          	bnez	a5,c70 <TM1638_WriteText+0xa8>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:36
+			dots |= 1U << (n - 1);		//Точка у предыдущего символа
+     c50:	fe842783          	lw	a5,-24(s0)
+     c54:	fff78793          	addi	a5,a5,-1
+     c58:	00100713          	li	a4,1
+     c5c:	00f717b3          	sll	a5,a4,a5
+     c60:	fec42703          	lw	a4,-20(s0)
+     c64:	00f767b3          	or	a5,a4,a5
+     c68:	fef42623          	sw	a5,-20(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:37
+			continue;
+     c6c:	02c0006f          	j	c98 <TM1638_WriteText+0xd0>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:39
+		}
+		if (n == 8) break;
+     c70:	fe842703          	lw	a4,-24(s0)
+     c74:	00800793          	li	a5,8
+     c78:	02f70863          	beq	a4,a5,ca8 <TM1638_WriteText+0xe0>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:40
+		c[n++] = (uint8_t)ch;
+     c7c:	fe842783          	lw	a5,-24(s0)
+     c80:	00178713          	addi	a4,a5,1
+     c84:	fee42423          	sw	a4,-24(s0)
+     c88:	ff078793          	addi	a5,a5,-16
+     c8c:	008787b3          	add	a5,a5,s0
+     c90:	fe744703          	lbu	a4,-25(s0)
+     c94:	fee78623          	sb	a4,-20(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:33
+	while (*s) {
+     c98:	fcc42783          	lw	a5,-52(s0)
+     c9c:	0007c783          	lbu	a5,0(a5)
+     ca0:	f60790e3          	bnez	a5,c00 <TM1638_WriteText+0x38>
+     ca4:	0080006f          	j	cac <TM1638_WriteText+0xe4>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:39
+		if (n == 8) break;
+     ca8:	00000013          	nop
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:42
+	}
+	write_codes(c, TM1638_MODE_TEXT, dots);
+     cac:	fdc40793          	addi	a5,s0,-36
+     cb0:	fec42603          	lw	a2,-20(s0)
+     cb4:	00100593          	li	a1,1
+     cb8:	00078513          	mv	a0,a5
+     cbc:	e21ff0ef          	jal	adc <write_codes>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:43
+}
+     cc0:	00000013          	nop
+     cc4:	03c12083          	lw	ra,60(sp)
+     cc8:	03812403          	lw	s0,56(sp)
+     ccc:	04010113          	addi	sp,sp,64
+     cd0:	00008067          	ret
+
+00000cd4 <TM1638_WriteNumber>:
+TM1638_WriteNumber():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:45
+
+void TM1638_WriteNumber(int32_t v) {
+     cd4:	fd010113          	addi	sp,sp,-48
+     cd8:	02112623          	sw	ra,44(sp)
+     cdc:	02812423          	sw	s0,40(sp)
+     ce0:	03010413          	addi	s0,sp,48
+     ce4:	fca42e23          	sw	a0,-36(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:46
+	uint8_t  c[8] = {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
+     ce8:	202027b7          	lui	a5,0x20202
+     cec:	02078793          	addi	a5,a5,32 # 20202020 <_estack+0x10201710>
+     cf0:	fef42023          	sw	a5,-32(s0)
+     cf4:	202027b7          	lui	a5,0x20202
+     cf8:	02078793          	addi	a5,a5,32 # 20202020 <_estack+0x10201710>
+     cfc:	fef42223          	sw	a5,-28(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:47
+	uint32_t u = (v < 0) ? (uint32_t)(-v) : (uint32_t)v;
+     d00:	fdc42783          	lw	a5,-36(s0)
+     d04:	0007d463          	bgez	a5,d0c <TM1638_WriteNumber+0x38>
+     d08:	40f007b3          	neg	a5,a5
+     d0c:	fef42623          	sw	a5,-20(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:48
+	int      i = 7;
+     d10:	00700793          	li	a5,7
+     d14:	fef42423          	sw	a5,-24(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:49 (discriminator 2)
+	do { c[i--] = (uint8_t)('0' + u % 10U); u /= 10U; } while (u && i >= 0);
+     d18:	fec42703          	lw	a4,-20(s0)
+     d1c:	00a00793          	li	a5,10
+     d20:	02f777b3          	remu	a5,a4,a5
+     d24:	0ff7f713          	zext.b	a4,a5
+     d28:	fe842783          	lw	a5,-24(s0)
+     d2c:	fff78693          	addi	a3,a5,-1
+     d30:	fed42423          	sw	a3,-24(s0)
+     d34:	03070713          	addi	a4,a4,48 # c000030 <_etext+0xbffedac>
+     d38:	0ff77713          	zext.b	a4,a4
+     d3c:	ff078793          	addi	a5,a5,-16
+     d40:	008787b3          	add	a5,a5,s0
+     d44:	fee78823          	sb	a4,-16(a5)
+     d48:	fec42703          	lw	a4,-20(s0)
+     d4c:	00a00793          	li	a5,10
+     d50:	02f757b3          	divu	a5,a4,a5
+     d54:	fef42623          	sw	a5,-20(s0)
+     d58:	fec42783          	lw	a5,-20(s0)
+     d5c:	00078663          	beqz	a5,d68 <TM1638_WriteNumber+0x94>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:49 (discriminator 1)
+     d60:	fe842783          	lw	a5,-24(s0)
+     d64:	fa07dae3          	bgez	a5,d18 <TM1638_WriteNumber+0x44>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:50
+	if (v < 0 && i >= 0) c[i] = '-';
+     d68:	fdc42783          	lw	a5,-36(s0)
+     d6c:	0207d063          	bgez	a5,d8c <TM1638_WriteNumber+0xb8>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:50 (discriminator 1)
+     d70:	fe842783          	lw	a5,-24(s0)
+     d74:	0007cc63          	bltz	a5,d8c <TM1638_WriteNumber+0xb8>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:50 (discriminator 2)
+     d78:	fe842783          	lw	a5,-24(s0)
+     d7c:	ff078793          	addi	a5,a5,-16
+     d80:	008787b3          	add	a5,a5,s0
+     d84:	02d00713          	li	a4,45
+     d88:	fee78823          	sb	a4,-16(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:51
+	write_codes(c, TM1638_MODE_TEXT, 0);
+     d8c:	fe040793          	addi	a5,s0,-32
+     d90:	00000613          	li	a2,0
+     d94:	00100593          	li	a1,1
+     d98:	00078513          	mv	a0,a5
+     d9c:	d41ff0ef          	jal	adc <write_codes>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/tm1638.c:52
+}
+     da0:	00000013          	nop
+     da4:	02c12083          	lw	ra,44(sp)
+     da8:	02812403          	lw	s0,40(sp)
+     dac:	03010113          	addi	sp,sp,48
+     db0:	00008067          	ret
+
+00000db4 <IRQ_Enable>:
+IRQ_Enable():
+C:\GitHub\askorv32\fw\Core\Inc/core_riscv.h:83
+static inline void __disable_irq(void) { CSR_CLEAR(mstatus, MSTATUS_MIE); }
+
+/* Разрешение, запрет и проверка ожидания отдельного прерывания (mie/mip) */
+static inline void IRQ_Enable(IRQn_Type IRQn)      { CSR_SET(mie, 1U << IRQn); }
+     db4:	fe010113          	addi	sp,sp,-32
+     db8:	00112e23          	sw	ra,28(sp)
+     dbc:	00812c23          	sw	s0,24(sp)
+     dc0:	02010413          	addi	s0,sp,32
+     dc4:	fea42623          	sw	a0,-20(s0)
+     dc8:	fec42783          	lw	a5,-20(s0)
+     dcc:	00100713          	li	a4,1
+     dd0:	00f717b3          	sll	a5,a4,a5
+     dd4:	3047a073          	csrs	mie,a5
+     dd8:	00000013          	nop
+     ddc:	01c12083          	lw	ra,28(sp)
+     de0:	01812403          	lw	s0,24(sp)
+     de4:	02010113          	addi	sp,sp,32
+     de8:	00008067          	ret
+
+00000dec <UART_Init>:
+UART_Init():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:16
+
+#if UART_PRESENT
+
+UART_Ring uart_rx_ring, uart_tx_ring;
+
+void UART_Init(uint32_t baud, UART_Parity parity, uint32_t stop) {
+     dec:	fe010113          	addi	sp,sp,-32
+     df0:	00112e23          	sw	ra,28(sp)
+     df4:	00812c23          	sw	s0,24(sp)
+     df8:	02010413          	addi	s0,sp,32
+     dfc:	fea42623          	sw	a0,-20(s0)
+     e00:	feb42423          	sw	a1,-24(s0)
+     e04:	fec42223          	sw	a2,-28(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:17
+	UART->IE = 0;
+     e08:	140007b7          	lui	a5,0x14000
+     e0c:	0007a823          	sw	zero,16(a5) # 14000010 <_estack+0x3fff700>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:18
+	UART->TXCTRL = 0;
+     e10:	140007b7          	lui	a5,0x14000
+     e14:	0007a423          	sw	zero,8(a5) # 14000008 <_estack+0x3fff6f8>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:19
+	UART->RXCTRL = 0;
+     e18:	140007b7          	lui	a5,0x14000
+     e1c:	0007a623          	sw	zero,12(a5) # 1400000c <_estack+0x3fff6fc>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:20
+	UART->DIV = (SYSCLK_HZ + baud / 2U) / baud - 1U;			//Скорость = SYSCLK_HZ / (DIV + 1)
+     e20:	fec42783          	lw	a5,-20(s0)
+     e24:	0017d713          	srli	a4,a5,0x1
+     e28:	02aea7b7          	lui	a5,0x2aea
+     e2c:	54078793          	addi	a5,a5,1344 # 2aea540 <_etext+0x2ae92bc>
+     e30:	00f70733          	add	a4,a4,a5
+     e34:	fec42783          	lw	a5,-20(s0)
+     e38:	02f75733          	divu	a4,a4,a5
+     e3c:	140007b7          	lui	a5,0x14000
+     e40:	fff70713          	addi	a4,a4,-1
+     e44:	00e7ac23          	sw	a4,24(a5) # 14000018 <_estack+0x3fff708>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:21
+	UART->CFG = (parity == UART_PARITY_NONE) ? 0U :
+     e48:	fe842783          	lw	a5,-24(s0)
+     e4c:	02078063          	beqz	a5,e6c <UART_Init+0x80>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:21 (discriminator 1)
+     e50:	fe842703          	lw	a4,-24(s0)
+     e54:	00100793          	li	a5,1
+     e58:	00f71663          	bne	a4,a5,e64 <UART_Init+0x78>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:21 (discriminator 3)
+     e5c:	00100793          	li	a5,1
+     e60:	0100006f          	j	e70 <UART_Init+0x84>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:21 (discriminator 4)
+     e64:	00300793          	li	a5,3
+     e68:	0080006f          	j	e70 <UART_Init+0x84>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:21 (discriminator 2)
+     e6c:	00000793          	li	a5,0
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:21 (discriminator 5)
+     e70:	14000737          	lui	a4,0x14000
+     e74:	00f72e23          	sw	a5,28(a4) # 1400001c <_estack+0x3fff70c>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:23
+	            (parity == UART_PARITY_EVEN) ? UART_CFG_PE : (UART_CFG_PE | UART_CFG_PO);
+	while (!(UART->RXDATA & UART_RXDATA_EMPTY)) ;			//Очистить FIFO приёма
+     e78:	00000013          	nop
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:23 (discriminator 1)
+     e7c:	140007b7          	lui	a5,0x14000
+     e80:	0047a783          	lw	a5,4(a5) # 14000004 <_estack+0x3fff6f4>
+     e84:	fe07dce3          	bgez	a5,e7c <UART_Init+0x90>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:24
+	UART->ERR = UART_ERR_FRAME | UART_ERR_PARITY | UART_ERR_OVERRUN;
+     e88:	140007b7          	lui	a5,0x14000
+     e8c:	00700713          	li	a4,7
+     e90:	02e7a023          	sw	a4,32(a5) # 14000020 <_estack+0x3fff710>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:25
+	UART->TXCTRL = UART_CTRL_EN | (stop == 2U ? UART_TXCTRL_NSTOP : 0U);
+     e94:	fe442703          	lw	a4,-28(s0)
+     e98:	00200793          	li	a5,2
+     e9c:	00f71663          	bne	a4,a5,ea8 <UART_Init+0xbc>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:25 (discriminator 1)
+     ea0:	00300793          	li	a5,3
+     ea4:	0080006f          	j	eac <UART_Init+0xc0>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:25 (discriminator 2)
+     ea8:	00100793          	li	a5,1
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:25 (discriminator 4)
+     eac:	14000737          	lui	a4,0x14000
+     eb0:	00f72423          	sw	a5,8(a4) # 14000008 <_estack+0x3fff6f8>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:26
+	UART->RXCTRL = UART_CTRL_EN;
+     eb4:	140007b7          	lui	a5,0x14000
+     eb8:	00100713          	li	a4,1
+     ebc:	00e7a623          	sw	a4,12(a5) # 1400000c <_estack+0x3fff6fc>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:27
+}
+     ec0:	00000013          	nop
+     ec4:	01c12083          	lw	ra,28(sp)
+     ec8:	01812403          	lw	s0,24(sp)
+     ecc:	02010113          	addi	sp,sp,32
+     ed0:	00008067          	ret
+
+00000ed4 <UART_Utf8ToCp1251>:
+UART_Utf8ToCp1251():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:117
+	if (echo) UART_PutString("\r\n");
+	return n;
+}
+
+/* --- Текст --- */
+int UART_Utf8ToCp1251(const char *in, char *out, int size) {
+     ed4:	fd010113          	addi	sp,sp,-48
+     ed8:	02112623          	sw	ra,44(sp)
+     edc:	02812423          	sw	s0,40(sp)
+     ee0:	03010413          	addi	s0,sp,48
+     ee4:	fca42e23          	sw	a0,-36(s0)
+     ee8:	fcb42c23          	sw	a1,-40(s0)
+     eec:	fcc42a23          	sw	a2,-44(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:118
+	int n = 0;
+     ef0:	fe042423          	sw	zero,-24(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:119
+	const uint8_t *p = (const uint8_t *)in;
+     ef4:	fdc42783          	lw	a5,-36(s0)
+     ef8:	fef42623          	sw	a5,-20(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:121
+#if !UART_TEXT_UTF8
+	while (*p && n < size - 1) out[n++] = (char)*p++;		//Терминал в cp1251: текст уже в кодировке прошивки
+     efc:	0300006f          	j	f2c <UART_Utf8ToCp1251+0x58>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:121 (discriminator 3)
+     f00:	fec42783          	lw	a5,-20(s0)
+     f04:	00178713          	addi	a4,a5,1
+     f08:	fee42623          	sw	a4,-20(s0)
+     f0c:	fe842703          	lw	a4,-24(s0)
+     f10:	00170693          	addi	a3,a4,1
+     f14:	fed42423          	sw	a3,-24(s0)
+     f18:	00070693          	mv	a3,a4
+     f1c:	fd842703          	lw	a4,-40(s0)
+     f20:	00d70733          	add	a4,a4,a3
+     f24:	0007c783          	lbu	a5,0(a5)
+     f28:	00f70023          	sb	a5,0(a4)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:121 (discriminator 1)
+     f2c:	fec42783          	lw	a5,-20(s0)
+     f30:	0007c783          	lbu	a5,0(a5)
+     f34:	00078a63          	beqz	a5,f48 <UART_Utf8ToCp1251+0x74>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:121 (discriminator 2)
+     f38:	fd442783          	lw	a5,-44(s0)
+     f3c:	fff78793          	addi	a5,a5,-1
+     f40:	fe842703          	lw	a4,-24(s0)
+     f44:	faf74ee3          	blt	a4,a5,f00 <UART_Utf8ToCp1251+0x2c>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:122
+	out[n] = '\0';
+     f48:	fe842783          	lw	a5,-24(s0)
+     f4c:	fd842703          	lw	a4,-40(s0)
+     f50:	00f707b3          	add	a5,a4,a5
+     f54:	00078023          	sb	zero,0(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:123
+	return n;
+     f58:	fe842783          	lw	a5,-24(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:143
+		while ((*p & 0xC0U) == 0x80U) p++;						//Длинный символ - пропустить
+		out[n++] = '?';
+	}
+	out[n] = '\0';
+	return n;
+}
+     f5c:	00078513          	mv	a0,a5
+     f60:	02c12083          	lw	ra,44(sp)
+     f64:	02812403          	lw	s0,40(sp)
+     f68:	03010113          	addi	sp,sp,48
+     f6c:	00008067          	ret
+
+00000f70 <UART_IT_Start>:
+UART_IT_Start():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:146
+
+/* --- Прерывания по заполнению FIFO --- */
+void UART_IT_Start(uint32_t rx_threshold) {
+     f70:	fd010113          	addi	sp,sp,-48
+     f74:	02112623          	sw	ra,44(sp)
+     f78:	02812423          	sw	s0,40(sp)
+     f7c:	03010413          	addi	s0,sp,48
+     f80:	fca42e23          	sw	a0,-36(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:147
+	uart_rx_ring.head = uart_rx_ring.tail = uart_rx_ring.lost = 0;
+     f84:	00000793          	li	a5,0
+     f88:	87818713          	addi	a4,gp,-1928 # 10000068 <uart_rx_ring>
+     f8c:	04f72423          	sw	a5,72(a4)
+     f90:	87818713          	addi	a4,gp,-1928 # 10000068 <uart_rx_ring>
+     f94:	04f72223          	sw	a5,68(a4)
+     f98:	87818713          	addi	a4,gp,-1928 # 10000068 <uart_rx_ring>
+     f9c:	04f72023          	sw	a5,64(a4)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:148
+	uart_tx_ring.head = uart_tx_ring.tail = uart_tx_ring.lost = 0;
+     fa0:	00000793          	li	a5,0
+     fa4:	8c418713          	addi	a4,gp,-1852 # 100000b4 <uart_tx_ring>
+     fa8:	04f72423          	sw	a5,72(a4)
+     fac:	8c418713          	addi	a4,gp,-1852 # 100000b4 <uart_tx_ring>
+     fb0:	04f72223          	sw	a5,68(a4)
+     fb4:	8c418713          	addi	a4,gp,-1852 # 100000b4 <uart_tx_ring>
+     fb8:	04f72023          	sw	a5,64(a4)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:149
+	UART->RXCTRL = UART_CTRL_EN | (rx_threshold << UART_CTRL_CNT_POS);
+     fbc:	fdc42783          	lw	a5,-36(s0)
+     fc0:	01079713          	slli	a4,a5,0x10
+     fc4:	140007b7          	lui	a5,0x14000
+     fc8:	00176713          	ori	a4,a4,1
+     fcc:	00e7a623          	sw	a4,12(a5) # 1400000c <_estack+0x3fff6fc>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:150
+	UART->TXCTRL = (UART->TXCTRL & (UART_CTRL_EN | UART_TXCTRL_NSTOP)) | ((UART_FIFO_DEPTH / 2U) << UART_CTRL_CNT_POS);
+     fd0:	140007b7          	lui	a5,0x14000
+     fd4:	0087a783          	lw	a5,8(a5) # 14000008 <_estack+0x3fff6f8>
+     fd8:	0037f693          	andi	a3,a5,3
+     fdc:	140007b7          	lui	a5,0x14000
+     fe0:	00080737          	lui	a4,0x80
+     fe4:	00e6e733          	or	a4,a3,a4
+     fe8:	00e7a423          	sw	a4,8(a5) # 14000008 <_estack+0x3fff6f8>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:151
+	UART->IE = UART_IT_RXWM;								//Передача - по UART_IT_Write
+     fec:	140007b7          	lui	a5,0x14000
+     ff0:	00200713          	li	a4,2
+     ff4:	00e7a823          	sw	a4,16(a5) # 14000010 <_estack+0x3fff700>
+     ff8:	00200793          	li	a5,2
+     ffc:	fef42423          	sw	a5,-24(s0)
+    1000:	00100793          	li	a5,1
+    1004:	fef42223          	sw	a5,-28(s0)
+PLIC_SetPriority():
+C:\GitHub\askorv32\fw\Core\Inc/plic.h:61
+__PLIC_INLINE void PLIC_SetPriority(PLIC_SRC_Type src, uint32_t prio) { PLIC->PRIORITY[src] = prio; }
+    1008:	0c000737          	lui	a4,0xc000
+    100c:	fe842783          	lw	a5,-24(s0)
+    1010:	00279793          	slli	a5,a5,0x2
+    1014:	00f707b3          	add	a5,a4,a5
+    1018:	fe442703          	lw	a4,-28(s0)
+    101c:	00e7a023          	sw	a4,0(a5)
+    1020:	00000013          	nop
+    1024:	00200793          	li	a5,2
+    1028:	fef42623          	sw	a5,-20(s0)
+PLIC_Enable():
+C:\GitHub\askorv32\fw\Core\Inc/plic.h:65
+__PLIC_INLINE void PLIC_Enable(PLIC_SRC_Type src)  { PLIC->ENABLE |=  (1U << src); }
+    102c:	0c000737          	lui	a4,0xc000
+    1030:	000027b7          	lui	a5,0x2
+    1034:	00f707b3          	add	a5,a4,a5
+    1038:	0007a703          	lw	a4,0(a5) # 2000 <_etext+0xd7c>
+    103c:	fec42783          	lw	a5,-20(s0)
+    1040:	00100693          	li	a3,1
+    1044:	00f697b3          	sll	a5,a3,a5
+    1048:	0c0006b7          	lui	a3,0xc000
+    104c:	00f76733          	or	a4,a4,a5
+    1050:	000027b7          	lui	a5,0x2
+    1054:	00f687b3          	add	a5,a3,a5
+    1058:	00e7a023          	sw	a4,0(a5) # 2000 <_etext+0xd7c>
+    105c:	00000013          	nop
+UART_IT_Start():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:155
+#if defined(PLIC_UART_IRQHandler)							//Источник PLIC (по умолчанию)
+	PLIC_SetPriority(PLIC_SRC_UART, 1);
+	PLIC_Enable(PLIC_SRC_UART);
+	IRQ_Enable(MEI_IRQn);
+    1060:	00b00513          	li	a0,11
+    1064:	d51ff0ef          	jal	db4 <IRQ_Enable>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:159
+#elif defined(UART_IRQn)									//Локальная линия
+	IRQ_Enable(UART_IRQn);
+#endif
+}
+    1068:	00000013          	nop
+    106c:	02c12083          	lw	ra,44(sp)
+    1070:	02812403          	lw	s0,40(sp)
+    1074:	03010113          	addi	sp,sp,48
+    1078:	00008067          	ret
+
+0000107c <UART_IT_Write>:
+UART_IT_Write():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:161
+
+int UART_IT_Write(const char *data, int len) {
+    107c:	fd010113          	addi	sp,sp,-48
+    1080:	02112623          	sw	ra,44(sp)
+    1084:	02812423          	sw	s0,40(sp)
+    1088:	03010413          	addi	s0,sp,48
+    108c:	fca42e23          	sw	a0,-36(s0)
+    1090:	fcb42c23          	sw	a1,-40(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:162
+	int n = 0;
+    1094:	fe042623          	sw	zero,-20(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:163
+	while (n < len && uart_tx_ring.head - uart_tx_ring.tail < UART_RING_SIZE) {
+    1098:	04c0006f          	j	10e4 <UART_IT_Write+0x68>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:164
+		uart_tx_ring.buf[uart_tx_ring.head & (UART_RING_SIZE - 1U)] = (uint8_t)data[n++];
+    109c:	fec42783          	lw	a5,-20(s0)
+    10a0:	00178713          	addi	a4,a5,1
+    10a4:	fee42623          	sw	a4,-20(s0)
+    10a8:	00078713          	mv	a4,a5
+    10ac:	fdc42783          	lw	a5,-36(s0)
+    10b0:	00e78733          	add	a4,a5,a4
+    10b4:	8c418793          	addi	a5,gp,-1852 # 100000b4 <uart_tx_ring>
+    10b8:	0407a783          	lw	a5,64(a5)
+    10bc:	03f7f793          	andi	a5,a5,63
+    10c0:	00074703          	lbu	a4,0(a4) # c000000 <_etext+0xbffed7c>
+    10c4:	8c418693          	addi	a3,gp,-1852 # 100000b4 <uart_tx_ring>
+    10c8:	00f687b3          	add	a5,a3,a5
+    10cc:	00e78023          	sb	a4,0(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:165
+		uart_tx_ring.head++;
+    10d0:	8c418793          	addi	a5,gp,-1852 # 100000b4 <uart_tx_ring>
+    10d4:	0407a783          	lw	a5,64(a5)
+    10d8:	00178713          	addi	a4,a5,1
+    10dc:	8c418793          	addi	a5,gp,-1852 # 100000b4 <uart_tx_ring>
+    10e0:	04e7a023          	sw	a4,64(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:163
+	while (n < len && uart_tx_ring.head - uart_tx_ring.tail < UART_RING_SIZE) {
+    10e4:	fec42703          	lw	a4,-20(s0)
+    10e8:	fd842783          	lw	a5,-40(s0)
+    10ec:	02f75063          	bge	a4,a5,110c <UART_IT_Write+0x90>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:163 (discriminator 1)
+    10f0:	8c418793          	addi	a5,gp,-1852 # 100000b4 <uart_tx_ring>
+    10f4:	0407a703          	lw	a4,64(a5)
+    10f8:	8c418793          	addi	a5,gp,-1852 # 100000b4 <uart_tx_ring>
+    10fc:	0447a783          	lw	a5,68(a5)
+    1100:	40f70733          	sub	a4,a4,a5
+    1104:	03f00793          	li	a5,63
+    1108:	f8e7fae3          	bgeu	a5,a4,109c <UART_IT_Write+0x20>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:167
+	}
+	if (n) UART->IE |= UART_IT_TXWM;						//Прерывание передачи заберёт байты
+    110c:	fec42783          	lw	a5,-20(s0)
+    1110:	00078c63          	beqz	a5,1128 <UART_IT_Write+0xac>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:167 (discriminator 1)
+    1114:	140007b7          	lui	a5,0x14000
+    1118:	0107a703          	lw	a4,16(a5) # 14000010 <_estack+0x3fff700>
+    111c:	140007b7          	lui	a5,0x14000
+    1120:	00176713          	ori	a4,a4,1
+    1124:	00e7a823          	sw	a4,16(a5) # 14000010 <_estack+0x3fff700>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:168
+	return n;
+    1128:	fec42783          	lw	a5,-20(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:169
+}
+    112c:	00078513          	mv	a0,a5
+    1130:	02c12083          	lw	ra,44(sp)
+    1134:	02812403          	lw	s0,40(sp)
+    1138:	03010113          	addi	sp,sp,48
+    113c:	00008067          	ret
+
+00001140 <UART_IT_PutText>:
+UART_IT_PutText():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:171
+
+void UART_IT_PutText(const char *s) {
+    1140:	fd010113          	addi	sp,sp,-48
+    1144:	02112623          	sw	ra,44(sp)
+    1148:	02812423          	sw	s0,40(sp)
+    114c:	03010413          	addi	s0,sp,48
+    1150:	fca42e23          	sw	a0,-36(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:173
+	char u[3];
+	while (*s) {
+    1154:	0680006f          	j	11bc <UART_IT_PutText+0x7c>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:177
+#if UART_TEXT_UTF8
+		int k = cp1251_to_utf8((uint8_t)*s++, u);
+#else
+		int k = 1; u[0] = *s++;
+    1158:	00100793          	li	a5,1
+    115c:	fef42423          	sw	a5,-24(s0)
+    1160:	fdc42783          	lw	a5,-36(s0)
+    1164:	00178713          	addi	a4,a5,1
+    1168:	fce42e23          	sw	a4,-36(s0)
+    116c:	0007c783          	lbu	a5,0(a5)
+    1170:	fef40223          	sb	a5,-28(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:179
+#endif
+		for (int i = 0; i < k; ) i += UART_IT_Write(&u[i], k - i);	//Ждать места в буфере
+    1174:	fe042623          	sw	zero,-20(s0)
+    1178:	0380006f          	j	11b0 <UART_IT_PutText+0x70>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:179 (discriminator 4)
+    117c:	fe440713          	addi	a4,s0,-28
+    1180:	fec42783          	lw	a5,-20(s0)
+    1184:	00f706b3          	add	a3,a4,a5
+    1188:	fe842703          	lw	a4,-24(s0)
+    118c:	fec42783          	lw	a5,-20(s0)
+    1190:	40f707b3          	sub	a5,a4,a5
+    1194:	00078593          	mv	a1,a5
+    1198:	00068513          	mv	a0,a3
+    119c:	ee1ff0ef          	jal	107c <UART_IT_Write>
+    11a0:	00050713          	mv	a4,a0
+    11a4:	fec42783          	lw	a5,-20(s0)
+    11a8:	00e787b3          	add	a5,a5,a4
+    11ac:	fef42623          	sw	a5,-20(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:179 (discriminator 3)
+    11b0:	fec42703          	lw	a4,-20(s0)
+    11b4:	fe842783          	lw	a5,-24(s0)
+    11b8:	fcf742e3          	blt	a4,a5,117c <UART_IT_PutText+0x3c>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:173
+	while (*s) {
+    11bc:	fdc42783          	lw	a5,-36(s0)
+    11c0:	0007c783          	lbu	a5,0(a5)
+    11c4:	f8079ae3          	bnez	a5,1158 <UART_IT_PutText+0x18>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:181
+	}
+}
+    11c8:	00000013          	nop
+    11cc:	00000013          	nop
+    11d0:	02c12083          	lw	ra,44(sp)
+    11d4:	02812403          	lw	s0,40(sp)
+    11d8:	03010113          	addi	sp,sp,48
+    11dc:	00008067          	ret
+
+000011e0 <UART_IT_Read>:
+UART_IT_Read():
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:183
+
+int UART_IT_Read(char *data, int len) {
+    11e0:	fd010113          	addi	sp,sp,-48
+    11e4:	02112623          	sw	ra,44(sp)
+    11e8:	02812423          	sw	s0,40(sp)
+    11ec:	03010413          	addi	s0,sp,48
+    11f0:	fca42e23          	sw	a0,-36(s0)
+    11f4:	fcb42c23          	sw	a1,-40(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:184
+	int n = 0;
+    11f8:	fe042623          	sw	zero,-20(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:185
+	while (n < len && uart_rx_ring.tail != uart_rx_ring.head) {
+    11fc:	0500006f          	j	124c <UART_IT_Read+0x6c>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:186
+		data[n++] = (char)uart_rx_ring.buf[uart_rx_ring.tail & (UART_RING_SIZE - 1U)];
+    1200:	87818793          	addi	a5,gp,-1928 # 10000068 <uart_rx_ring>
+    1204:	0447a783          	lw	a5,68(a5)
+    1208:	03f7f713          	andi	a4,a5,63
+    120c:	fec42783          	lw	a5,-20(s0)
+    1210:	00178693          	addi	a3,a5,1
+    1214:	fed42623          	sw	a3,-20(s0)
+    1218:	00078693          	mv	a3,a5
+    121c:	fdc42783          	lw	a5,-36(s0)
+    1220:	00d787b3          	add	a5,a5,a3
+    1224:	87818693          	addi	a3,gp,-1928 # 10000068 <uart_rx_ring>
+    1228:	00e68733          	add	a4,a3,a4
+    122c:	00074703          	lbu	a4,0(a4)
+    1230:	0ff77713          	zext.b	a4,a4
+    1234:	00e78023          	sb	a4,0(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:187
+		uart_rx_ring.tail++;
+    1238:	87818793          	addi	a5,gp,-1928 # 10000068 <uart_rx_ring>
+    123c:	0447a783          	lw	a5,68(a5)
+    1240:	00178713          	addi	a4,a5,1
+    1244:	87818793          	addi	a5,gp,-1928 # 10000068 <uart_rx_ring>
+    1248:	04e7a223          	sw	a4,68(a5)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:185
+	while (n < len && uart_rx_ring.tail != uart_rx_ring.head) {
+    124c:	fec42703          	lw	a4,-20(s0)
+    1250:	fd842783          	lw	a5,-40(s0)
+    1254:	00f75c63          	bge	a4,a5,126c <UART_IT_Read+0x8c>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:185 (discriminator 1)
+    1258:	87818793          	addi	a5,gp,-1928 # 10000068 <uart_rx_ring>
+    125c:	0447a703          	lw	a4,68(a5)
+    1260:	87818793          	addi	a5,gp,-1928 # 10000068 <uart_rx_ring>
+    1264:	0407a783          	lw	a5,64(a5)
+    1268:	f8f71ce3          	bne	a4,a5,1200 <UART_IT_Read+0x20>
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:189
+	}
+	return n;
+    126c:	fec42783          	lw	a5,-20(s0)
+C:\GitHub\askorv32\fw\TangNano9K/../Core/Src/uart.c:190
+}
+    1270:	00078513          	mv	a0,a5
+    1274:	02c12083          	lw	ra,44(sp)
+    1278:	02812403          	lw	s0,40(sp)
+    127c:	03010113          	addi	sp,sp,48
+    1280:	00008067          	ret

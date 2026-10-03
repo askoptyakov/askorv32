@@ -2,13 +2,18 @@
  *****************************************************************************************
  * @file        soc.h
  * @device      AskoRV32
- * @brief       ФАЙЛ СОЗДАН КОНФИГУРАТОРОМ ПЛИС (sw/socgen/socgen.py) из fw/riscv.gwsoc - не редактируйте вручную.
+ * @brief       ФАЙЛ СОЗДАН КОНФИГУРАТОРОМ ПЛИС (sw/socgen/socgen.py) из fw/boards/tangprimer20k/tangprimer20k.gwsoc - не редактируйте вручную.
  *              Частота, устройства (адреса, указатели, настройки), прерывания периферии и имена
  *              выводов GPIO собранной ПЛИС. Типы регистров - в заголовках драйверов (gpio.h, uart.h, plic.h...).
  *****************************************************************************************
  */
 #ifndef __SOC_H
 #define __SOC_H
+
+/* Плата и ПЛИС */
+#define SOC_BOARD						"Tang Primer 20K"
+#define SOC_FPGA						"GW2A-LV18PG256C8/I7"		//GW2A-18
+#define SOC_FPGA_EMBEDDED_FLASH			0		//Есть встроенная flash конфигурации
 
 /* Ядро и память */
 #define SOC_CORE_PIPELINE				1		//1 - конвейерное, 0 - однотактное
@@ -45,10 +50,6 @@
 #define GPIO							((GPIO_TypeDef*) GPIO_BASE)
 #define GPIO_WIDTH						6U		//Число линий
 
-/* TM1638 */
-#define TM1638_BASE						(0x12000000U)
-#define TM1638							((TM1638_TypeDef*) TM1638_BASE)
-
 /* STIM */
 #define STIM_BASE						(0x13000000U)
 #define STIM							((STIM_TypeDef*) STIM_BASE)
@@ -65,7 +66,7 @@
 /* SPIFLASH */
 #define SPIFLASH_BASE					(0x15000000U)
 #define SPIFLASH						((SPIFLASH_TypeDef*) SPIFLASH_BASE)
-#define SPIFLASH_SIZE					0x00400000U		//Объём флеш, Байт
+#define SPIFLASH_SIZE					0x00800000U		//Объём флеш, Байт
 #define SPIFLASH_DIV_DEFAULT			1U		//Делитель SCK после сброса
 #define SPIFLASH_SCK_HZ					11250000U		//Частота SCK при DIV_DEFAULT, Гц
 #define SPIFLASH_FPGA_CONFIG			1		//Флеш хранит конфигурацию ПЛИС с адреса 0 (MSPI)
@@ -73,7 +74,11 @@
 #define SPIFLASH_BOOT_ADDR				0x00100000U		//Образ программы во флеш
 #define SPIFLASH_BOOT_SIZE				0x00010000U		//Область образа (параметры туда не писать)
 #define SPIFLASH_USER_ADDR				0x00110000U		//Свободная область флеш: начало (ниже - конфигурация ПЛИС и образ)
-#define SPIFLASH_USER_SIZE				0x002F0000U		//Свободная область флеш: размер
+#define SPIFLASH_USER_SIZE				0x006F0000U		//Свободная область флеш: размер
+
+/* TM1638 */
+#define TM1638_BASE						(0x12000000U)
+#define TM1638							((TM1638_TypeDef*) TM1638_BASE)
 
 /* Прерывания периферии. Источники PLIC (векторный режим, start.S): обработчик источника S -
    PLIC_SRCS_IRQHandler; ниже - понятные имена. Локальные линии: LIn_IRQHandler, номер LIn_IRQn */
@@ -89,17 +94,17 @@ typedef enum
 /* Выводы GPIO: имя цепи из конфигуратора -> <ИМЯ>_PIN (номер линии) и <ИМЯ>_PORT (блок GPIO);
    цепь LED[3] даёт имя LED3. Шина (LED[0], LED[1]...) на одном блоке: <ИМЯ>_MSK, <ИМЯ>_POS, <ИМЯ>_PORT.
    Работа по имени - макросы GPIO_WRITE(LED3, GPIO_PIN_SET), GPIO_READ(...), GPIO_MODE(...) в gpio.h */
-#define LED0_PIN						0U		//вывод 10, цепь LED0
+#define LED0_PIN						0U		//вывод C13, цепь LED0
 #define LED0_PORT						GPIO
-#define LED1_PIN						1U		//вывод 11, цепь LED1
+#define LED1_PIN						1U		//вывод A13, цепь LED1
 #define LED1_PORT						GPIO
-#define LED2_PIN						2U		//вывод 13, цепь LED2
+#define LED2_PIN						2U		//вывод N16, цепь LED2
 #define LED2_PORT						GPIO
-#define LED3_PIN						3U		//вывод 14, цепь LED3
+#define LED3_PIN						3U		//вывод N14, цепь LED3
 #define LED3_PORT						GPIO
-#define LED4_PIN						4U		//вывод 15, цепь LED4
+#define LED4_PIN						4U		//вывод L14, цепь LED4
 #define LED4_PORT						GPIO
-#define LED5_PIN						5U		//вывод 16, цепь LED5
+#define LED5_PIN						5U		//вывод L16, цепь LED5
 #define LED5_PORT						GPIO
 
 #endif /* __SOC_H */

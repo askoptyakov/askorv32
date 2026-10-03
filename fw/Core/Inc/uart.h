@@ -21,9 +21,11 @@
  *           PLIC_Complete(PLIC_SRC_UART);
  *       }
  *
- *  Текст: прошивка хранит строки в cp1251 (кодировка проекта Eclipse), а терминал на ПК обычно
- *  работает в UTF-8. UART_PutText переводит cp1251 -> UTF-8 (при UART_TEXT_UTF8 = 1), функция
- *  UART_Utf8ToCp1251 - принятый текст обратно (например, для вывода кириллицы на TM1638).
+ *  Текст: прошивка хранит строки в cp1251 (кодировка проекта Eclipse). По умолчанию (UART_TEXT_UTF8 = 0)
+ *  терминал на ПК тоже в cp1251 (Termite и другие терминалы Windows без UTF-8): текст идёт как есть.
+ *  При UART_TEXT_UTF8 = 1 (терминал в UTF-8: PuTTY, Tera Term, монитор VS Code) UART_PutText переводит
+ *  cp1251 -> UTF-8, а UART_Utf8ToCp1251 - принятый текст обратно (например, для кириллицы на TM1638);
+ *  при UART_TEXT_UTF8 = 0 UART_Utf8ToCp1251 копирует принятый текст без изменений.
  *****************************************************************************************
  */
 
@@ -67,7 +69,7 @@ typedef struct
 #include "plic.h"
 
 #ifndef UART_TEXT_UTF8
-#define UART_TEXT_UTF8		1		//1 - терминал на ПК в UTF-8, 0 - в cp1251
+#define UART_TEXT_UTF8		0		//0 - терминал на ПК в cp1251 (Termite), 1 - в UTF-8 (PuTTY, Tera Term)
 #endif
 #ifndef UART_RING_SIZE
 #define UART_RING_SIZE		64U		//Кольцевые буферы режима прерываний, степень двойки
@@ -91,7 +93,7 @@ void UART_PutChar(char c);                         //Ждёт места в FIFO передачи
 int  UART_GetChar(void);                           //Байт или -1, если FIFO приёма пуст (не ждёт)
 char UART_ReadChar(void);                          //Ждёт байт
 void UART_PutString(const char *s);                //Строка как есть (байты)
-void UART_PutText(const char *s);                  //Строка cp1251, на терминал - в UTF-8 (UART_TEXT_UTF8)
+void UART_PutText(const char *s);                  //Строка cp1251; при UART_TEXT_UTF8 = 1 на терминал - в UTF-8
 void UART_PutDec(int32_t v);                       //Десятичное число со знаком
 void UART_PutHex(uint32_t v, uint32_t digits);     //Шестнадцатеричное, digits цифр (1..8)
 /* Строка до Enter (CR или LF): эхо, Backspace. В buf - без конца строки, с завершающим 0;

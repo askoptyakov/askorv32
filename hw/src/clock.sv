@@ -42,24 +42,26 @@ module divideby3 (
 endmodule
 
 //==============================================================================================
-// clk_pll - базовый такт ядра и памяти от rPLL GW1NR-9 (Ч4)
+// clk_pll - базовый такт ядра и памяти от rPLL (GW1NR-9, GW2A-18) (Ч4)
 //==============================================================================================
 //DESCRIPTION: Такт идёт от PLL по глобальной тактовой сети, а не от триггера-делителя в логике.
 //  f_out = 27 МГц * (FBDIV_SEL + 1) / (IDIV_SEL + 1)
-//  VCO   = f_out * ODIV_SEL, должна быть 400..1200 МГц; ODIV_SEL: 2/4/8/16/32/48/64/80/96/112/128
+//  VCO   = f_out * ODIV_SEL: GW1NR-9 - 400..1200 МГц, GW2A-18 - 500..1250 МГц; ODIV_SEL: 2/4/8/16/32/48/64/80/96/112/128
 //  PFD   = 27 МГц / (IDIV_SEL + 1), не меньше 3 МГц
+//Пределы обоих семейств знает конфигуратор (sw/socgen/web/devices.js), он и выбирает делители.
 //Примеры: 13.5 МГц - IDIV 1, FBDIV 0, ODIV 64 (VCO 864); 20.25 МГц - IDIV 3, FBDIV 2, ODIV 32 (VCO 648);
 //45 МГц (рабочая частота конвейера) - IDIV 2, FBDIV 4, ODIV 16 (VCO 720); 47.25 МГц - IDIV 3, FBDIV 6, ODIV 16 (VCO 756);
 //27 МГц - IDIV 0, FBDIV 0, ODIV 32 (VCO 864); 40.5 МГц - IDIV 1, FBDIV 2, ODIV 16 (VCO 648);
 //54 МГц - IDIV 0, FBDIV 1, ODIV 16 (VCO 864).
 //При смене частоты пересчитать SYSCLK_HZ в прошивке (fw/Core/Inc/periphery.h).
-module clk_pll #(parameter FCLKIN = "27",   //Частота кварца, МГц (строка; задаёт конфигуратор в top.sv)
+module clk_pll #(parameter FCLKIN = "27",       //Частота кварца, МГц (строка; задаёт конфигуратор в top.sv)
+                 parameter DEVICE = "GW1NR-9C",  //Кристалл для rPLL: "GW1NR-9C" (Tang Nano 9K), "GW2A-18C" (Tang Primer 20K)
                  parameter int IDIV_SEL = 1, FBDIV_SEL = 0, ODIV_SEL = 64)
    (input  logic clkin,        //27 МГц с генератора платы
     output logic clkout,
     output logic lock);
     rPLL #(
-        .FCLKIN(FCLKIN), .DEVICE("GW1NR-9C"),
+        .FCLKIN(FCLKIN), .DEVICE(DEVICE),
         .DYN_IDIV_SEL("false"), .IDIV_SEL(IDIV_SEL),
         .DYN_FBDIV_SEL("false"), .FBDIV_SEL(FBDIV_SEL),
         .DYN_ODIV_SEL("false"), .ODIV_SEL(ODIV_SEL),

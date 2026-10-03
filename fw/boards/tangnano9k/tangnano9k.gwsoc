@@ -1,8 +1,16 @@
 {
   "format": "askorv32-gwsoc",
   "version": 2,
+  "board": { "id": "tangnano9k", "title": "Tang Nano 9K", "buildConfig": "TangNano9K", "loader": "tangnano9k" },
   "device": "GW1NR-LV9QN88PC6/I5",
-  "paths": { "hw": "../hw", "top": "src/top.sv", "cst": "src/riscv.cst", "generator": "../sw/socgen/socgen.py" },
+  "paths": {
+    "hw": "../../../hw/boards/tangnano9k",
+    "src": "../../../hw/src",
+    "top": "top.sv",
+    "cst": "riscv.cst",
+    "soc": "soc.h",
+    "generator": "../../../sw/socgen/socgen.py"
+  },
   "core": {
     "coreType": "pipeline",
     "mExt": true,
@@ -44,9 +52,8 @@
       "miso": 62,
       "sizeMB": 4,
       "div": 1,
-      "boot": true,
-      "bootAddr": "0x100000",
-      "fpgaConfig": true
+      "fpgaConfig": true,
+      "bootAddr": "0x100000"
     }
   ],
   "ioDefaults": { "ioType": "LVCMOS18", "pull": "UP", "drive": "8", "vccio": "1.8" },

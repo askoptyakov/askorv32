@@ -21,9 +21,9 @@ SPIFLASH — внешняя SPI-флеш и загрузка программы
 
 ## Подключение
 
-Блок SPIFLASH в конфигураторе ПЛИС (`fw/riscv.gwsoc`): окно адресов — по умолчанию `0x1500_0000`, выводы SCK, CS#, MOSI, MISO, объём флеш, частота SCK, загрузка программы и адрес образа.
+Блок SPIFLASH в конфигураторе ПЛИС (`fw/boards/<плата>/<плата>.gwsoc`): окно адресов — по умолчанию `0x1500_0000`, выводы SCK, CS#, MOSI, MISO, объём флеш, частота SCK, загрузка программы и адрес образа.
 
-На Tang Nano 9K флеш U3 (PUYA P25Q32U, 4 МБайт) подключена к выводам **59** (SCLK), **60** (CS#), **61** (MOSI), **62** (MISO), банк 1, 3.3 В; WP# и HOLD# подтянуты к питанию. Это выводы MSPI ПЛИС (двойного назначения): чтобы занять их как обычные I/O, нужен флажок «Use MSPI as regular IO» в настройке Gowin EDA — генератор `socgen` ставит его сам (`"MSPI": true` в `hw/impl/riscv_process_config.json`, у apicula — ключ `--mspi_as_gpio`). Конфигурация ПЛИС у Tang Nano 9K — из встроенной flash, внешняя флеш для неё не используется.
+На Tang Nano 9K флеш U3 (PUYA P25Q32U, 4 МБайт) подключена к выводам **59** (SCLK), **60** (CS#), **61** (MOSI), **62** (MISO), банк 1, 3.3 В; WP# и HOLD# подтянуты к питанию. Это выводы MSPI ПЛИС (двойного назначения): чтобы занять их как обычные I/O, нужен флажок «Use MSPI as regular IO» в настройке Gowin EDA — генератор `socgen` ставит его сам (`"MSPI": true` в `hw/boards/<плата>/impl/riscv_process_config.json`, у apicula — ключ `--mspi_as_gpio`). Конфигурация ПЛИС у Tang Nano 9K — из встроенной flash, внешняя флеш для неё не используется.
 
 | Параметр | По умолчанию | Смысл |
 |---|---|---|
@@ -80,7 +80,7 @@ SPIFLASH — внешняя SPI-флеш и загрузка программы
 Образ собирает `sw/bootimage/bootimage.py` из ELF: загружаемые сегменты программы по их рабочим адресам (`.text` — в IMEM с 0, `.data` и `.rodata` — в DMEM с `0x1000_0000`); `.bss` обнуляет `start.S`. Обычный образ — два сегмента.
 
 ```
-py sw/bootimage/bootimage.py fw/Debug/riscv.elf --imem-kb 16 --dmem-kb 8
+py sw/bootimage/bootimage.py fw/TangNano9K/riscv.elf --imem-kb 16 --dmem-kb 8
 riscv_flash.bin: 5932 Байт (IMEM 0x00000000 5544 Байт, DMEM 0x10000000 356 Байт)
 ```
 
@@ -106,7 +106,7 @@ riscv_flash.bin: 5932 Байт (IMEM 0x00000000 5544 Байт, DMEM 0x10000000 3
 
 | Адрес | Что | Кто читает |
 |---|---|---|
-| `0x000000` | битовый поток ПЛИС (`hw/impl/pnr/riscv.fs`, у GW1NR-9 — 442 кБайт) | сама ПЛИС при включении питания, импульсе RECONFIG_N, `openFPGALoader -r` |
+| `0x000000` | битовый поток ПЛИС (`hw/boards/<плата>/impl/pnr/riscv.fs`, у GW1NR-9 — 442 кБайт, у GW2A-18 — 882 кБайт) | сама ПЛИС при включении питания, импульсе RECONFIG_N, `openFPGALoader -r` |
 | `0x100000` | образ программы (64 кБайт) | загрузчик SPIFLASH после сброса системы |
 | `0x110000`… | свободная область (`SPIFLASH_USER_ADDR`) — параметры | программа |
 
@@ -117,7 +117,7 @@ riscv_flash.bin: 5932 Байт (IMEM 0x00000000 5544 Байт, DMEM 0x10000000 3
 После конфигурации выводы MSPI (59–62) отдаются контроллеру SPIFLASH: генератор ставит «Use MSPI as regular IO». Вывод RECONFIG_N нельзя занимать как I/O — он нужен для перезапуска конфигурации (UG290, §7.5.5).
 
 **Запись.** Внешний инструмент Eclipse **«riscv SPI-FLASH»** (`fpgaload.py spiflash`):
-1. битовый поток `hw/impl/pnr/riscv.fs` с адреса 0 — без программы в BSRAM, программа приходит из образа. Битовый поток **пропускается, если не менялся** с прошлой записи (хеш в `fw/Debug/riscv_extflash_cfg.sha256`; `--force` — записать всё равно). С исправленным openFPGALoader (`sdk/openfpgaloader`) запись 442 кБайт — около 3 мин, со стандартным — около 10 мин: у GW1N openFPGALoader побитно управляет выводами флеш через boundary scan и упирается в USB ([sdk/openfpgaloader/README.md](../../../../sdk/openfpgaloader/README.md));
+1. битовый поток `hw/boards/<плата>/impl/pnr/riscv.fs` с адреса 0 — без программы в BSRAM, программа приходит из образа. Битовый поток **пропускается, если не менялся** с прошлой записи (хеш в `fw/<конфигурация>/riscv_extflash_cfg.sha256`; `--force` — записать всё равно). С исправленным openFPGALoader (`sdk/openfpgaloader`) запись 442 кБайт — около 3 мин, со стандартным — около 10 мин: у GW1N openFPGALoader побитно управляет выводами флеш через boundary scan и упирается в USB ([sdk/openfpgaloader/README.md](../../../../sdk/openfpgaloader/README.md));
 2. образ программы с адреса `0x100000`;
 3. `openFPGALoader -r`: ПЛИС заново конфигурируется — из внешней флеш, загрузчик копирует программу.
 

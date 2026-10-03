@@ -2,13 +2,14 @@
 <launchConfiguration type="org.eclipse.ui.externaltools.ProgramLaunchConfigurationType">
     <!-- Конфигурация и программа - во встроенную flash ПЛИС (режим AUTO BOOT: выводы MODE1 = MODE0 = 0, как на
          заводской Tang Nano 9K), через openFPGALoader на драйвере WinUSB, около 12 с; ПЛИС стартует с неё при
-         включении. См. hw/info/debug.md, «Прошивка и отладка без смены драйвера». Сборка проекта, затем
-         sw/fpgaload/fpgaload.py flash: проверка, что отладка (OpenOCD) остановлена, mergetool вливает программу в
-         свежий битстрим Gowin, запись. Если в конфигураторе выбрано хранение во внешней флеш (MSPI) -
-         отказ: используйте riscv SPI-FLASH -->
+         включении. Только для ПЛИС со встроенной flash (Tang Nano 9K, GW1NR-9): у GW2A-18 (Tang Primer 20K) её нет -
+         fpgaload откажет. Плата - активная конфигурация сборки (ключ config). См. hw/info/debug.md, «Прошивка и отладка
+         без смены драйвера». Сборка проекта, затем sw/fpgaload/fpgaload.py flash: проверка, что отладка (OpenOCD)
+         остановлена, mergetool вливает программу в свежий битовый поток, запись. Если в конфигураторе выбрано
+         хранение во внешней флеш (MSPI) - отказ: используйте riscv SPI-FLASH -->
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_LOCATION" value="${env_var:ComSpec}"/>
-    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_TOOL_ARGUMENTS" value="/c py -u ..\..\sw\fpgaload\fpgaload.py flash"/>
-    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_WORKING_DIRECTORY" value="${project_loc:riscv}/Debug"/>
+    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_TOOL_ARGUMENTS" value="/c py -u ..\sw\fpgaload\fpgaload.py flash --config ${config_name:riscv}"/>
+    <stringAttribute key="org.eclipse.ui.externaltools.ATTR_WORKING_DIRECTORY" value="${project_loc:riscv}"/>
     <stringAttribute key="org.eclipse.ui.externaltools.ATTR_LAUNCH_CONFIGURATION_BUILD_SCOPE" value="${projects:riscv}"/>
     <booleanAttribute key="org.eclipse.ui.externaltools.ATTR_INCLUDE_REFERENCED_PROJECTS" value="false"/>
     <booleanAttribute key="org.eclipse.ui.externaltools.ATTR_SHOW_CONSOLE" value="true"/>

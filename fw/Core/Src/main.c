@@ -29,11 +29,11 @@
 #include "spiflash.h"
 
 #ifndef EXAMPLE
-#define EXAMPLE 7
+#define EXAMPLE 3
 #endif
 
 /* Полупериод мигания, мс */
-#define BLINK_HALF_PERIOD_MS 	30U
+#define BLINK_HALF_PERIOD_MS 	500U
 
 /*Прототипы функций*/
 unsigned int dig_transform(unsigned int digit);

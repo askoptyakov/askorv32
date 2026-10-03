@@ -47,6 +47,7 @@ void UART_PutString(const char *s) {
 	while (*s) UART_PutChar(*s++);
 }
 
+#if UART_TEXT_UTF8
 /* Символ cp1251 в UTF-8: 1..3 байта в out, возвращает их число */
 static int cp1251_to_utf8(uint8_t c, char *out) {
 	uint32_t u;
@@ -63,6 +64,7 @@ static int cp1251_to_utf8(uint8_t c, char *out) {
 	out[1] = (char)(0x80U | (u & 0x3FU));
 	return 2;
 }
+#endif
 
 void UART_PutText(const char *s) {
 #if UART_TEXT_UTF8
@@ -115,6 +117,11 @@ int UART_ReadLine(char *buf, int size, int echo) {
 int UART_Utf8ToCp1251(const char *in, char *out, int size) {
 	int n = 0;
 	const uint8_t *p = (const uint8_t *)in;
+#if !UART_TEXT_UTF8
+	while (*p && n < size - 1) out[n++] = (char)*p++;		//Терминал в cp1251: текст уже в кодировке прошивки
+	out[n] = '\0';
+	return n;
+#endif
 	while (*p && n < size - 1) {
 		uint8_t c = *p++;
 		if (c < 0x80U) { out[n++] = (char)c; continue; }

@@ -1,8 +1,9 @@
 //==============================================================================================
 // top.sv - ВЕРХНИЙ УРОВЕНЬ askoRV32. ФАЙЛ СОЗДАН КОНФИГУРАТОРОМ ПЛИС - НЕ РЕДАКТИРУЙТЕ ВРУЧНУЮ.
-// Источник: fw/riscv.gwsoc; генератор: sw/socgen/socgen.py (кнопка «Собрать» в Eclipse).
-// Процессор (ядро, память, отладчик, CLINT, PLIC) - в cpu.sv, он правится вручную; здесь -
+// Источник: fw/boards/tangnano9k/tangnano9k.gwsoc; генератор: sw/socgen/socgen.py (кнопка «Собрать» в Eclipse).
+// Процессор (ядро, память, отладчик, CLINT, PLIC) - в hw/src/cpu.sv, он правится вручную; здесь -
 // параметры платы для cpu и пользовательская периферия на его порту bus_per.
+// Плата: Tang Nano 9K; ПЛИС: GW1NR-LV9QN88PC6/I5.
 //==============================================================================================
 
 module top #(
@@ -10,6 +11,7 @@ module top #(
              parameter bit CORE_TYPE         = 0, //1 - однотактное, 0 - конвейерное
              parameter bit M_EXT             = 1, //расширение M
              parameter int DIV_BPC           = 2, //бит частного за такт: 1, 2, 4
+             parameter int RF_TYPE           = 0, //регистровый файл: 0 - LUT; BSRAM (2 блока SDPB): 1 - чтение на фронте D->E, 2 - по спаду в D
                 //Память команд и данных
              parameter bit IMEM_TYPE         = 1, //1 - BSRAM, 0 - синтезированная
              parameter int BSRAM_IMEM_SIZE   = 16, //кБайт: 8/16/32
@@ -20,10 +22,11 @@ module top #(
              parameter int SYNTH_DMEM_SIZE   = 256, //слов по 4 Байт
              parameter DMEM_INIT_FILE        = "mem_init/d.mem",
                 //Отладка и прерывания
-             parameter bit DEBUG_EN          = 1, //модуль отладки JTAG (выводы 5-8)
+             parameter bit DEBUG_EN          = 1, //модуль отладки JTAG (выводы TMS 5, TCK 6, TDI 7, TDO 8)
              parameter int PLIC_SOURCES      = 8, //источников PLIC (1..31)
                 //Тактирование: кварц 27 МГц, rPLL -> 45 МГц (PFD 9, VCO 720 МГц)
              parameter FCLKIN                = "27", //частота кварца, МГц (строка для rPLL)
+             parameter PLL_DEVICE            = "GW1NR-9C", //кристалл для rPLL
              parameter int XTAL_KHZ          = 27000, //частота кварца, кГц
              parameter int PLL_IDIV_SEL      = 2,
              parameter int PLL_FBDIV_SEL     = 4,
@@ -58,7 +61,7 @@ module top #(
 `endif
 );
 `ifdef GWSOC_NO_JTAG_PINS
-    //Сборка без выводов JTAG (apicula не поддерживает GW_JTAG для GW1N-9C, DEBUG_EN = 0)
+    //Сборка без выводов JTAG (apicula для этого кристалла не поддерживает GW_JTAG, DEBUG_EN = 0)
     logic tck_pad_i = 1'b0, tms_pad_i = 1'b1, tdi_pad_i = 1'b0;
     logic tdo_pad_o;
 `endif
@@ -89,11 +92,11 @@ module top #(
     logic [ 3:0] boot_Write;
     logic [31:0] boot_Addr, boot_WData;
 
-    cpu #(.CORE_TYPE(CORE_TYPE), .M_EXT(M_EXT), .DIV_BPC(DIV_BPC),
+    cpu #(.CORE_TYPE(CORE_TYPE), .M_EXT(M_EXT), .DIV_BPC(DIV_BPC), .RF_TYPE(RF_TYPE),
           .IMEM_TYPE(IMEM_TYPE), .BSRAM_IMEM_SIZE(BSRAM_IMEM_SIZE), .SYNTH_IMEM_SIZE(SYNTH_IMEM_SIZE), .IMEM_INIT_FILE(IMEM_INIT_FILE),
           .DMEM_TYPE(DMEM_TYPE), .BSRAM_DMEM_SIZE(BSRAM_DMEM_SIZE), .SYNTH_DMEM_SIZE(SYNTH_DMEM_SIZE), .DMEM_INIT_FILE(DMEM_INIT_FILE),
           .DEBUG_EN(DEBUG_EN), .PLIC_SOURCES(PLIC_SOURCES),
-          .FCLKIN(FCLKIN), .PLL_IDIV_SEL(PLL_IDIV_SEL), .PLL_FBDIV_SEL(PLL_FBDIV_SEL), .PLL_ODIV_SEL(PLL_ODIV_SEL))
+          .FCLKIN(FCLKIN), .PLL_DEVICE(PLL_DEVICE), .PLL_IDIV_SEL(PLL_IDIV_SEL), .PLL_FBDIV_SEL(PLL_FBDIV_SEL), .PLL_ODIV_SEL(PLL_ODIV_SEL))
         cpu (.clk(CLOCK), .rst_n(RESET),
              .tck_pad_i(tck_pad_i), .tms_pad_i(tms_pad_i), .tdi_pad_i(tdi_pad_i), .tdo_pad_o(tdo_pad_o),
              .clk_per(clk_per), .rst_per(rst_per),

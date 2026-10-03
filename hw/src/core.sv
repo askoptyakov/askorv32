@@ -2,7 +2,10 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
               parameter bit IMEM_TYPE = 0, //Тип памяти инструкций: 1 - BSRAM;       0 - Синтезированная;
               parameter bit DMEM_TYPE = 0, //    Тип памяти данных: 1 - BSRAM;       0 - Синтезированная;
               parameter bit M_EXT     = 1, //         Расширение M: 1 - есть;        0 - нет (RV32I);
-              parameter int DIV_BPC   = 2) //  Бит частного за такт: 1, 2, 4 (деление 32/DIV_BPC + 3 такта)
+              parameter int DIV_BPC   = 2, //  Бит частного за такт: 1, 2, 4 (деление 32/DIV_BPC + 3 такта)
+              parameter int RF_TYPE   = 0) //  Регистровый файл: 0 - распределённая память (LUT); BSRAM (два блока SDPB,
+                                           //  только конвейер): 1 - чтение на фронте D -> E (выход блока - регистр E),
+                                           //  2 - чтение по спаду в середине D, значение - в регистр RD1E/RD2E (как у LUT)
              (input  logic        clk,       //Вход тактирования
               input  logic        rst,       //Вход сброса (кнопка S2)
               //Интерфейс памяти команд
@@ -99,6 +102,14 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     //Сигналы блока предотвращения конфликтов
     logic [3:0] FwdAD, FwdBD, FwdAE, FwdBE;             //Байпас rs1/rs2, one-hot {M, W, X, рег. файл} (Ч7: считается в D)
     logic [4:0] SelAD, SelAE;                           //Операнд A АЛУ, one-hot {M, W, X, рег. файл, PC}; 0 - ноль
+    //Регистровый файл на BSRAM (RF_TYPE = 1): чтение защёлкивается на фронте D -> E, и запись из стадии X на этом же
+    //фронте в прочитанное значение не попадает. Такой операнд берётся из защёлкнутых данных записи WdE - ещё один
+    //вход И-ИЛИ мультиплексоров стадии E (коды Xb*: «регистровый файл, но значение - из записи на входе в E»)
+    logic       Byp1D, Byp2D;                           //Инструкция в D читает регистр, который X пишет в этом такте
+    logic [31:0] WdD, WdE;                              //Данные этой записи
+    logic [3:0] FwdADr, FwdBDr;                         //Коды байпаса с учётом записи на входе в E
+    logic [4:0] SelADr;
+    logic       XbAD, XbBD, XbSelD, XbAE, XbBE, XbSelE;
     logic       StallF, StallD, FlushD, FlushE;         //Организация приостановки и предсказателя branch
 
     //Сигналы блока условных переходов
@@ -147,12 +158,13 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
                                                                        {PCD, PCPlus4D});
     regcontrol #(1, CORE_TYPE)      rc_fetch (clk, FlushD|rst, StallD, ~dbg_halted, ValidD); //В однотактном ядре ValidD = ~dbg_halted
     //DECODE////////////////////////////////////////////////////////////////////////////////////////
-    decode #(CORE_TYPE) decode(  .clk(clk), .rst(rst), .RegWrite(RegWriteX), .ImmSrc(ImmSrcD),
+    decode #(CORE_TYPE, CORE_TYPE ? 0 : RF_TYPE) decode(  .clk(clk), .rst(rst), .RegWrite(RegWriteX), .ImmSrc(ImmSrcD),
                                  .Addr1(Rs1D), .Addr2(Rs2D), .Addr3(RdX), .Imm(ImmD),
                                  .Result(ResultX),
                                  .RD1(RD1D), .RD2(RD2D), .ImmExt(ImmExtD),
                                  .DbgSel(dbg_halted), .DbgAddr(dbg_gpr_addr), .DbgWe(dbg_gpr_we & dbg_halted), .DbgWData(dbg_wdata),
-                                 .DbgRData(dbg_gpr_rdata));
+                                 .DbgRData(dbg_gpr_rdata),
+                                 .Hold(DivHold), .Byp1(Byp1D), .Byp2(Byp2D), .Wd(WdD));
     assign Rs1D    = InstrD[19:15];
     assign Rs2D    = InstrD[24:20];
     assign RdD     = InstrD[11:7];
@@ -182,15 +194,33 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
     end
     endgenerate
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    regdata #(5, CORE_TYPE) rd_decode     (clk, FlushEC|rst, DivHold, {PCD, PCPlus4D, ImmExtD, RD1D, RD2D},
-                                                                  {PCE, PCPlus4E, ImmExtE, RD1E, RD2E});
+    generate if (RF_TYPE == 1 && !CORE_TYPE) begin : g_rf_bsram
+        //Значения регистров - с выхода BSRAM: он и есть регистр стадии E (удержание - CE чтения, DivHold)
+        regdata #(4, CORE_TYPE) rd_decode (clk, FlushEC|rst, DivHold, {PCD, PCPlus4D, ImmExtD, WdD},
+                                                                     {PCE, PCPlus4E, ImmExtE, WdE});
+        assign RD1E = RD1D;
+        assign RD2E = RD2D;
+    end else begin : g_rf_lut
+        regdata #(5, CORE_TYPE) rd_decode (clk, FlushEC|rst, DivHold, {PCD, PCPlus4D, ImmExtD, RD1D, RD2D},
+                                                                     {PCE, PCPlus4E, ImmExtE, RD1E, RD2E});
+        assign WdE = 32'd0;
+    end
+    endgenerate
     regrf   #(3, CORE_TYPE) rf_decode     (clk, FlushEC|rst, DivHold, {Rs1D, Rs2D, RdD},
                                                                   {Rs1E, Rs2E, RdE});
     //Пока идёт деление (DivHold), регистры стадии E держат инструкцию и не сбрасываются
     regcontrol #(20, CORE_TYPE) rc_decode (clk, FlushEC|rst, DivHold,
                     {RegWriteD, ResultSrcD[1:0], MemWriteD, JumpD, BranchD, ALUControlD[3:0], ALUSrcD[2:0], Funct3D[2:0], JALSrcD, PredD, MulD, DivD},
                     {RegWriteE, ResultSrcE[1:0], MemWriteE, JumpE, BranchE, ALUControlE[3:0], ALUSrcE[2:0], Funct3E[2:0], JALSrcE, PredE, MulE, DivE});
-    regcontrol #(13, CORE_TYPE) rw_decode (clk, FlushEC|rst, DivHold, {FwdAD, FwdBD, SelAD}, {FwdAE, FwdBE, SelAE});
+    //Код «регистровый файл» делится на «выход BSRAM» и «данные записи на входе в E» (при RF_TYPE = 0 Byp* = 0)
+    assign FwdADr = {FwdAD[3:1], FwdAD[0] & ~Byp1D};
+    assign FwdBDr = {FwdBD[3:1], FwdBD[0] & ~Byp2D};
+    assign SelADr = {SelAD[4:2], SelAD[1] & ~Byp1D, SelAD[0]};
+    assign XbAD   = FwdAD[0] & Byp1D;
+    assign XbBD   = FwdBD[0] & Byp2D;
+    assign XbSelD = SelAD[1] & Byp1D;
+    regcontrol #(16, CORE_TYPE) rw_decode (clk, FlushEC|rst, DivHold, {FwdADr, FwdBDr, SelADr, XbAD, XbBD, XbSelD},
+                                                                  {FwdAE, FwdBE, SelAE, XbAE, XbBE, XbSelE});
     //Ч15: условие перехода раскладывается в стадии D - какое сравнение (one-hot) и нужна ли инверсия.
     //Инверсия учитывает и предсказание: смена PC нужна, если «выполнен» != «предсказан», то есть
     //cond ^ funct3[0] ^ PredD. В стадии E остаётся И-ИЛИ результатов сравнения и один XOR.
@@ -227,7 +257,8 @@ module core #(parameter bit CORE_TYPE = 1, //       Тип процессора:
                     {ValidE, CsrE,          MretE,          EcallE,          EbreakE,          IllegalE});
     //EXECUTE///////////////////////////////////////////////////////////////////////////////////////
     execute #(CORE_TYPE) execute
-             (.JALSrc(JALSrcE), .FwdA(FwdAE), .FwdB(FwdBE), .SelA(SelAE), .ALUSrc(ALUSrcE), .ALUControl(ALUControlE), .ALUSel(ALUSelE[7:0]),
+             (.JALSrc(JALSrcE), .FwdA(FwdAE), .FwdB(FwdBE), .SelA(SelAE), .XbA(XbAE), .XbB(XbBE), .XbSel(XbSelE), .Wd(WdE),
+              .ALUSrc(ALUSrcE), .ALUControl(ALUControlE), .ALUSel(ALUSelE[7:0]),
               .RD1(RD1E), .RD2(RD2E), .PC(PCE), .ImmExt(ImmExtE), .ResultW(ResultWf), .ALUResultM(ALUResultM), .ResultX(ResultX),
               .BrFlags(BrFlagsE), .ALUResult(ALUResultE), .WriteData(WriteDataE),
               //Особенные
@@ -997,7 +1028,8 @@ module fetch (
 endmodule
 
 module decode 
-  #(parameter bit CORE_TYPE = 0)
+  #(parameter bit CORE_TYPE = 0,
+    parameter int RF_TYPE   = 0)          //Регистровый файл: 0 - LUT, 1 и 2 - BSRAM (только конвейерное ядро, см. ниже)
    (input logic         clk, rst, RegWrite,
     input logic  [ 2:0] ImmSrc,
     input logic  [ 4:0] Addr1, Addr2, Addr3,
@@ -1009,7 +1041,11 @@ module decode
     input  logic [ 4:0] DbgAddr,
     input  logic        DbgWe,
     input  logic [31:0] DbgWData,
-    output logic [31:0] DbgRData
+    output logic [31:0] DbgRData,
+    //Регистровый файл на BSRAM: RD1, RD2 - уже значения стадии E (с выхода блоков), удержание - Hold
+    input  logic        Hold,
+    output logic        Byp1, Byp2,       //Читаемый регистр пишется в этом такте (на фронте D -> E)
+    output logic [31:0] Wd                //Данные этой записи
 );
     //#rf - Регистровый файл//
     //DESCRIPTION: Трёхпортовый регистровый файл имеет два порта для считывания
@@ -1018,6 +1054,7 @@ module decode
     //(асинхронное чтение) вместо 1024 триггеров с мультиплексорами 32:1 на каждый порт чтения.
     //Спецификация RISC-V начальных значений x1..x31 не требует, стартовый код задаёт sp и gp сам.
     (* syn_ramstyle = "distributed_ram" *) logic [31:0] rf[31:0];
+    assign Wd = Result;
     // synthesis translate_off
     //Моделирование: нули; +rf_garbage - мусор, как на плате после включения (проверка, что программа
     //не рассчитывает на нулевые регистры)
@@ -1038,6 +1075,53 @@ module decode
             if (we) rf[wa] <= wd;
         assign RD1 = (ra1 != 0) ? rf[ra1] : 0;
         assign RD2 = (Addr2 != 0) ? rf[Addr2] : 0;
+        assign {Byp1, Byp2} = 2'b00;
+    end else if (RF_TYPE != 0) begin : g_rfb  //Конвеерное ядро, регистровый файл на BSRAM
+        //Два блока полудвухпортовой памяти SDPB (порт A - запись, порт B - чтение) по 512 слов x 32 бит, заняты
+        //слова 0..31. Запись - одинаковая в оба блока, каждый даёт один порт чтения. Чтение синхронное: адрес
+        //(номер rs1/rs2 инструкции в D) защёлкивается на фронте D -> E, выход блока - значение для стадии E, то есть
+        //сам блок служит регистром RD1E/RD2E. Пока деление держит стадию E (Hold), CE чтения снят и выход не меняется.
+        //x0: запись по адресу 0 запрещена, начальное содержимое блоков - нули, поэтому x0 всегда читается как 0.
+        //Запись и чтение одного адреса на одном фронте у BSRAM не определены: такое значение (Byp) ядро берёт
+        //из защёлкнутых данных записи. Отладчик (ядро остановлено) читает через порт 1: DbgRData готов на такт позже
+        //адреса - DM ждёт 2 такта (REG_WAIT2). В режиме останова стадия E пуста, Byp не нужен.
+        //
+        //RF_TYPE = 2 - чтение по спаду (Ч19): у GW1NR-9 время выхода BSRAM велико, и при RF_TYPE = 1 оно ложится в начало
+        //самого длинного пути «операнды E -> АЛУ -> регистр M» (Fmax 42 МГц). Поэтому порт чтения тактируется спадом в
+        //середине стадии D: первая половина такта - выход IMEM -> номер rs -> адрес блока, вторая - выход блока ->
+        //байпас записи -> регистр RD1E/RD2E на фронте D -> E. Стадия E снова начинается с триггера. Поведение - как у
+        //регистрового файла на LUT: запись на фронте в начале D к спаду уже видна, запись на фронте в конце D (стадия X
+        //в этом такте) подставляется байпасом здесь же, в D; отладчик читает в том же такте. CE чтения не нужен: при
+        //приостановке D и E блок перечитывает тот же адрес, а регистры RD1E/RD2E держат значение сами.
+        localparam bit NEG = (RF_TYPE == 2);
+        logic        wen, byp1, byp2;
+        logic [ 4:0] ra1b;
+        assign wen  = we & (wa != 5'd0);
+        assign ra1b = DbgSel ? DbgAddr : Addr1;
+        assign byp1 = wen & (wa == Addr1);
+        assign byp2 = wen & (wa == Addr2);
+        assign Byp1 = NEG ? 1'b0 : byp1;  //RF_TYPE = 1: байпас - в стадии E (ядро защёлкивает Wd); 2 - здесь
+        assign Byp2 = NEG ? 1'b0 : byp2;
+        for (genvar k = 0; k < 2; k++) begin : rfb
+            logic [31:0] q;
+            logic [ 4:0] ra;              //Адрес чтения блока - отдельным проводом: условие на genvar внутри
+            if (k == 0) assign ra = ra1b; //конкатенации Icarus вычислял как X в различающихся битах
+            else        assign ra = Addr2;
+            SDPB #(.READ_MODE(1'b0), .BIT_WIDTH_0(32), .BIT_WIDTH_1(32), .BLK_SEL_0(3'b000), .BLK_SEL_1(3'b000),
+                   .RESET_MODE("SYNC"))
+                 bsram (.DO(q), .DI(wd), .BLKSELA(3'b000), .BLKSELB(3'b000),
+                        .ADA({4'b0000, wa, 1'b0, 4'b1111}), .ADB({4'b0000, ra, 5'b00000}),
+                        .CLKA(clk), .CLKB(NEG ? ~clk : clk), .CEA(wen), .CEB(NEG | ~Hold), .OCE(1'b0),
+                        .RESETA(1'b0), .RESETB(1'b0));
+            if (NEG) begin        //Байпас записи этого такта - как у LUT (x0: адрес 0 не пишется, байпаса нет)
+                if (k == 0) assign RD1 = byp1 ? wd : q; else assign RD2 = byp2 ? wd : q;
+            end else begin
+                if (k == 0) assign RD1 = q; else assign RD2 = q;
+            end
+        end
+        // synthesis translate_off
+        always_ff @(posedge clk) if (wen) rf[wa] <= wd;   //Копия для тестбенча (номер упавшего теста - x28)
+        // synthesis translate_on
     end else begin                  //Конвеерное ядро
         //Ч6: запись по фронту (раньше - по спаду, «запись в первой половине такта, чтение во
         //второй»). По спаду пути «память данных -> регистровый файл» доставалась только половина
@@ -1054,6 +1138,7 @@ module decode
         assign byp2 = we & (wa == Addr2);
         assign RD1 = (ra1   == 0) ? 32'd0 : byp1 ? wd : rf[ra1];
         assign RD2 = (Addr2 == 0) ? 32'd0 : byp2 ? wd : rf[Addr2];
+        assign {Byp1, Byp2} = 2'b00;      //Байпас записи - уже здесь, в стадии D
         //always_ff @(posedge clk) begin
         //    RD1 <= (Addr1 != 0) ? rf[Addr1] : 0;
         //    RD2 <= (Addr2 != 0) ? rf[Addr2] : 0;
@@ -1084,6 +1169,8 @@ module execute
    (input  logic        JALSrc,
     input  logic [ 3:0] FwdA, FwdB,       //Байпас rs1/rs2, one-hot {M, W, X, рег. файл} (Ч7)
     input  logic [ 4:0] SelA,             //Операнд A АЛУ, one-hot {M, W, X, рег. файл, PC}
+    input  logic        XbA, XbB, XbSel,  //Регистровый файл на BSRAM: операнд - данные записи на входе в E (Wd)
+    input  logic [31:0] Wd,
     input  logic [ 2:0] ALUSrc, 
     input  logic [ 3:0] ALUControl,
     input  logic [ 7:0] ALUSel,           //В: выбор результата one-hot {sum, and, or, xor, slt, sltu, sll, srl/sra}
@@ -1118,9 +1205,9 @@ module execute
     end else begin                  //#0 - Конвеерное ядро
         //Ч7: коды готовы с прошлого такта - только И-ИЛИ, без сравнений номеров регистров
         assign SrcAforward = ({32{FwdA[3]}} & ALUResultM) | ({32{FwdA[2]}} & ResultW) |
-                             ({32{FwdA[1]}} & ResultX)    | ({32{FwdA[0]}} & RD1);
+                             ({32{FwdA[1]}} & ResultX)    | ({32{FwdA[0]}} & RD1) | ({32{XbA}} & Wd);
         assign SrcBforward = ({32{FwdB[3]}} & ALUResultM) | ({32{FwdB[2]}} & ResultW) |
-                             ({32{FwdB[1]}} & ResultX)    | ({32{FwdB[0]}} & RD2);
+                             ({32{FwdB[1]}} & ResultX)    | ({32{FwdB[0]}} & RD2) | ({32{XbB}} & Wd);
     end
     endgenerate
 
@@ -1139,7 +1226,7 @@ module execute
             endcase
     end else begin                  //#0 - Конвеерное ядро: байпас и выбор PC/0 одним мультиплексором (Ч7)
         assign srcA = ({32{SelA[4]}} & ALUResultM) | ({32{SelA[3]}} & ResultW) | ({32{SelA[2]}} & ResultX) |
-                      ({32{SelA[1]}} & RD1)        | ({32{SelA[0]}} & PC);
+                      ({32{SelA[1]}} & RD1)        | ({32{SelA[0]}} & PC)       | ({32{XbSel}} & Wd);
     end
     endgenerate
     assign srcB = (ALUSrcB) ? ImmExt : SrcBforward; //Мультипелксор для выбора второго операнда АЛУ: RD2 или ImmExt

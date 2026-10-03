@@ -1,0 +1,91 @@
+{
+  "format": "askorv32-gwsoc",
+  "version": 2,
+  "board": { "id": "tangprimer20k", "title": "Tang Primer 20K", "buildConfig": "TangPrimer20K", "loader": "tangprimer20k" },
+  "device": "GW2A-LV18PG256C8/I7",
+  "paths": {
+    "hw": "../../../hw/boards/tangprimer20k",
+    "src": "../../../hw/src",
+    "top": "top.sv",
+    "cst": "riscv.cst",
+    "soc": "soc.h",
+    "generator": "../../../sw/socgen/socgen.py"
+  },
+  "core": {
+    "coreType": "pipeline",
+    "mExt": true,
+    "divBpc": 4,
+    "rfType": "bsram",
+    "debug": true,
+    "plicSources": 8,
+    "imem": { "type": "bsram", "kb": 16, "synthWords": 256, "init": "mem_init/i.mem" },
+    "dmem": { "type": "bsram", "kb": 8, "synthWords": 256, "init": "mem_init/d.mem" }
+  },
+  "clock": {
+    "xtalMHz": 27,
+    "xtalPin": "H11",
+    "pll": { "mode": "auto", "targetMHz": 45, "idiv": 2, "fbdiv": 4, "odiv": 16 }
+  },
+  "reset": { "pin": "T10" },
+  "periph": [
+    { "type": "gpio", "name": "GPIO", "base": "auto", "lines": ["C13", "A13", "N16", "N14", "L14", "L16"] },
+    { "type": "stim", "name": "STIM", "base": "auto", "width": 16, "out": null, "irq": "plic" },
+    {
+      "type": "uart",
+      "name": "UART",
+      "base": "auto",
+      "tx": "M11",
+      "rx": "T13",
+      "baud": 115200,
+      "parity": "none",
+      "stop": 1,
+      "fifo": 16,
+      "irq": "plic"
+    },
+    {
+      "type": "spiflash",
+      "name": "SPIFLASH",
+      "base": "auto",
+      "sck": "L10",
+      "cs": "M9",
+      "mosi": "R10",
+      "miso": "P10",
+      "sizeMB": 8,
+      "div": 1,
+      "fpgaConfig": true,
+      "bootAddr": "0x100000"
+    },
+    { "type": "tm1638", "name": "TM1638", "base": "auto", "dio": "T7", "clk": "P8", "stb": "T9" }
+  ],
+  "ioDefaults": { "ioType": "LVCMOS33", "pull": "UP", "drive": "8", "vccio": "3.3" },
+  "banks": {
+    "0": { "ioType": "LVCMOS33", "vccio": "3.3" },
+    "1": { "ioType": "LVCMOS33", "vccio": "3.3" },
+    "2": { "ioType": "LVCMOS33", "vccio": "3.3" },
+    "3": { "ioType": "LVCMOS33", "vccio": "3.3" },
+    "4": { "ioType": "LVCMOS15", "vccio": "1.5" },
+    "5": { "ioType": "LVCMOS15", "vccio": "1.5" },
+    "6": { "ioType": "LVCMOS15", "vccio": "1.5" },
+    "7": { "ioType": "LVCMOS33", "vccio": "3.3" }
+  },
+  "pins": {
+    "A13": { "net": "LED1" },
+    "C13": { "net": "LED0" },
+    "H11": { "net": "CLOCK" },
+    "L10": { "net": "FLASH_SCK" },
+    "L14": { "net": "LED4" },
+    "L16": { "net": "LED5" },
+    "M9": { "net": "FLASH_CS" },
+    "M11": { "net": "UART_TX" },
+    "N14": { "net": "LED3" },
+    "N16": { "net": "LED2" },
+    "P8": { "net": "TM1638_CLK" },
+    "P10": { "net": "FLASH_MISO" },
+    "R10": { "net": "FLASH_MOSI" },
+    "T7": { "net": "TM1638_DIO" },
+    "T9": { "net": "TM1638_STB" },
+    "T10": { "net": "RESET" },
+    "T13": { "net": "UART_RX" }
+  },
+  "build": { "toolchain": "gowin", "placeOption": "0", "loadingRate": "25.000" }
+}
