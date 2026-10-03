@@ -408,6 +408,158 @@ static void Example_Run(void) {
 }
 #endif
 
+/*
+ * Платы АЦП (блоки ADC121: ADC_V - напряжение, ADC_C - ток) для примеров 8 и 9: какие есть в
+ * конфигурации ПЛИС (soc.h), пересчёт кода из конфигуратора, вывод в UART и на TM1638.
+ */
+#if (EXAMPLE == 8 || EXAMPLE == 9) && (defined(ADC_V) || defined(ADC_C))
+#define ADC_ON				1
+#define ADC_SHOW_MS			2000U		//Смена показания на индикаторе
+#define ADC_DISP_MS			500U		//Обновление индикатора: 2 раза в секунду
+#define KEY_SHOW_I			(1U << 1)	//Кнопка 7 TM1638 (вторая справа, бит 1 KEYS): только ток
+#define KEY_SHOW_U			(1U << 0)	//Кнопка 8 (крайняя правая, бит 0): только напряжение
+
+typedef struct
+{
+	ADC121_TypeDef *adc;
+	ADC121_Cal      cal;
+	const char     *name;
+	char            sym;				//'U' - напряжение, 'I' - ток
+	uint32_t        has_cmp;
+	uint32_t        errs, cmps, cnt_old, rate;
+} AdcBoard;
+
+static AdcBoard boards[] = {
+#ifdef ADC_V
+	{ ADC_V, { ADC_V_SCALE_U, ADC_V_OFFSET_M }, "ADC_V", 'U', ADC_V_CMP, 0, 0, 0, 0 },
+#endif
+#ifdef ADC_C
+	{ ADC_C, { ADC_C_SCALE_U, ADC_C_OFFSET_M }, "ADC_C", 'I', ADC_C_CMP, 0, 0, 0, 0 },
+#endif
+};
+#define ADC_BOARDS		(sizeof boards / sizeof boards[0])
+
+/* Тысячные доли - текстом «-12.345» (digits знаков после точки: 1..3) */
+static int fmt_milli(char *s, int32_t v, int digits) {
+	int n = 0;
+	uint32_t u, div = 1000U;
+	if (v < 0) { s[n++] = '-'; u = (uint32_t)(-v); } else u = (uint32_t)v;
+	for (int i = digits; i < 3; i++) { u = (u + 5U) / 10U; div /= 10U; }	//Округление до digits знаков
+	uint32_t ip = u / div, fp = u % div;
+	char d[10];
+	int m = 0;
+	do { d[m++] = (char)('0' + ip % 10U); ip /= 10U; } while (ip);
+	while (m) s[n++] = d[--m];
+	s[n++] = '.';
+	for (uint32_t k = div / 10U; k; k /= 10U) { s[n++] = (char)('0' + fp / k % 10U); }
+	s[n] = '\0';
+	return n;
+}
+
+__attribute__((unused)) static void put_k(uint32_t v) {						//Тысячные - «12.345»
+	UART_PutDec((int32_t)(v / 1000U)); UART_PutChar('.');
+	UART_PutChar((char)('0' + v / 100U % 10U)); UART_PutChar((char)('0' + v / 10U % 10U)); UART_PutChar((char)('0' + v % 10U));
+}
+
+static void adc_status(AdcBoard *b) {
+	char t[16];
+	uint32_t sh = b->adc->AVG & 0xFU, sum = ADC121_GetSum(b->adc);
+	int32_t mv = ADC121_MeanMilli(b->adc, b->cal);
+	UART_PutText(b->name);
+	UART_PutText(": код ");
+	fmt_milli(t, (int32_t)(((uint64_t)sum * 1000U) >> sh), 1);			//Среднее с десятыми
+	UART_PutText(t);
+	UART_PutText(" (среднее по ");
+	UART_PutDec((int32_t)(1U << sh));
+	UART_PutText(", последний ");
+	UART_PutDec((int32_t)ADC121_GetRaw(b->adc));
+	UART_PutText(", кадр 0x");
+	UART_PutHex(ADC121_GetFrame(b->adc), 4);
+	UART_PutText("), ");
+	UART_PutChar(b->sym);
+	UART_PutText(" = ");
+	fmt_milli(t, mv, b->sym == 'U' ? 2 : 3);
+	UART_PutText(t);
+	UART_PutText(b->sym == 'U' ? " В, " : " А, ");
+	UART_PutDec((int32_t)b->rate);
+	UART_PutText(" отсч./с, ошибок кадра ");
+	UART_PutDec((int32_t)b->errs);
+	if (b->has_cmp) {
+		UART_PutText(ADC121_CmpActive(b->adc) ? ", CMP: СРАБОТАЛ" : ", CMP: норма");
+		UART_PutText(", срабатываний ");
+		UART_PutDec((int32_t)b->cmps);
+	}
+	UART_PutText("\r\n");
+}
+
+/* TM1638: «U 59.99» или «I 0.999» */
+static void adc_show(AdcBoard *b) {
+	char d[12];
+	int32_t mv = ADC121_MeanMilli(b->adc, b->cal);
+	d[0] = b->sym;
+	d[1] = ' ';
+	if (b->sym == 'U') fmt_milli(&d[2], mv, (mv > -100000 && mv < 1000000) ? 2 : 1);
+	else               fmt_milli(&d[2], mv, (mv > -10000 && mv < 100000) ? 3 : 2);
+	TM1638_WriteText(d);
+}
+
+/* Плата по символу: 'U' или 'I' (нет такой - NULL) */
+static AdcBoard *adc_by_sym(char sym) {
+	for (uint32_t i = 0; i < ADC_BOARDS; i++)
+		if (boards[i].sym == sym) return &boards[i];
+	return 0;
+}
+
+/* Пуск: значения конфигуратора (после сброса), непрерывные преобразования */
+static void adc_boards_start(void) {
+	for (uint32_t i = 0; i < ADC_BOARDS; i++) {
+		AdcBoard *b = &boards[i];
+		ADC121_Init(b->adc, b->adc->DIV & ADC121_DIV_MSK, b->adc->AVG & 0xFU);
+		ADC121_Start(b->adc);
+		b->cnt_old = ADC121_GetCount(b->adc);
+	}
+}
+
+/* Флаги: ошибки кадра и срабатывания компаратора (зовётся в цикле) */
+static void adc_poll(void) {
+	for (uint32_t i = 0; i < ADC_BOARDS; i++) {
+		AdcBoard *b = &boards[i];
+		uint32_t f = ADC121_GetFlags(b->adc) & (ADC121_SR_ERR | ADC121_SR_CMPF);
+		if (f) {
+			ADC121_ClearFlags(b->adc, f);
+			if (f & ADC121_SR_ERR)  b->errs++;
+			if (f & ADC121_SR_CMPF) b->cmps++;
+		}
+	}
+}
+
+/* Частота отсчётов: отсчётов с прошлого вызова * mult (вызовы раз в 1/mult с) */
+static void adc_rate_update(uint32_t mult) {
+	for (uint32_t i = 0; i < ADC_BOARDS; i++) {
+		AdcBoard *b = &boards[i];
+		uint32_t c = ADC121_GetCount(b->adc);
+		b->rate = (c - b->cnt_old) * mult;
+		b->cnt_old = c;
+	}
+}
+
+/* Кратко для строки состояния: «, U = 49.98 В, I = 0.930 А» (кадр с ошибкой - «нет связи») */
+__attribute__((unused)) static void adc_brief(void) {
+	char s[16];
+	for (uint32_t i = 0; i < ADC_BOARDS; i++) {
+		AdcBoard *b = &boards[i];
+		UART_PutText(", ");
+		UART_PutChar(b->sym);
+		UART_PutText(" = ");
+		if (ADC121_GetFrame(b->adc) & 0xF000U) { UART_PutText("нет связи"); continue; }
+		fmt_milli(s, ADC121_MeanMilli(b->adc, b->cal), b->sym == 'U' ? 2 : 3);
+		UART_PutText(s);
+		UART_PutText(b->sym == 'U' ? " В" : " А");
+		if (b->has_cmp && ADC121_CmpActive(b->adc)) UART_PutText(" (CMP!)");
+	}
+}
+#endif
+
 #if EXAMPLE == 8
 /*
  * Пример 8: СИФУ трёхфазного мостового тиристорного выпрямителя (блок SIFU) без силовой части:
@@ -428,7 +580,11 @@ static void Example_Run(void) {
  *   n - входы платы NSB (настоящая сеть); s - снова имитатор; t - повторить самопроверку;
  *   g - синхронизация: смены шести входов (после фильтра) за два периода сети с длительностями.
  * Угол - до 120 эл. град. (SIFU_ALPHA_LIMIT_DEG10).
- * Раз в секунду - частота сети, полупериод, угол и состояние. TM1638: угол; светодиоды: 1 - сеть есть,
+ * Строка состояния (Enter или команда) - частота сети, полупериод, угол, состояние; с платами АЦП
+ * (блоки ADC_V, ADC_C в конфигурации ПЛИС) - ещё напряжение и ток, команда u - подробно по платам.
+ * TM1638: по кругу через 2 с угол, ток, напряжение (какие платы есть), обновление 2 раза в секунду;
+ * пока зажата кнопка 6 - угол, 7 - ток, 8 - напряжение; угол, изменённый кнопками 1, 2 (или с
+ * терминала), показывается сразу, и круг начинается с него. Светодиоды: 1 - сеть есть,
  * 2 - нет синхронизации, 3 - EN, 4 - имитатор. Импульсы VS1..VS6 - на выводах ПЛИС (Tang Nano 9K:
  * 28..33, Tang Primer 20K: разъём PMOD J5) - их можно смотреть осциллографом.
  * Стенд выпрямителя (Tang Nano 9K, цепи DI1..DI3 и RO1..RO3 в конфигураторе): дискретные входы
@@ -445,8 +601,13 @@ static void Example_Run(void) {
 #define KEY_ALPHA_UP		(1U << 7)	//Крайняя левая кнопка TM1638 (на плате стенда - бит 7 KEYS): угол больше
 #define KEY_ALPHA_DOWN		(1U << 6)	//Вторая слева: угол меньше
 #define KEY_STEP_DEG10		5U			//Шаг угла кнопкой: 0.5 град.
+#define KEY_SHOW_ALPHA		(1U << 2)	//Кнопка 6 (третья справа, бит 2): только угол
 #define KEY_DELAY_MS		500U		//Удержание: автоповтор через 0.5 с...
 #define KEY_REPEAT_MS		100U		//...каждые 0.1 с
+#ifndef ADC_SHOW_MS
+#define ADC_SHOW_MS			2000U		//Смена показания на индикаторе
+#define ADC_DISP_MS			500U		//Обновление индикатора
+#endif
 
 /* Дискретные входы и выходы стенда - если цепи DI1..DI3, RO1..RO3 есть в конфигурации ПЛИС (soc.h) */
 #if defined(DI1_PIN) && defined(DI2_PIN) && defined(DI3_PIN) && defined(RO1_PIN) && defined(RO2_PIN) && defined(RO3_PIN)
@@ -662,6 +823,9 @@ static void sifu_status(void) {
 	UART_PutHex(sr, 5);
 	UART_PutText((sr & SIFU_SR_GRID) ? " сеть есть" : " сети нет");
 	if (sr & SIFU_SR_LOST) UART_PutText(", нет синхронизации");
+#ifdef ADC_ON
+	adc_brief();
+#endif
 #if STAND_IO
 	UART_PutText(", DI ");
 	UART_PutDec(GPIO_READ(DI1)); UART_PutDec(GPIO_READ(DI2)); UART_PutDec(GPIO_READ(DI3));
@@ -671,9 +835,17 @@ static void sifu_status(void) {
 	UART_PutText("\r\n");
 }
 
-static void sifu_show(void) {
+/* Светодиоды TM1638: 1 - сеть есть, 2 - нет синхронизации, 3 - EN, 4 - имитатор */
+static void sifu_leds(void) {
+	uint32_t sr = SIFU->SR, cr = SIFU->CR;
+	TM1638_WriteLeds(((sr & SIFU_SR_GRID) ? 1U : 0U) | ((sr & SIFU_SR_LOST) ? 2U : 0U) |
+	                 ((cr & SIFU_CR_EN) ? 4U : 0U) | ((cr & SIFU_CR_SIM) ? 8U : 0U));
+}
+
+/* Угол на индикаторе: «УГОЛ 30.0» */
+static void sifu_show_alpha(void) {
 	char t[12];
-	uint32_t d10 = sifu_alpha10, sr = SIFU->SR, cr = SIFU->CR;		//Заданный угол
+	uint32_t d10 = sifu_alpha10;					//Заданный угол
 	int n = 0;
 	t[n++] = 'У'; t[n++] = 'Г'; t[n++] = 'О'; t[n++] = 'Л';
 	if (d10 < 1000U) t[n++] = ' ';
@@ -684,8 +856,56 @@ static void sifu_show(void) {
 	t[n++] = (char)('0' + d10 % 10U);
 	t[n] = '\0';
 	TM1638_WriteText(t);
-	TM1638_WriteLeds(((sr & SIFU_SR_GRID) ? 1U : 0U) | ((sr & SIFU_SR_LOST) ? 2U : 0U) |
-	                 ((cr & SIFU_CR_EN) ? 4U : 0U) | ((cr & SIFU_CR_SIM) ? 8U : 0U));
+}
+
+/* Индикатор: показания по кругу - угол, ток, напряжение (каких плат нет - пропускаются), смена
+   через 2 с, обновление 2 раза в секунду; зажата кнопка 6 - угол, 7 - ток, 8 - напряжение */
+enum { SHOW_ALPHA = 0, SHOW_I, SHOW_U, SHOW_N };
+static uint32_t disp_item = SHOW_ALPHA, disp_keys_old = 0U;
+static uint64_t disp_next = 0U, disp_next_item = 0U;
+
+static int disp_has(uint32_t item) {
+#ifdef ADC_ON
+	if (item == SHOW_I) return adc_by_sym('I') != 0;
+	if (item == SHOW_U) return adc_by_sym('U') != 0;
+#endif
+	return item == SHOW_ALPHA;
+}
+
+/* Угол изменён - показать его сразу, круг - с него */
+static void sifu_show(void) {
+	uint64_t now = CORE_GetCycles();
+	disp_item = SHOW_ALPHA;
+	disp_next_item = now + (uint64_t)MTIME_HZ / 1000U * ADC_SHOW_MS;
+	disp_next = now;
+}
+
+static void disp_update(void) {
+	uint64_t now = CORE_GetCycles();
+	uint32_t keys = TM1638_ReadKeys() & (KEY_SHOW_ALPHA | KEY_SHOW_I | KEY_SHOW_U);
+	int held = (keys == KEY_SHOW_ALPHA) ? SHOW_ALPHA : (keys == KEY_SHOW_I) ? SHOW_I : (keys == KEY_SHOW_U) ? SHOW_U : -1;
+	if (held >= 0 && !disp_has((uint32_t)held)) held = -1;
+	if (keys != disp_keys_old) {						//Нажали или отпустили - показать сразу
+		disp_keys_old = keys;
+		disp_next = now;
+		disp_next_item = now + (uint64_t)MTIME_HZ / 1000U * ADC_SHOW_MS;	//Отпустили - круг дальше через 2 с
+	}
+	if (held >= 0) {
+		disp_item = (uint32_t)held;
+	} else if (now >= disp_next_item) {					//Следующее показание
+		disp_next_item = now + (uint64_t)MTIME_HZ / 1000U * ADC_SHOW_MS;
+		do disp_item = (disp_item + 1U) % SHOW_N; while (!disp_has(disp_item));
+		disp_next = now;
+	}
+	if (now < disp_next) return;
+	disp_next = now + (uint64_t)MTIME_HZ / 1000U * ADC_DISP_MS;
+#ifdef ADC_ON
+	if (disp_item == SHOW_I) adc_show(adc_by_sym('I'));
+	else if (disp_item == SHOW_U) adc_show(adc_by_sym('U'));
+	else
+#endif
+	sifu_show_alpha();
+	sifu_leds();
 }
 
 /* Угол двумя левыми кнопками (больше, меньше): шаг 0.5 град. по сетке 0.5 (32.3 -> 32.5 или 32.0),
@@ -746,6 +966,15 @@ static void Example_Run(void) {
 	UART_PutText(", импульс ");
 	UART_PutDec((int32_t)SIFU->WIDTH);
 	UART_PutText(" тиков\r\n");
+#ifdef ADC_ON
+	adc_boards_start();
+	for (uint32_t i = 0; i < ADC_BOARDS; i++) {
+		UART_PutText(boards[i].name);
+		UART_PutText(boards[i].sym == 'U' ? ": напряжение, до " : ": ток, до ");
+		UART_PutDec((int32_t)ADC121_GetRate(boards[i].adc));
+		UART_PutText(" отсчётов/с\r\n");
+	}
+#endif
 	sifu_status();
 	sifu_selftest();
 	sifu_apply_alpha();									//30 град., импульсы выключены - 'e'
@@ -754,8 +983,13 @@ static void Example_Run(void) {
 	UART_PutText("Стенд: импульсы на драйверы - DI1 = 1 от сети, DI2 = 1 от имитатора (оба 0 или оба 1 - нет)\r\n");
 #endif
 	sifu_show();
-	UART_PutText("Кнопки TM1638: крайняя левая - угол больше, вторая слева - меньше (шаг 0.5 град.)\r\n");
-	UART_PutText("Команды: угол 0..120, e - EN, d - сдвоенные, n - входы NSB, s - имитатор, t - самопроверка, g - синхронизация\r\n> ");
+	UART_PutText("Кнопки TM1638: 1 (крайняя левая) - угол больше, 2 - меньше (шаг 0.5 град.); индикатор по кругу,\r\n"
+	             "зажать 6 - угол, 7 - ток, 8 - напряжение\r\n");
+	UART_PutText("Команды: угол 0..120, e - EN, d - сдвоенные, n - входы NSB, s - имитатор, t - самопроверка, g - синхронизация"
+#ifdef ADC_ON
+	             ", u - АЦП"
+#endif
+	             "\r\n> ");
 	while (1) {
 #if STAND_IO
 		stand_src = stand_io_copy();					//DI1..DI3 -> RO1..RO3, источник и EN по DI1, DI2
@@ -775,11 +1009,17 @@ static void Example_Run(void) {
 		}
 #endif
 		sifu_hper_sample();
-		if (sifu_keys()) sifu_show();					//Угол кнопками TM1638
-		if (CORE_GetCycles() >= next) {					//Раз в секунду: угол по среднему полупериоду, индикатор
+		if (sifu_keys()) sifu_show();					//Угол кнопками TM1638 - на индикатор сразу
+		disp_update();									//Индикатор: угол, ток, напряжение по кругу
+#ifdef ADC_ON
+		adc_poll();
+#endif
+		if (CORE_GetCycles() >= next) {					//Раз в секунду: угол по среднему полупериоду
 			next = CORE_GetCycles() + MTIME_HZ;
 			sifu_hper_update();
-			sifu_show();
+#ifdef ADC_ON
+			adc_rate_update(1U);
+#endif
 			LED_Toggle();
 		}
 		if (!(UART->IP & UART_IT_RXWM)) continue;
@@ -811,8 +1051,12 @@ static void Example_Run(void) {
 			sifu_selftest();
 		} else if (line[0] == 'g' && line[1] == '\0') {
 			sifu_sync_trace();
+#ifdef ADC_ON
+		} else if (line[0] == 'u' && line[1] == '\0') {
+			for (uint32_t i = 0; i < ADC_BOARDS; i++) adc_status(&boards[i]);
+#endif
 		} else {
-			UART_PutText("Не понял: угол 0..120, e, d, n, s, t, g\r\n");
+			UART_PutText("Не понял: угол 0..120, e, d, n, s, t, g, u\r\n");
 		}
 		sifu_status();
 		UART_PutText("> ");
@@ -846,100 +1090,13 @@ static void Example_Run(void) {
  * код около 2048 (опора 1.65 В), компаратор U2 срабатывает только на положительный ток.
  */
 #define ADC_PRINT_MS		500U
-#define ADC_SHOW_MS			2000U		//Смена платы на индикаторе
-#define ADC_DISP_MS			500U		//Обновление индикатора: 2 раза в секунду
-#define KEY_SHOW_I			(1U << 1)	//Кнопка 7 TM1638 (вторая справа, бит 1 KEYS): только ток
-#define KEY_SHOW_U			(1U << 0)	//Кнопка 8 (крайняя правая, бит 0): только напряжение
 #define ADC_CAPTURE_N		250U
 #define ADC_CAPTURE_HZ		12500U
 #define ADC_BENCH_N			1000U
 
-typedef struct
-{
-	ADC121_TypeDef *adc;
-	ADC121_Cal      cal;
-	const char     *name;
-	char            sym;				//'U' - напряжение, 'I' - ток
-	uint32_t        has_cmp;
-	uint32_t        errs, cmps, cnt_old, rate;
-} AdcBoard;
-
-static AdcBoard boards[] = {
-#ifdef ADC_V
-	{ ADC_V, { ADC_V_SCALE_U, ADC_V_OFFSET_M }, "ADC_V", 'U', ADC_V_CMP, 0, 0, 0, 0 },
-#endif
-#ifdef ADC_C
-	{ ADC_C, { ADC_C_SCALE_U, ADC_C_OFFSET_M }, "ADC_C", 'I', ADC_C_CMP, 0, 0, 0, 0 },
-#endif
-};
-#define ADC_BOARDS		(sizeof boards / sizeof boards[0])
 static AdcBoard *sel = &boards[0];		//Плата для команд w, r, a, b, p
 
 static uint16_t adc_big[ADC_BENCH_N];
-
-/* Тысячные доли - текстом «-12.345» (digits знаков после точки: 1..3) */
-static int fmt_milli(char *s, int32_t v, int digits) {
-	int n = 0;
-	uint32_t u, div = 1000U;
-	if (v < 0) { s[n++] = '-'; u = (uint32_t)(-v); } else u = (uint32_t)v;
-	for (int i = digits; i < 3; i++) { u = (u + 5U) / 10U; div /= 10U; }	//Округление до digits знаков
-	uint32_t ip = u / div, fp = u % div;
-	char d[10];
-	int m = 0;
-	do { d[m++] = (char)('0' + ip % 10U); ip /= 10U; } while (ip);
-	while (m) s[n++] = d[--m];
-	s[n++] = '.';
-	for (uint32_t k = div / 10U; k; k /= 10U) { s[n++] = (char)('0' + fp / k % 10U); }
-	s[n] = '\0';
-	return n;
-}
-
-static void put_k(uint32_t v) {						//Тысячные - «12.345»
-	UART_PutDec((int32_t)(v / 1000U)); UART_PutChar('.');
-	UART_PutChar((char)('0' + v / 100U % 10U)); UART_PutChar((char)('0' + v / 10U % 10U)); UART_PutChar((char)('0' + v % 10U));
-}
-
-static void adc_status(AdcBoard *b) {
-	char t[16];
-	uint32_t sh = b->adc->AVG & 0xFU, sum = ADC121_GetSum(b->adc);
-	int32_t mv = ADC121_MeanMilli(b->adc, b->cal);
-	UART_PutText(b->name);
-	UART_PutText(": код ");
-	fmt_milli(t, (int32_t)(((uint64_t)sum * 1000U) >> sh), 1);			//Среднее с десятыми
-	UART_PutText(t);
-	UART_PutText(" (среднее по ");
-	UART_PutDec((int32_t)(1U << sh));
-	UART_PutText(", последний ");
-	UART_PutDec((int32_t)ADC121_GetRaw(b->adc));
-	UART_PutText(", кадр 0x");
-	UART_PutHex(ADC121_GetFrame(b->adc), 4);
-	UART_PutText("), ");
-	UART_PutChar(b->sym);
-	UART_PutText(" = ");
-	fmt_milli(t, mv, b->sym == 'U' ? 2 : 3);
-	UART_PutText(t);
-	UART_PutText(b->sym == 'U' ? " В, " : " А, ");
-	UART_PutDec((int32_t)b->rate);
-	UART_PutText(" отсч./с, ошибок кадра ");
-	UART_PutDec((int32_t)b->errs);
-	if (b->has_cmp) {
-		UART_PutText(ADC121_CmpActive(b->adc) ? ", CMP: СРАБОТАЛ" : ", CMP: норма");
-		UART_PutText(", срабатываний ");
-		UART_PutDec((int32_t)b->cmps);
-	}
-	UART_PutText("\r\n");
-}
-
-/* TM1638: «U 59.99» или «I 0.999» */
-static void adc_show(AdcBoard *b) {
-	char d[12];
-	int32_t mv = ADC121_MeanMilli(b->adc, b->cal);
-	d[0] = b->sym;
-	d[1] = ' ';
-	if (b->sym == 'U') fmt_milli(&d[2], mv, (mv > -100000 && mv < 1000000) ? 2 : 1);
-	else               fmt_milli(&d[2], mv, (mv > -10000 && mv < 100000) ? 3 : 2);
-	TM1638_WriteText(d);
-}
 
 /* Разбор «r 25000» / «a 8»: число после буквы; -1 - нет числа */
 static int32_t cmd_num(const char *s) {
@@ -990,13 +1147,6 @@ static void adc_capture(ADC121_TypeDef *adc) {
 		UART_PutText((i % 16U == 15U) ? "\r\n" : " ");
 	}
 	UART_PutText("\r\n");
-}
-
-/* Плата по символу: 'U' или 'I' (нет такой - NULL) */
-static AdcBoard *adc_by_sym(char sym) {
-	for (uint32_t i = 0; i < ADC_BOARDS; i++)
-		if (boards[i].sym == sym) return &boards[i];
-	return 0;
 }
 
 /* b: делитель SCLK, CSS, QUIET -> частота отсчётов, ошибки кадра, разброс отсчётов. Такт блока f -
@@ -1080,11 +1230,9 @@ static void Example_Run(void) {
 	UART_InitDefault();
 	TM1638_Init();
 	UART_PutText("\r\n== askoRV32: АЦП ADC121S051 ==\r\n");
+	adc_boards_start();
 	for (uint32_t i = 0; i < ADC_BOARDS; i++) {
 		AdcBoard *b = &boards[i];
-		ADC121_Init(b->adc, b->adc->DIV & ADC121_DIV_MSK, b->adc->AVG & 0xFU);	//Значения конфигуратора (после сброса)
-		ADC121_Start(b->adc);
-		b->cnt_old = ADC121_GetCount(b->adc);
 		UART_PutText(b->name);
 		UART_PutText(": до ");
 		UART_PutDec((int32_t)ADC121_GetRate(b->adc));
@@ -1099,25 +1247,12 @@ static void Example_Run(void) {
 	UART_PutText("Команды: v, c - плата; w - запись 250 отсчётов, r N - частота N Гц (0 - макс.), a N - среднее по 2^N, b - тракт, p - приём программой\r\n");
 	UART_PutText("TM1638: зажать кнопку 7 - только ток, кнопку 8 - только напряжение\r\n");
 	while (1) {
-		for (uint32_t i = 0; i < ADC_BOARDS; i++) {				//Ошибки кадра и срабатывания компаратора
-			AdcBoard *b = &boards[i];
-			uint32_t f = ADC121_GetFlags(b->adc) & (ADC121_SR_ERR | ADC121_SR_CMPF);
-			if (f) {
-				ADC121_ClearFlags(b->adc, f);
-				if (f & ADC121_SR_ERR)  b->errs++;
-				if (f & ADC121_SR_CMPF) b->cmps++;
-			}
-		}
+		adc_poll();												//Ошибки кадра и срабатывания компаратора
 		uint64_t now = CORE_GetCycles();
 		if (now >= next) {										//Раз в 0.5 с - результат
 			next = now + (uint64_t)MTIME_HZ / 1000U * ADC_PRINT_MS;
-			for (uint32_t i = 0; i < ADC_BOARDS; i++) {
-				AdcBoard *b = &boards[i];
-				uint32_t c = ADC121_GetCount(b->adc);
-				b->rate = (c - b->cnt_old) * (1000U / ADC_PRINT_MS);
-				b->cnt_old = c;
-				adc_status(b);
-			}
+			adc_rate_update(1000U / ADC_PRINT_MS);
+			for (uint32_t i = 0; i < ADC_BOARDS; i++) adc_status(&boards[i]);
 			LED_Toggle();
 		}
 		/* Индикатор: зажата кнопка 7 - ток, 8 - напряжение, иначе платы по очереди через 2 с */

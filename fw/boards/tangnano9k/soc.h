@@ -19,7 +19,7 @@
 #define SOC_CORE_PIPELINE				1		//1 - конвейерное, 0 - однотактное
 #define SOC_M_EXT						1		//Расширение M (mul/div)
 #define SOC_DEBUG						1		//Отладчик JTAG
-#define SOC_IMEM_BYTES					16384U
+#define SOC_IMEM_BYTES					32768U
 #define SOC_DMEM_BYTES					8192U
 
 /* Частота шины периферии (clk_per), Гц: от неё считают таймер STIM, UART и mtime в CLINT */
@@ -96,12 +96,12 @@
 /* ADC_V (ADC121) */
 #define ADC_V_BASE						(0x17000000U)
 #define ADC_V							((ADC121_TypeDef*) ADC_V_BASE)
-#define ADC_V_CLK_HZ					60750000U		//Такт блока, Гц: свой rPLL (он же - регистр FCLK)
+#define ADC_V_CLK_HZ					54000000U		//Такт блока, Гц: свой rPLL (он же - регистр FCLK)
 #define ADC_V_DIV_DEFAULT				3U		//Делитель SCLK после сброса: SCLK = CLK_HZ / (2 * (DIV + 1))
 #define ADC_V_CSS_DEFAULT				1U		//От CS до SCLK после сброса, полупериодов SCLK
 #define ADC_V_QUIET_DEFAULT				1U		//Пауза между кадрами после сброса, полупериодов SCLK
-#define ADC_V_SCLK_HZ					7593750U		//Частота SCLK при DIV_DEFAULT, Гц
-#define ADC_V_RATE_HZ					443431U		//Отсчётов в секунду при непрерывной работе (PER = 0)
+#define ADC_V_SCLK_HZ					6750000U		//Частота SCLK при DIV_DEFAULT, Гц
+#define ADC_V_RATE_HZ					394161U		//Отсчётов в секунду при непрерывной работе (PER = 0)
 #define ADC_V_AVGSH_DEFAULT				8U		//Среднее по 2^AVGSH отсчётам
 #define ADC_V_BOARD						"ADC_V"		//Плата
 #define ADC_V_MODE_AC					0		//Режим платы: 1 - AC (смещение), 0 - DC
@@ -130,12 +130,12 @@
 /* ADC_C (ADC121) */
 #define ADC_C_BASE						(0x18000000U)
 #define ADC_C							((ADC121_TypeDef*) ADC_C_BASE)
-#define ADC_C_CLK_HZ					60750000U		//Такт блока, Гц: свой rPLL (он же - регистр FCLK)
+#define ADC_C_CLK_HZ					54000000U		//Такт блока, Гц: свой rPLL (он же - регистр FCLK)
 #define ADC_C_DIV_DEFAULT				3U		//Делитель SCLK после сброса: SCLK = CLK_HZ / (2 * (DIV + 1))
 #define ADC_C_CSS_DEFAULT				1U		//От CS до SCLK после сброса, полупериодов SCLK
 #define ADC_C_QUIET_DEFAULT				1U		//Пауза между кадрами после сброса, полупериодов SCLK
-#define ADC_C_SCLK_HZ					7593750U		//Частота SCLK при DIV_DEFAULT, Гц
-#define ADC_C_RATE_HZ					443431U		//Отсчётов в секунду при непрерывной работе (PER = 0)
+#define ADC_C_SCLK_HZ					6750000U		//Частота SCLK при DIV_DEFAULT, Гц
+#define ADC_C_RATE_HZ					394161U		//Отсчётов в секунду при непрерывной работе (PER = 0)
 #define ADC_C_AVGSH_DEFAULT				8U		//Среднее по 2^AVGSH отсчётам
 #define ADC_C_BOARD						"ADC_C"		//Плата
 #define ADC_C_MODE_AC					0		//Режим платы: 1 - AC (смещение), 0 - DC

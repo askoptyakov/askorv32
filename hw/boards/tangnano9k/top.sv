@@ -14,7 +14,7 @@ module top #(
              parameter int RF_TYPE           = 0, //регистровый файл: 0 - LUT; BSRAM (2 блока SDPB): 1 - чтение на фронте D->E, 2 - по спаду в D
                 //Память команд и данных
              parameter bit IMEM_TYPE         = 1, //1 - BSRAM, 0 - синтезированная
-             parameter int BSRAM_IMEM_SIZE   = 16, //кБайт: 8/16/32
+             parameter int BSRAM_IMEM_SIZE   = 32, //кБайт: 8/16/32
              parameter int SYNTH_IMEM_SIZE   = 256, //слов по 4 Байт
              parameter IMEM_INIT_FILE        = "mem_init/i.mem",
              parameter bit DMEM_TYPE         = 1, //1 - BSRAM, 0 - синтезированная
@@ -129,10 +129,10 @@ module top #(
              .irq_local(irq_local), .irq_src(irq_src),
              .boot_hold(boot_hold), .boot_Write(boot_Write), .boot_Addr(boot_Addr), .boot_WData(boot_WData));
 
-    //Такт блоков АЦП ADC121: свой rPLL от кварца, 60.75 МГц (PFD 6.75, VCO 972 МГц). Кадр АЦП и период запуска
+    //Такт блоков АЦП ADC121: свой rPLL от кварца, 54 МГц (PFD 27, VCO 864 МГц). Кадр АЦП и период запуска
     //работают от него, регистры - от такта шины (переход между тактами - в adc121.sv); ограничение - в riscv.sdc
     logic clk_adc, adc_lock;
-    clk_pll #(.FCLKIN(FCLKIN), .DEVICE(PLL_DEVICE), .IDIV_SEL(3), .FBDIV_SEL(8), .ODIV_SEL(16)) adc_pll
+    clk_pll #(.FCLKIN(FCLKIN), .DEVICE(PLL_DEVICE), .IDIV_SEL(0), .FBDIV_SEL(1), .ODIV_SEL(16)) adc_pll
         (.clkin(CLOCK), .clkout(clk_adc), .lock(adc_lock));
 
     //#3 Шина пользовательской периферии (memmux): ведомые перечислены от старшего номера к младшему
@@ -199,21 +199,21 @@ module top #(
                  .vs1(VS1), .vs2(VS2), .vs3(VS3), .vs4(VS4), .vs5(VS5), .vs6(VS6),
                  .grid_o(GRID), .irq(irq_sifu));
 
-    //-7- ADC_V (ADC121): АЦП ADC121S051, плата ADC_V (DC), такт clk_adc 60.75 МГц, SCLK 7.594 МГц (DIV 3), до 443 тыс. отсчётов/с, среднее по 256
+    //-7- ADC_V (ADC121): АЦП ADC121S051, плата ADC_V (DC), такт clk_adc 54 МГц, SCLK 6.75 МГц (DIV 3), до 394 тыс. отсчётов/с, среднее по 256
     //    регистры с 32'h1700_0000
     logic irq_adc_v;
     adc121_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(8'd3), .AVGSH_INIT(4'd8), .CSS_INIT(4'd1), .QUIET_INIT(4'd1), .CSINV_INIT(1'b0),
-                 .CMP_EN(1'b1), .CPOL_INIT(1'b0), .CLK_HZ(32'd60750000)) adc_v
+                 .CMP_EN(1'b1), .CPOL_INIT(1'b0), .CLK_HZ(32'd54000000)) adc_v
                 (.clk(clk_per), .rst(rst_per), .adc_clk(clk_adc), .adc_lock(adc_lock),
                  .Write(adc_v_Write), .Addr(adc_v_Addr), .WData(adc_v_WriteData), .RData(adc_v_ReadData),
                  .adc_cs_n(ADC_V_CS), .adc_sclk(ADC_V_SCLK), .adc_sdo(ADC_V_SDO),
                  .adc_cmp(ADC_V_CMP), .irq(irq_adc_v));
 
-    //-8- ADC_C (ADC121): АЦП ADC121S051, плата ADC_C (DC), такт clk_adc 60.75 МГц, SCLK 7.594 МГц (DIV 3), до 443 тыс. отсчётов/с, среднее по 256
+    //-8- ADC_C (ADC121): АЦП ADC121S051, плата ADC_C (DC), такт clk_adc 54 МГц, SCLK 6.75 МГц (DIV 3), до 394 тыс. отсчётов/с, среднее по 256
     //    регистры с 32'h1800_0000
     logic irq_adc_c;
     adc121_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(8'd3), .AVGSH_INIT(4'd8), .CSS_INIT(4'd1), .QUIET_INIT(4'd1), .CSINV_INIT(1'b0),
-                 .CMP_EN(1'b1), .CPOL_INIT(1'b0), .CLK_HZ(32'd60750000)) adc_c
+                 .CMP_EN(1'b1), .CPOL_INIT(1'b0), .CLK_HZ(32'd54000000)) adc_c
                 (.clk(clk_per), .rst(rst_per), .adc_clk(clk_adc), .adc_lock(adc_lock),
                  .Write(adc_c_Write), .Addr(adc_c_Addr), .WData(adc_c_WriteData), .RData(adc_c_ReadData),
                  .adc_cs_n(ADC_C_CS), .adc_sclk(ADC_C_SCLK), .adc_sdo(ADC_C_SDO),
