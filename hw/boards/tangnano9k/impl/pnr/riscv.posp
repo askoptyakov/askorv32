@@ -5,19 +5,19 @@
 //Part Number: GW1NR-LV9QN88PC6/I5
 //Device: GW1NR-9
 //Device Version: C
-//Created Time: Sat Oct  3 10:10:43 2026
+//Created Time: Sat Oct  3 18:18:51 2026
 
 cpu/riscv/g_mul.mdu_mul/prod_65_s1 PLACE_DSP_R19[2] //R19C20
-cpu/imem/cluster[1].sector[0].bsram PLACE_BSRAM_R10[4]
-cpu/imem/cluster[0].sector[0].bsram PLACE_BSRAM_R10[5]
-tm1638/tm1638_board_controller/font/font_seg_0_s PLACE_BSRAM_R10[0]
-cpu/imem/cluster[1].sector[2].bsram PLACE_BSRAM_R28[5]
-cpu/imem/cluster[0].sector[2].bsram PLACE_BSRAM_R28[6]
-cpu/dmem/cluster[0].sector[1].bsram PLACE_BSRAM_R28[4]
-cpu/dmem/cluster[0].sector[2].bsram PLACE_BSRAM_R28[7]
-cpu/dmem/cluster[0].sector[0].bsram PLACE_BSRAM_R10[3]
-cpu/dmem/cluster[0].sector[3].bsram PLACE_BSRAM_R10[6]
-cpu/imem/cluster[0].sector[3].bsram PLACE_BSRAM_R10[2]
-cpu/imem/cluster[1].sector[3].bsram PLACE_BSRAM_R10[1]
-cpu/imem/cluster[0].sector[1].bsram PLACE_BSRAM_R10[7]
-cpu/imem/cluster[1].sector[1].bsram PLACE_BSRAM_R10[8]
+tm1638/tm1638_board_controller/font/font_seg_0_s PLACE_BSRAM_R28[2]
+cpu/imem/cluster[0].sector[3].bsram PLACE_BSRAM_R10[4]
+cpu/imem/cluster[1].sector[3].bsram PLACE_BSRAM_R10[5]
+cpu/imem/cluster[0].sector[1].bsram PLACE_BSRAM_R28[5]
+cpu/imem/cluster[1].sector[1].bsram PLACE_BSRAM_R28[6]
+cpu/imem/cluster[0].sector[2].bsram PLACE_BSRAM_R10[3]
+cpu/imem/cluster[1].sector[2].bsram PLACE_BSRAM_R28[4]
+cpu/imem/cluster[0].sector[0].bsram PLACE_BSRAM_R10[6]
+cpu/imem/cluster[1].sector[0].bsram PLACE_BSRAM_R28[7]
+cpu/dmem/cluster[0].sector[2].bsram PLACE_BSRAM_R28[3]
+cpu/dmem/cluster[0].sector[3].bsram PLACE_BSRAM_R28[8]
+cpu/dmem/cluster[0].sector[0].bsram PLACE_BSRAM_R28[9]
+cpu/dmem/cluster[0].sector[1].bsram PLACE_BSRAM_R28[1]

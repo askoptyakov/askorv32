@@ -44,6 +44,8 @@
 #define UART_COUNT						1U
 #define SPIFLASH_PRESENT				1
 #define SPIFLASH_COUNT					1U
+#define SIFU_PRESENT					1
+#define SIFU_COUNT						1U
 
 /* GPIO */
 #define GPIO_BASE						(0x11000000U)
@@ -80,16 +82,27 @@
 #define SPIFLASH_USER_ADDR				0x00110000U		//Свободная область флеш: начало (ниже - конфигурация ПЛИС и образ)
 #define SPIFLASH_USER_SIZE				0x002F0000U		//Свободная область флеш: размер
 
+/* SIFU */
+#define SIFU_BASE						(0x16000000U)
+#define SIFU							((SIFU_TypeDef*) SIFU_BASE)
+#define SIFU_DIV_DEFAULT				89U		//Делитель тика ГПН после сброса: SYSCLK_HZ / (DIV + 1)
+#define SIFU_SAW_HZ						500000U		//Частота тиков ГПН при DIV_DEFAULT, Гц
+#define SIFU_DELAY_DEFAULT				400U		//DELAY_RC_COMPENSATION после сброса, тиков
+#define SIFU_WIDTH_DEFAULT				150U		//Длительность импульса после сброса, тиков
+#define SIFU_SIM						1		//Есть имитатор сети (CR.SIM, SIMCFG)
+
 /* Прерывания периферии. Источники PLIC (векторный режим, start.S): обработчик источника S -
    PLIC_SRCS_IRQHandler; ниже - понятные имена. Локальные линии: LIn_IRQHandler, номер LIn_IRQn */
 #define PLIC_NUM_SOURCES				8U
 typedef enum
 {
   PLIC_SRC_STIM = 1,		//STIM
-  PLIC_SRC_UART = 2		//UART
+  PLIC_SRC_UART = 2,		//UART
+  PLIC_SRC_SIFU = 3		//SIFU
 } PLIC_SRC_Type;
 #define PLIC_STIM_IRQHandler			PLIC_SRC1_IRQHandler
 #define PLIC_UART_IRQHandler			PLIC_SRC2_IRQHandler
+#define PLIC_SIFU_IRQHandler			PLIC_SRC3_IRQHandler
 
 /* Выводы GPIO: имя цепи из конфигуратора -> <ИМЯ>_PIN (номер линии) и <ИМЯ>_PORT (блок GPIO);
    цепь LED[3] даёт имя LED3. Шина (LED[0], LED[1]...) на одном блоке: <ИМЯ>_MSK, <ИМЯ>_POS, <ИМЯ>_PORT.

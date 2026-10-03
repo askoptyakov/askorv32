@@ -11,7 +11,8 @@
  *                4 - UART на прерываниях (кольцевые буферы) и счётчик секунд по прерыванию STIM;
  *                5 - прерывание UART по наполнению FIFO приёма: пакеты по 8 байт;
  *                6 - TM1638: бегущая строка на кириллице, номер нажатой кнопки;
- *                7 - внешняя SPI-флеш: откуда загружена программа, ID флеш, счётчик запусков во флеш.
+ *                7 - внешняя SPI-флеш: откуда загружена программа, ID флеш, счётчик запусков во флеш;
+ *                8 - СИФУ тиристорного выпрямителя (блок SIFU) с имитатором сети: самопроверка, угол с терминала.
  *              Прерывания периферии идут через PLIC в векторном режиме: номера источников и имена
  *              обработчиков (PLIC_STIM_IRQHandler, PLIC_UART_IRQHandler) - в soc.h от конфигуратора.
  *              UART: терминал на ПК - 115200 8-N-1 (по умолчанию из конфигуратора), кодировка UTF-8.
@@ -27,6 +28,7 @@
 #include "plic.h"
 #include "uart.h"
 #include "spiflash.h"
+#include "sifu.h"
 
 #ifndef EXAMPLE
 #define EXAMPLE 3
@@ -390,6 +392,214 @@ static void Example_Run(void) {
 	while (1) {
 		LED_Toggle();
 		delay_ms(500);
+	}
+}
+#endif
+
+#if EXAMPLE == 8
+/*
+ * Пример 8: СИФУ трёхфазного мостового тиристорного выпрямителя (блок SIFU) без силовой части:
+ * сигналы шести оптронов платы NSB даёт имитатор сети в самом блоке (50 Гц, мёртвая зона 2 град.).
+ * Имитатор выдаёт сигналы так же, как NSB, поэтому DELAY (компенсация RC-фильтра NSB) остаётся
+ * значением из конфигуратора: при ALPHA = 0 импульс - через DELAY тиков от начала окна оптрона.
+ *
+ * При старте - самопроверка: для углов 0, 30, 60, 90, 120 эл. град. программа по счётчику тактов
+ * (mcycle) измеряет у каждого тиристора VS1..VS6 задержку фронта импульса от начала его полуволны и
+ * длительность импульса (в тиках ГПН) и сравнивает с ожидаемыми: ALPHA + DELAY и WIDTH (начало
+ * полуволны модуль видит после фильтра входов, импульс отсчитывается от того же момента). Затем -
+ * команды с терминала (115200 8-N-1, cp1251):
+ *   число 0..127 (можно с десятыми: 32.5) - угол управления, эл. град.;
+ *   e - импульсы вкл./выкл. (EN); d - сдвоенные импульсы вкл./выкл.;
+ *   n - входы платы NSB (настоящая сеть); s - снова имитатор; t - повторить самопроверку.
+ * Раз в секунду - частота сети, полупериод, угол и состояние. TM1638: угол; светодиоды: 1 - сеть есть,
+ * 2 - нет синхронизации, 3 - EN, 4 - имитатор. Импульсы VS1..VS6 - на выводах ПЛИС (Tang Nano 9K:
+ * 28..33, Tang Primer 20K: разъём PMOD J5) - их можно смотреть осциллографом.
+ */
+#define SIFU_SIM_FREQ100	5000U		//Частота имитатора: 50.00 Гц
+#define SIFU_SIM_DZ10		20U			//Мёртвая зона имитатора: 2.0 град.
+
+/* Измерение тиристора k (1..6): начало его полуволны (SR.SYNCF с CH = k) -> фронт и спад выхода VSk.
+   Результат - в тиках ГПН; 0 - не дождались (100 мс) */
+static int sifu_measure(uint32_t k, uint32_t *lag, uint32_t *width) {
+	uint32_t div1 = SIFU->DIV + 1U, bit = 1U << (k - 1U);
+	uint32_t t0, t1, t2, start = (uint32_t)CORE_GetCycles(), tout = SYSCLK_HZ / 10U;
+
+	SIFU_ClearFlags(SIFU_SR_SYNCF);
+	for (;;) {											//Начало полуволны тиристора k
+		uint32_t sr = SIFU->SR;
+		if (sr & SIFU_SR_SYNCF) {
+			if (((sr & SIFU_SR_CH_MSK) >> SIFU_SR_CH_POS) == k) break;
+			SIFU_ClearFlags(SIFU_SR_SYNCF);				//Началась полуволна другого тиристора
+		}
+		if ((uint32_t)CORE_GetCycles() - start > tout) return 0;
+	}
+	t0 = (uint32_t)CORE_GetCycles();
+	while (!(SIFU->GATE & bit)) if ((uint32_t)CORE_GetCycles() - start > tout) return 0;
+	t1 = (uint32_t)CORE_GetCycles();
+	while (SIFU->GATE & bit) if ((uint32_t)CORE_GetCycles() - start > tout) return 0;
+	t2 = (uint32_t)CORE_GetCycles();
+	*lag   = (t1 - t0 + div1 / 2U) / div1;
+	*width = (t2 - t1 + div1 / 2U) / div1;
+	return 1;
+}
+
+/* Угол в десятых долях градуса - текстом «30.0» */
+static void put_deg10(uint32_t d10) {
+	UART_PutDec((int32_t)(d10 / 10U));
+	UART_PutChar('.');
+	UART_PutChar((char)('0' + d10 % 10U));
+}
+
+/* Самопроверка: углы 0..120 град., у каждого тиристора - задержка и длительность импульса.
+   Возвращает число ошибок */
+static int sifu_selftest(void) {
+	static const uint16_t angles[] = {0U, 300U, 600U, 900U, 1200U};
+	uint32_t keep_cr = SIFU->CR, keep_alpha = SIFU->ALPHA;
+	int errors = 0;
+
+	SIFU->CR = keep_cr & ~SIFU_CR_DBL;					//Без сдваивания: у каждого выхода один импульс
+	SIFU_Enable();
+	UART_PutText("Самопроверка: задержка фронта VSk от начала его полуволны / длительность, тиков ГПН\r\n");
+	UART_PutText("  угол   ALPHA  ожид.     VS1       VS2       VS3       VS4       VS5       VS6\r\n");
+	for (uint32_t a = 0; a < sizeof angles / sizeof angles[0]; a++) {
+		SIFU_SetAlphaDeg10(angles[a]);
+		delay_ms(50);									//Новый угол - с новой полуволны каждой пары
+		uint32_t alpha = SIFU->ALPHA, exp_lag = alpha + SIFU->DELAY, exp_w = SIFU->WIDTH;
+		UART_PutText("  ");
+		put_deg10(angles[a]);
+		UART_PutText("\t ");
+		UART_PutDec((int32_t)alpha);
+		UART_PutText("\t");
+		UART_PutDec((int32_t)exp_lag);
+		UART_PutText("/");
+		UART_PutDec((int32_t)exp_w);
+		for (uint32_t k = 1; k <= 6; k++) {
+			uint32_t lag = 0, w = 0;
+			int ok = sifu_measure(k, &lag, &w);
+			UART_PutText("  ");
+			if (!ok) { UART_PutText("нет!    "); errors++; continue; }
+			UART_PutDec((int32_t)lag);
+			UART_PutChar('/');
+			UART_PutDec((int32_t)w);
+			/* Допуск: опрос регистров программой - около тика */
+			if (lag + 2U < exp_lag || lag > exp_lag + 2U || w + 2U < exp_w || w > exp_w + 2U) {
+				UART_PutChar('!');
+				errors++;
+			}
+		}
+		UART_PutText("\r\n");
+	}
+	SIFU->CR = keep_cr;
+	SIFU->ALPHA = keep_alpha;
+	UART_PutText(errors ? "Самопроверка: ОШИБКИ - " : "Самопроверка пройдена, ошибок ");
+	UART_PutDec(errors);
+	UART_PutText("\r\n");
+	return errors;
+}
+
+/* Разбор угла «32» или «32.5» в десятые доли градуса; -1 - не число */
+static int32_t parse_deg10(const char *s) {
+	int32_t v = 0, frac = 0, digits = 0;
+	while (*s == ' ') s++;
+	while (*s >= '0' && *s <= '9') { v = v * 10 + (*s++ - '0'); digits++; }
+	if (*s == '.' || *s == ',') {
+		s++;
+		if (*s >= '0' && *s <= '9') frac = *s++ - '0';
+		while (*s >= '0' && *s <= '9') s++;
+	}
+	while (*s == ' ') s++;
+	return (digits && *s == '\0') ? v * 10 + frac : -1;
+}
+
+static void sifu_status(void) {
+	uint32_t sr = SIFU->SR, f = SIFU_GridFreq100();
+	UART_PutText("f = ");
+	if (f) { UART_PutDec((int32_t)(f / 100U)); UART_PutChar('.'); UART_PutDec((int32_t)(f % 100U / 10U)); UART_PutDec((int32_t)(f % 10U)); UART_PutText(" Гц"); }
+	else UART_PutText("нет");
+	UART_PutText(", HPER ");
+	UART_PutDec((int32_t)SIFU->HPER);
+	UART_PutText(", угол ");
+	put_deg10(SIFU_GetAlphaDeg10());
+	UART_PutText(" (ALPHA ");
+	UART_PutDec((int32_t)SIFU->ALPHA);
+	UART_PutText(", макс. ");
+	put_deg10(SIFU_TicksToDeg10(SIFU_AlphaMax()));
+	UART_PutText("), EN ");
+	UART_PutDec((SIFU->CR & SIFU_CR_EN) ? 1 : 0);
+	UART_PutText(", DBL ");
+	UART_PutDec((SIFU->CR & SIFU_CR_DBL) ? 1 : 0);
+	UART_PutText((SIFU->CR & SIFU_CR_SIM) ? ", имитатор" : ", входы NSB");
+	UART_PutText(", SR 0x");
+	UART_PutHex(sr, 5);
+	UART_PutText((sr & SIFU_SR_GRID) ? " сеть есть" : " сети нет");
+	if (sr & SIFU_SR_LOST) UART_PutText(", нет синхронизации");
+	UART_PutText("\r\n");
+}
+
+static void sifu_show(void) {
+	char t[12];
+	uint32_t d10 = SIFU_GetAlphaDeg10(), sr = SIFU->SR, cr = SIFU->CR;
+	int n = 0;
+	t[n++] = 'У'; t[n++] = 'Г'; t[n++] = 'О'; t[n++] = 'Л';
+	if (d10 < 1000U) t[n++] = ' ';
+	if (d10 >= 1000U) t[n++] = (char)('0' + d10 / 1000U);
+	if (d10 >= 100U) t[n++] = (char)('0' + d10 / 100U % 10U); else t[n++] = ' ';
+	t[n++] = (char)('0' + d10 / 10U % 10U);
+	t[n++] = '.';
+	t[n++] = (char)('0' + d10 % 10U);
+	t[n] = '\0';
+	TM1638_WriteText(t);
+	TM1638_WriteLeds(((sr & SIFU_SR_GRID) ? 1U : 0U) | ((sr & SIFU_SR_LOST) ? 2U : 0U) |
+	                 ((cr & SIFU_CR_EN) ? 4U : 0U) | ((cr & SIFU_CR_SIM) ? 8U : 0U));
+}
+
+static void Example_Run(void) {
+	char line[32];
+	uint64_t next = 0;
+
+	UART_InitDefault();
+	TM1638_Init();
+	SIFU_Init();
+	SIFU_SimStart(SIFU_SIM_FREQ100, SIFU_SIM_DZ10);
+	delay_ms(100);										//Синхронизация и полупериод HPER
+	UART_PutText("\r\n== askoRV32: СИФУ, имитатор сети 50 Гц ==\r\nТик ГПН ");
+	UART_PutDec((int32_t)SIFU_SawHz());
+	UART_PutText(" Гц, DELAY ");
+	UART_PutDec((int32_t)SIFU->DELAY);
+	UART_PutText(", импульс ");
+	UART_PutDec((int32_t)SIFU->WIDTH);
+	UART_PutText(" тиков\r\n");
+	sifu_status();
+	sifu_selftest();
+	SIFU_SetAlphaDeg10(300U);							//30 град., импульсы выключены - 'e'
+	UART_PutText("Команды: угол 0..127, e - EN, d - сдвоенные, n - входы NSB, s - имитатор, t - самопроверка\r\n> ");
+	while (1) {
+		if (CORE_GetCycles() >= next) {					//Раз в секунду - состояние
+			next = CORE_GetCycles() + MTIME_HZ;
+			sifu_show();
+			LED_Toggle();
+		}
+		if (!(UART->IP & UART_IT_RXWM)) continue;
+		if (UART_GetErrors()) UART_ClearErrors(UART_GetErrors());
+		if (UART_ReadLine(line, sizeof line, 1) == 0) { sifu_status(); UART_PutText("> "); continue; }
+		int32_t d10 = parse_deg10(line);
+		if (d10 >= 0) {
+			SIFU_SetAlphaDeg10((uint32_t)d10);
+		} else if (line[0] == 'e' && line[1] == '\0') {
+			SIFU->CR ^= SIFU_CR_EN;
+		} else if (line[0] == 'd' && line[1] == '\0') {
+			SIFU->CR ^= SIFU_CR_DBL;
+		} else if (line[0] == 'n' && line[1] == '\0') {
+			SIFU_SimStop();
+		} else if (line[0] == 's' && line[1] == '\0') {
+			SIFU_SimStart(SIFU_SIM_FREQ100, SIFU_SIM_DZ10);
+		} else if (line[0] == 't' && line[1] == '\0') {
+			sifu_selftest();
+		} else {
+			UART_PutText("Не понял: угол 0..127, e, d, n, s, t\r\n");
+		}
+		sifu_status();
+		UART_PutText("> ");
 	}
 }
 #endif

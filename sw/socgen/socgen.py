@@ -51,11 +51,17 @@ TYPES = {
     "stim":   dict(title="STIM",   slot=0x13, cat="custom", irq=True,  module="stim_top"),
     "uart":   dict(title="UART",   slot=0x14, cat="iface",  irq=True,  module="uart_top"),
     "spiflash": dict(title="SPIFLASH", slot=0x15, cat="iface", irq=False, module="spiflash_top"),
+    "sifu":   dict(title="SIFU",   slot=0x16, cat="custom", irq=True,  module="sifu_top"),
 }
 UART_BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600]
 UART_PARITY = {"none": 0, "even": 1, "odd": 2}
 FIFO_DEPTHS = [8, 16, 32]
 FLASH_MB = [1, 2, 4, 8, 16]
+#СИФУ (sifu): входы платы синхронизации NSB и выходы на тиристоры. Тик ГПН - SYSCLK / (DIV + 1); пила 12 бит,
+#насыщается на 4095. Полупериод сети 50 Гц - SAW_HZ / 100 тиков; меньше 8192 - иначе флаг потери синхронизации
+SIFU_SYNC = ["ab", "ba", "bc", "cb", "ca", "ac"]
+SIFU_GATES = [f"vs{k}" for k in range(1, 7)]
+SIFU_SAW_MAX = 4095
 BOOT_REGION = 0x10000      #Область образа программы во флеш: 64 кБайт (IMEM + DMEM не больше 48 кБайт)
 #Флеш хранит и конфигурацию ПЛИС (режим MSPI): битовый поток - с адреса 0, его размер - cfgRegion кристалла
 #(GW1NR-9 - 442 кБайт, образ программы не ниже 0x80000; GW2A-18 - 882 кБайт, не ниже 0x100000).
@@ -79,7 +85,7 @@ SV_KEYWORDS = {"input", "output", "inout", "wire", "logic", "reg", "module", "en
 RESERVED_NETS = {"tck_pad_i", "tms_pad_i", "tdi_pad_i", "tdo_pad_o", "clk_per", "rst_per", "bus_per_Write",
                  "bus_per_Read", "bus_per_Addr", "bus_per_WData", "bus_per_RData", "irq_local", "irq_src",
                  "sRead", "top", "cpu", "permux", "memmux", "gpio_top", "stim_top", "tm1638_top", "uart_top",
-                 "spiflash_top", "boot_hold", "boot_Write", "boot_Addr", "boot_WData",
+                 "spiflash_top", "sifu_top", "boot_hold", "boot_Write", "boot_Addr", "boot_WData",
                  "CORE_TYPE", "M_EXT", "DIV_BPC", "RF_TYPE", "IMEM_TYPE", "BSRAM_IMEM_SIZE", "SYNTH_IMEM_SIZE", "IMEM_INIT_FILE",
                  "DMEM_TYPE", "BSRAM_DMEM_SIZE", "SYNTH_DMEM_SIZE", "DMEM_INIT_FILE", "DEBUG_EN", "PLIC_SOURCES",
                  "FCLKIN", "PLL_DEVICE", "XTAL_KHZ", "PLL_IDIV_SEL", "PLL_FBDIV_SEL", "PLL_ODIV_SEL", "WIN_MASK", "CLK_BASE_MHZ",
@@ -176,6 +182,9 @@ def inst_signals(inst):
     if t == "spiflash":
         return [("sck", "SCK", "output", True), ("cs", "CS#", "output", True),
                 ("mosi", "MOSI", "output", True), ("miso", "MISO", "input", True)]
+    if t == "sifu":
+        return ([(k, k.upper(), "input", True) for k in SIFU_SYNC] +
+                [(k, k.upper(), "output", True) for k in SIFU_GATES])
     return []
 
 
@@ -356,6 +365,22 @@ def flash_info(m, f):
     user = baddr + BOOT_REGION if boot else (dev_of(m)["cfgUser"] if cfg else 0)
     return dict(div=div, sck=sysclk_hz(m) / (2 * (div + 1)), size=size, boot=boot, bootAddr=baddr,
                 fpgaConfig=cfg, user=user, userSize=max(0, size - user))
+
+
+def sifu_info(m, s):
+    """СИФУ: делитель тика ГПН, фактическая частота пилы (Гц), тиков на полупериод сети 50 Гц, сдвиг и
+    длительность импульса (тики), наибольший угол управления (эл. град.) и длительность импульса (мкс, град.)."""
+    f = sysclk_hz(m)
+    saw = float(s.get("sawHz", 500000))
+    div = max(0, round(f / saw) - 1) if saw > 0 else -1
+    real = f / (div + 1) if div >= 0 else 0.0
+    delay, pulse = int(s.get("delayTicks", 400)), int(s.get("pulseTicks", 150))
+    half = real / 100.0                          #Тиков на полупериод 50 Гц (10 мс)
+    amax = SIFU_SAW_MAX - 1 - delay - pulse      #Наибольший ALPHA, при котором импульс целый
+    deg = (lambda ticks: ticks * 180.0 / half) if half else (lambda ticks: 0.0)
+    return dict(div=div, saw=real, half=half, delay=delay, pulse=pulse, alphaMax=amax,
+                alphaMaxDeg=deg(amax), pulseUs=pulse / real * 1e6 if real else 0.0, pulseDeg=deg(pulse),
+                delayDeg=deg(delay))
 
 
 def config_flash(m):
@@ -609,6 +634,20 @@ def validate(m, dev):
                 elif ba < dev["cfgRegion"]:
                     errors.append(f"{n}: флеш хранит конфигурацию ПЛИС {dev['series']} (с адреса 0) - "
                                   f"образ программы не ниже 0x{dev['cfgRegion']:06X}")
+        if inst["type"] == "sifu":
+            si = sifu_info(m, inst)
+            if not 0 <= si["div"] <= 0xFFFF:
+                errors.append(f"{n}: частоту пилы {inst.get('sawHz')} Гц при частоте {sysclk_hz(m)} Гц не получить (DIV 0..65535)")
+            if not (0 <= si["delay"] <= SIFU_SAW_MAX and 0 <= si["pulse"] <= SIFU_SAW_MAX):
+                errors.append(f"{n}: сдвиг DELAY и длительность импульса - 0..4095 тиков")
+            elif si["alphaMax"] < 0:
+                errors.append(f"{n}: DELAY + длительность импульса больше пилы (4094 тика) - импульсов не будет")
+            elif si["half"] and si["alphaMaxDeg"] < 120:
+                warns.append(f"{n}: угол управления - только до {si['alphaMaxDeg']:.1f} эл. град. (нужно 120): "
+                             f"уменьшите частоту пилы, DELAY или длительность импульса")
+            if si["half"] >= 8192:
+                errors.append(f"{n}: полупериод 50 Гц - {si['half']:.0f} тиков, больше 8191: модуль будет считать, "
+                              f"что синхронизации нет - уменьшите частоту пилы")
     if len([i for i in insts(m, "spiflash") if i.get("fpgaConfig", False)]) > 1:
         errors.append("Конфигурацию ПЛИС может хранить только одна флеш (выводы MSPI)")
 
@@ -901,6 +940,20 @@ def gen_top(m, bases, cfg_rel):
                 w("                 .boot_hold(boot_hold), .boot_Write(boot_Write), .boot_Addr(boot_Addr), .boot_WData(boot_WData));")
             else:
                 w("                 .boot_hold(), .boot_Write(), .boot_Addr(), .boot_WData());")
+        elif t == "sifu":
+            si = sifu_info(m, inst)
+            w(f"    //-{num}- {inst_title(inst)}: СИФУ трёхфазного мостового выпрямителя, тик ГПН {fmt_mhz(round(si['saw']) / 1e3)} кГц "
+              f"(DIV {si['div']}), DELAY {si['delay']}, импульс {si['pulse']} тиков")
+            w(f"    //    регистры с {base}; входы - плата синхронизации NSB (0 - оптрон открыт), выходы - тиристоры VS1..VS6; "
+              + ("есть имитатор сети" if inst.get("sim", True) else "без имитатора сети"))
+            w(f"    logic irq_{h};")
+            w(f"    sifu_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(16'd{si['div']}), .DELAY_INIT(12'd{si['delay']}), "
+              f".WIDTH_INIT(12'd{si['pulse']}), .SIM_EN({1 if inst.get('sim', True) else 0})) {h}")
+            w("                (.clk(clk_per), .rst(rst_per),")
+            w(f"                 {bus},")
+            w("                 " + ", ".join(f".sync_{k}({net[name + '.' + k]})" for k in SIFU_SYNC) + ",")
+            w("                 " + ", ".join(f".{k}({net[name + '.' + k]})" for k in SIFU_GATES) + ",")
+            w(f"                 .irq(irq_{h}));")
         w("")
         num += 1
 
@@ -1035,6 +1088,13 @@ def gen_soc_h(m, bases, cfg_rel):
                        ("BOOT_SIZE", f"0x{BOOT_REGION if fi['boot'] else 0:08X}U", "Область образа (параметры туда не писать)"),
                        ("USER_ADDR", f"0x{fi['user']:08X}U", "Свободная область флеш: начало (ниже - конфигурация ПЛИС и образ)"),
                        ("USER_SIZE", f"0x{fi['userSize']:08X}U", "Свободная область флеш: размер")]
+        if t == "sifu":
+            si = sifu_info(m, inst)
+            params += [("DIV_DEFAULT", f"{si['div']}U", "Делитель тика ГПН после сброса: SYSCLK_HZ / (DIV + 1)"),
+                       ("SAW_HZ", f"{round(si['saw'])}U", "Частота тиков ГПН при DIV_DEFAULT, Гц"),
+                       ("DELAY_DEFAULT", f"{si['delay']}U", "DELAY_RC_COMPENSATION после сброса, тиков"),
+                       ("WIDTH_DEFAULT", f"{si['pulse']}U", "Длительность импульса после сброса, тиков"),
+                       ("SIM", "1" if inst.get("sim", True) else "0", "Есть имитатор сети (CR.SIM, SIMCFG)")]
         for suf, val, com in params:
             w(cdef(f"{N}_{suf}", val, com))
         #Первый блок типа под другим именем: имена типа для драйверов - его синонимы

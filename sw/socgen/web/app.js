@@ -71,7 +71,16 @@ const TYPES = {
     about: 'Контроллер внешней SPI-флеш: загрузка программы в IMEM/DMEM после сброса (образ записывает openFPGALoader), обмен с флеш из программы - хранение параметров. По умолчанию - выводы MSPI (флеш конфигурации ПЛИС): Tang Nano 9K - 59..62, Tang Primer 20K - L10, M9, R10, P10.',
     defaults: () => ({ sck: null, cs: null, mosi: null, miso: null, sizeMB: 4, div: 1, fpgaConfig: false, bootAddr: '0x100000' }),
     cfgPins: { sck: 'MCLK', cs: 'MCS_N', mosi: 'MO', miso: 'MI' } },
+  sifu: { title: 'SIFU', ru: 'СИФУ выпрямителя', cat: 'custom', slot: 0x16, irq: true,
+    about: 'СИФУ трёхфазного мостового тиристорного выпрямителя: синхронизация от платы NSB (6 оптронов на линейных напряжениях), пила на каждую пару фаз, угол управления ALPHA от точки естественной коммутации, сдвоенные импульсы на тиристоры VS1..VS6, измерение частоты сети, имитатор сети для проверки без силовой части.',
+    defaults: () => ({ ab: null, ba: null, bc: null, cb: null, ca: null, ac: null,
+                       vs1: null, vs2: null, vs3: null, vs4: null, vs5: null, vs6: null,
+                       sawHz: 500000, delayTicks: 400, pulseTicks: 150, sim: true, irq: 'plic' }) },
 };
+//СИФУ: входы платы синхронизации NSB и выходы на тиристоры (как SIFU_SYNC, SIFU_GATES в socgen.py)
+const SIFU_SYNC = ['ab', 'ba', 'bc', 'cb', 'ca', 'ac'];
+const SIFU_GATES = ['vs1', 'vs2', 'vs3', 'vs4', 'vs5', 'vs6'];
+const SIFU_SAW_MAX = 4095;
 const UART_BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
 const UART_PARITY = { none: 'нет', even: 'чётность (even)', odd: 'нечётность (odd)' };
 const FIFO_DEPTHS = [8, 16, 32];
@@ -103,7 +112,7 @@ const SV_KEYWORDS = new Set(['input', 'output', 'inout', 'wire', 'logic', 'reg',
 const RESERVED_NETS = new Set(['tck_pad_i', 'tms_pad_i', 'tdi_pad_i', 'tdo_pad_o',
   'clk_per', 'rst_per', 'bus_per_Write', 'bus_per_Read', 'bus_per_Addr', 'bus_per_WData', 'bus_per_RData', 'irq_local', 'irq_src',
   'sRead', 'top', 'cpu', 'permux', 'memmux', 'gpio_top', 'stim_top', 'tm1638_top', 'uart_top',
-  'spiflash_top', 'boot_hold', 'boot_Write', 'boot_Addr', 'boot_WData',
+  'spiflash_top', 'sifu_top', 'boot_hold', 'boot_Write', 'boot_Addr', 'boot_WData',
   'CORE_TYPE', 'M_EXT', 'DIV_BPC', 'RF_TYPE', 'IMEM_TYPE', 'BSRAM_IMEM_SIZE', 'SYNTH_IMEM_SIZE', 'IMEM_INIT_FILE',
   'DMEM_TYPE', 'BSRAM_DMEM_SIZE', 'SYNTH_DMEM_SIZE', 'DMEM_INIT_FILE', 'DEBUG_EN', 'PLIC_SOURCES',
   'FCLKIN', 'PLL_DEVICE', 'XTAL_KHZ', 'PLL_IDIV_SEL', 'PLL_FBDIV_SEL', 'PLL_ODIV_SEL', 'WIN_MASK', 'CLK_BASE_MHZ', 'CLK_DMEM_MHZ']);
@@ -185,6 +194,8 @@ function instSignals(inst) {
     case 'uart': return [{ key: 'tx', label: 'TX', dir: 'output' }, { key: 'rx', label: 'RX', dir: 'input' }];
     case 'spiflash': return [{ key: 'sck', label: 'SCK', dir: 'output' }, { key: 'cs', label: 'CS#', dir: 'output' },
                              { key: 'mosi', label: 'MOSI', dir: 'output' }, { key: 'miso', label: 'MISO', dir: 'input' }];
+    case 'sifu': return [...SIFU_SYNC.map(k => ({ key: k, label: k.toUpperCase(), dir: 'input' })),
+                         ...SIFU_GATES.map(k => ({ key: k, label: k.toUpperCase(), dir: 'output' }))];
   }
   return [];
 }
@@ -281,6 +292,16 @@ function uartDiv(m, u) {
   const f = sysclkHz(m), baud = Number(u.baud);
   const div = Math.max(0, Math.round(f / baud) - 1), real = f / (div + 1);
   return { div, real, err: Math.abs(real - baud) / baud * 100 };
+}
+//СИФУ: делитель тика ГПН, частота пилы, тиков на полупериод 50 Гц, наибольший угол (как sifu_info в socgen.py)
+function sifuInfo(m, s) {
+  const f = sysclkHz(m), saw = Number(s.sawHz);
+  const div = saw > 0 ? Math.max(0, Math.round(f / saw) - 1) : -1, real = div >= 0 ? f / (div + 1) : 0;
+  const delay = Number(s.delayTicks), pulse = Number(s.pulseTicks);
+  const half = real / 100, alphaMax = SIFU_SAW_MAX - 1 - delay - pulse;
+  const deg = ticks => half ? ticks * 180 / half : 0;
+  return { div, saw: real, half, delay, pulse, alphaMax, alphaMaxDeg: deg(alphaMax),
+           pulseUs: real ? pulse / real * 1e6 : 0, pulseDeg: deg(pulse), delayDeg: deg(delay) };
 }
 //Прерывания: по умолчанию - источники PLIC 1, 2, ... в порядке списка; irq = 'local' - LI0, LI1...
 function irqMap(m) {
@@ -515,6 +536,16 @@ function validate(m) {
         else if (fi.bootAddr + BOOT_REGION > fi.size) out.push({ lvl: 'err', text: `${inst.name}: адрес образа ${hex6(fi.bootAddr)} вне флеш (${inst.sizeMB} МБайт)`, inst: inst.name });
         else if (fi.bootAddr < CFG_REGION) out.push({ lvl: 'err', text: `${inst.name}: флеш хранит конфигурацию ПЛИС (с адреса 0) - образ программы не ниже ${hex6(CFG_REGION)}`, inst: inst.name });
       }
+    }
+    if (inst.type === 'sifu' && !pll.errs.length) {
+      const si = sifuInfo(m, inst);
+      if (!(si.div >= 0 && si.div <= 0xFFFF)) out.push({ lvl: 'err', text: `${inst.name}: частоту пилы ${inst.sawHz} Гц при частоте ${sysclkHz(m)} Гц не получить (DIV 0..65535)`, inst: inst.name });
+      if (!(si.delay >= 0 && si.delay <= SIFU_SAW_MAX && si.pulse >= 0 && si.pulse <= SIFU_SAW_MAX))
+        out.push({ lvl: 'err', text: `${inst.name}: сдвиг DELAY и длительность импульса - 0..4095 тиков`, inst: inst.name });
+      else if (si.alphaMax < 0) out.push({ lvl: 'err', text: `${inst.name}: DELAY + длительность импульса больше пилы (4094 тика) - импульсов не будет`, inst: inst.name });
+      else if (si.half && si.alphaMaxDeg < 120)
+        out.push({ lvl: 'warn', text: `${inst.name}: угол управления - только до ${si.alphaMaxDeg.toFixed(1)} эл. град. (нужно 120): уменьшите частоту пилы, DELAY или длительность импульса`, inst: inst.name });
+      if (si.half >= 8192) out.push({ lvl: 'err', text: `${inst.name}: полупериод 50 Гц - ${Math.round(si.half)} тиков, больше 8191: модуль будет считать, что синхронизации нет - уменьшите частоту пилы`, inst: inst.name });
     }
     if (inst.type === 'uart' && !pll.errs.length) {
       const u = uartDiv(m, inst);
@@ -1391,6 +1422,18 @@ function instForm(inst, v) {
       <label>Адрес образа</label><input type="text" class="mono" name="bootAddr" style="width:116px" value="${esc(inst.bootAddr)}" ${fi.boot ? '' : 'disabled'}>
       <div class="full readout">${fi.fpgaConfig ? `ПЛИС: <b>0x000000</b>.. · ` : ''}${fi.boot ? `образ: <b>${hex6(fi.bootAddr)}</b>..${hex6(fi.bootAddr + BOOT_REGION - 1)} · ` : ''}свободно: <b>${hex6(fi.user)}</b>, ${Math.round(fi.userSize / 1024)} кБайт</div>`;
   }
+  if (inst.type === 'sifu') {
+    const si = sifuInfo(model, inst), pe = pllOf(model).errs.length;
+    const bad = si.alphaMax < 0 || si.alphaMaxDeg < 120 || si.half >= 8192;
+    h += `<label>Частота пилы, кГц</label><div><input type="number" name="sawKHz" min="50" max="2000" step="any" value="${inst.sawHz / 1000}" style="width:90px"></div>
+      <label>Сдвиг DELAY, тиков</label><input type="number" name="delayTicks" min="0" max="4095" value="${inst.delayTicks}" style="width:90px"
+        title="DELAY_RC_COMPENSATION: при ALPHA = 0 импульс - в точке естественной коммутации (на стенде - 400 при 500 кГц)">
+      <label>Импульс, тиков</label><input type="number" name="pulseTicks" min="1" max="4095" value="${inst.pulseTicks}" style="width:90px">
+      <label>Имитатор сети</label><select name="sim" title="Сигналы оптронов NSB внутри блока (CR.SIM) - проверка без силовой части, около 130 ячеек">${opts([['1', 'есть'], ['0', 'нет']], inst.sim === false ? '0' : '1')}</select>
+      <div class="full readout">${pe ? '<span class="bad">нет частоты rPLL</span>' :
+        `DIV = <b>${si.div}</b> · тик <b>${fmt(si.saw / 1000)} кГц</b> · полупериод 50 Гц - <b>${Math.round(si.half)}</b> тиков<br>
+         DELAY ${fmt(si.delayDeg)}°, импульс ${fmt(si.pulseUs)} мкс (${fmt(si.pulseDeg)}°) · угол до <b class="${bad ? 'bad' : 'good'}">${fmt(si.alphaMaxDeg)}°</b> (ALPHA ≤ ${si.alphaMax})`}</div>`;
+  }
   if (inst.type === 'uart') {
     const u = uartDiv(model, inst), pe = pllOf(model).errs.length;
     const bad = u.div < 7 || u.div > 0xFFFF || u.err > 2;
@@ -1420,6 +1463,10 @@ function instForm(inst, v) {
     в soc.h); прошивка может сменить их регистрами. UART программатора платы: Tang Nano 9K (BL702) - выводы 17 (TX) и 18 (RX),
     Tang Primer 20K (BL616 на Dock) - M11 (TX) и T13 (RX).</p>`;
   if (inst.type === 'tm1638') h += `<p class="note">Знакогенератор занимает 1 блок BSRAM; делители интерфейса считаются от частоты шины.</p>`;
+  if (inst.type === 'sifu') h += `<p class="note">Входы AB…AC - выходы платы синхронизации NSB (OUT_AB…OUT_AC, 0 - оптрон открыт). Высокий уровень NSB -
+    около 1,8 В (делитель 47k/27k от 5 В): на Tang Nano 9K - банк 3 (1,8 В, выводы 79–86), для банков 3,3 В нужен другой делитель NSB.
+    Выходы VS1…VS6 - на драйверы тиристоров в порядке включения: VS1, VS3, VS5 - катодная группа фаз A, B, C; VS4, VS6, VS2 - анодная.
+    Частота пилы, DELAY и импульс - значения после сброса (${esc(inst.name)}_DIV_DEFAULT... в soc.h), прошивка меняет их регистрами.</p>`;
   if (inst.type === 'spiflash') h += `<p class="note">Конфигурация и программа хранятся одним из способов. <b>SRAM</b> («riscv FPGA SRAM»)
     ${DEV.embeddedFlash ? 'и <b>встроенная flash</b> («riscv FPGA Flash», MODE1 = MODE0 = 0) - программа в битовом потоке' :
       `- битовый поток и программа (у ${esc(DEV.series)} встроенной flash нет)`}, флеш - только для данных программы.
@@ -1448,7 +1495,9 @@ function wireInstForm(box, inst) {
   });
   q('base').addEventListener('change', e => { inst.base = e.target.value.trim().replace(/_/g, ''); changed(); });
   for (const k of ['irq', 'parity']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = e.target.value; changed(); });
-  for (const k of ['width', 'stop', 'fifo', 'baud', 'sizeMB', 'div']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
+  for (const k of ['width', 'stop', 'fifo', 'baud', 'sizeMB', 'div', 'delayTicks', 'pulseTicks']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
+  if (q('sim')) q('sim').addEventListener('change', e => { inst.sim = e.target.value === '1'; changed(); });
+  if (q('sawKHz')) q('sawKHz').addEventListener('change', e => { inst.sawHz = Math.round(Number(e.target.value) * 1000); changed(); });
   if (q('fpgaConfig')) q('fpgaConfig').addEventListener('change', e => {
     inst.fpgaConfig = e.target.value === '1';
     //Битовый поток с адреса 0: образ программы сдвигается выше него (1 МБайт), если стоял ниже
