@@ -18,7 +18,7 @@
 py sw/rectgui/build.py
 ```
 
-Получается `sw/rectgui/build/askorv32-rectgui-repo.zip`. В Eclipse: Help > Install New Software > Add > Archive… > этот архив > askoRV32 > Next > Finish, затем перезапуск. Нужен Eclipse с CDT (Eclipse Embedded CDT): COM-порт открывается пакетом `org.eclipse.cdt.native.serial`.
+Получается `sw/rectgui/build/askorv32-rectgui-repo.zip`. В Eclipse: Help > Install New Software > Add > Archive… > этот архив > категория «askoRV32 - пульт выпрямителя» > Next > Finish, затем перезапуск. Уже установленный пульт обновляют через Help > Check for Updates: Install New Software с новой версией остановится на странице Install Remediation Page (там — «Update my installation…»). Нужен Eclipse с CDT (Eclipse Embedded CDT): COM-порт открывается пакетом `org.eclipse.cdt.native.serial`.
 
 Панель открывается кнопкой на панели инструментов (значок с полуволнами) или через Window > Show View > Other > askoRV32 > Пульт выпрямителя. Дальше:
 1. выбрать порт (UART платы; на стенде 9K — COM3) и нажать «Подключить»;

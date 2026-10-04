@@ -22,7 +22,7 @@ py sw/rectgui/build.py
 
   Общие части сборки берутся из [sw/socgen/eclipse/build.py](../socgen/eclipse/build.py).
 - **Результат** — `build/askorv32-rectgui-repo.zip`.
-- **Установка в Eclipse:** Help > Install New Software > Add > Archive… > архив > askoRV32 > Next > Finish, затем перезапуск.
+- **Установка в Eclipse:** Help > Install New Software > Add > Archive… > архив > категория «askoRV32 - пульт выпрямителя» > Next > Finish, затем перезапуск. Уже установленный пульт обновляют через Help > Check for Updates.
 - **Где открыть:** кнопка на панели инструментов или Window > Show View > Other > askoRV32 > Пульт выпрямителя.
 
 ## Файлы
