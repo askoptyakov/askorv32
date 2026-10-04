@@ -18,7 +18,7 @@
     "rfType": "bsram",
     "debug": true,
     "plicSources": 8,
-    "imem": { "type": "bsram", "kb": 16, "synthWords": 256, "init": "mem_init/i.mem" },
+    "imem": { "type": "bsram", "kb": 32, "synthWords": 256, "init": "mem_init/i.mem" },
     "dmem": { "type": "bsram", "kb": 8, "synthWords": 256, "init": "mem_init/d.mem" }
   },
   "clock": {
@@ -29,7 +29,6 @@
   "reset": { "pin": "T10" },
   "periph": [
     { "type": "gpio", "name": "GPIO", "base": "auto", "lines": ["C13", "A13", "N16", "N14", "L14", "L16"] },
-    { "type": "stim", "name": "STIM", "base": "auto", "width": 16, "out": null, "irq": "plic" },
     {
       "type": "uart",
       "name": "UART",
@@ -76,70 +75,24 @@
       "delayTicks": 400,
       "pulseTicks": 150,
       "sim": true,
-      "links": { "u": "PI_U.out" },
       "irq": "plic"
     },
     {
-      "type": "adc121",
-      "name": "ADC_V",
+      "type": "adc",
+      "name": "ADC",
       "base": "auto",
-      "cs": "N8",
-      "sclk": "N7",
-      "sdo": "D11",
-      "board": "adc_v",
-      "mode": "dc",
+      "cs0": "N8", "sclk0": "N7", "sdo0": "D11", "cmp0": null,
+      "cs1": "C12", "sclk1": "A14", "sdo1": "E15", "cmp1": "A15",
       "clkMHz": 96,
       "sclkHz": 8000000,
       "css": 1,
       "quiet": 1,
-      "csInv": false,
       "avgShift": 8,
-      "scaleUv": 222181,
-      "offset": 0,
       "wavg": true,
-      "links": { "win": "SIFU.tick" },
-      "irq": "plic"
-    },
-    {
-      "type": "adc121",
-      "name": "ADC_C",
-      "base": "auto",
-      "cs": "C12",
-      "sclk": "A14",
-      "sdo": "E15",
-      "cmp": "A15",
-      "cmpPol": "low",
-      "board": "adc_c",
-      "mode": "dc",
-      "clkMHz": 96,
-      "sclkHz": 8000000,
-      "css": 1,
-      "quiet": 1,
-      "csInv": false,
-      "avgShift": 8,
-      "shuntMohm": 0.16667,
-      "scaleUv": 45662,
-      "offset": 2049.3,
-      "wavg": true,
-      "links": { "win": "SIFU.tick" },
-      "irq": "plic"
-    },
-    {
-      "type": "pireg",
-      "name": "PI_U",
-      "base": "auto",
-      "frac": 12,
-      "omax": 3333,
-      "links": { "fb": "ADC_V.wmean", "lim": "PI_I.out", "run": "SIFU.run" },
-      "irq": "plic"
-    },
-    {
-      "type": "pireg",
-      "name": "PI_I",
-      "base": "auto",
-      "frac": 12,
-      "omax": 3333,
-      "links": { "fb": "ADC_C.wmean", "trk": "PI_U.out", "run": "SIFU.run" },
+      "channels": [
+        {"name": "V", "board": "adc_v", "mode": "dc", "csInv": false, "cmpPol": "low", "scaleUv": 222181, "offset": 0},
+        {"name": "C", "board": "adc_c", "mode": "dc", "csInv": false, "cmpPol": "low", "scaleUv": 45662, "offset": 2049.3, "shuntMohm": 0.16667}
+      ],
       "irq": "plic"
     }
   ],

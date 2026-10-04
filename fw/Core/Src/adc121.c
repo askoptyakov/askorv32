@@ -10,7 +10,7 @@
 #include "adc121.h"
 #include "core_riscv.h"
 
-#if ADC121_PRESENT
+#if ADC_PRESENT
 
 void ADC121_Init(ADC121_TypeDef *adc, uint32_t div, uint32_t avgsh) {
 	adc->CR  &= (ADC121_CR_CSINV | ADC121_CR_CPOL);				//Остановить, прерывания выключить
@@ -85,4 +85,4 @@ uint32_t ADC121_Capture(ADC121_TypeDef *adc, uint16_t *buf, uint32_t n) {
 	return i;
 }
 
-#endif /* ADC121_PRESENT */
+#endif /* ADC_PRESENT */

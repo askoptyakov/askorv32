@@ -61,12 +61,11 @@ module top #(
     output wire         VS5,                  //вывод 30
     output wire         VS6,                  //вывод 56
     output wire         GRID,                 //вывод 51
-    //ADC_V (ADC121)
+    //ADC
     output wire         ADC_V_CS,             //вывод 82
     output wire         ADC_V_SCLK,           //вывод 70
     input wire          ADC_V_SDO,            //вывод 71
     input wire          ADC_V_CMP,            //вывод 48
-    //ADC_C (ADC121)
     output wire         ADC_C_CS,             //вывод 79
     output wire         ADC_C_SCLK,           //вывод 72
     input wire          ADC_C_SDO,            //вывод 73
@@ -89,10 +88,7 @@ module top #(
     localparam logic [31:0] TM1638_BASE = 32'h1200_0000;
     localparam logic [31:0] UART_BASE   = 32'h1400_0000;
     localparam logic [31:0] SIFU_BASE   = 32'h1600_0000;
-    localparam logic [31:0] ADC_V_BASE  = 32'h1700_0000;
-    localparam logic [31:0] ADC_C_BASE  = 32'h1300_0000;
-    localparam logic [31:0] PI_U_BASE   = 32'h1900_0000;
-    localparam logic [31:0] PI_I_BASE   = 32'h1500_0000;
+    localparam logic [31:0] ADC_BASE    = 32'h1700_0000;
     localparam logic [31:0] WIN_MASK    = 32'hFF00_0000;
 
     //Частота шины периферии (clk_per), МГц, целая часть: для делителей периферии (TM1638).
@@ -131,41 +127,23 @@ module top #(
         (.clkin(CLOCK), .clkout(clk_adc), .lock(adc_lock));
 
     //#3 Шина пользовательской периферии (memmux): ведомые перечислены от старшего номера к младшему
-    logic [ 3:0] gpio_Write, tm1638_Write, uart_Write, sifu_Write, adc_v_Write, adc_c_Write, pi_u_Write, pi_i_Write;
-    logic [31:0] gpio_Addr, tm1638_Addr, uart_Addr, sifu_Addr, adc_v_Addr, adc_c_Addr, pi_u_Addr, pi_i_Addr;
-    logic [31:0] gpio_WriteData, tm1638_WriteData, uart_WriteData, sifu_WriteData, adc_v_WriteData, adc_c_WriteData, pi_u_WriteData, pi_i_WriteData;
-    logic [31:0] gpio_ReadData, tm1638_ReadData, uart_ReadData, sifu_ReadData, adc_v_ReadData, adc_c_ReadData, pi_u_ReadData, pi_i_ReadData;
-    logic [ 7:0] sRead;
+    logic [ 3:0] gpio_Write, tm1638_Write, uart_Write, sifu_Write, adc_Write;
+    logic [31:0] gpio_Addr, tm1638_Addr, uart_Addr, sifu_Addr, adc_Addr;
+    logic [31:0] gpio_WriteData, tm1638_WriteData, uart_WriteData, sifu_WriteData, adc_WriteData;
+    logic [31:0] gpio_ReadData, tm1638_ReadData, uart_ReadData, sifu_ReadData, adc_ReadData;
+    logic [ 4:0] sRead;
 
-    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(8),
-              .MATCH_ADDR ({GPIO_BASE, TM1638_BASE, UART_BASE, SIFU_BASE, ADC_V_BASE, ADC_C_BASE, PI_U_BASE, PI_I_BASE}),
-              .MATCH_MASK ({8{WIN_MASK}}))
+    memmux #(.MEMORY_TYPE(DMEM_TYPE), .SLAVES(5),
+              .MATCH_ADDR ({GPIO_BASE, TM1638_BASE, UART_BASE, SIFU_BASE, ADC_BASE}),
+              .MATCH_MASK ({5{WIN_MASK}}))
             permux
              (.clk(clk_per), .rst(rst_per),
               .mWrite(bus_per_Write), .mRead(bus_per_Read), .mAddr(bus_per_Addr), .mWData(bus_per_WData), .mRData(bus_per_RData),
-              .sWrite({gpio_Write, tm1638_Write, uart_Write, sifu_Write, adc_v_Write, adc_c_Write, pi_u_Write, pi_i_Write}),
+              .sWrite({gpio_Write, tm1638_Write, uart_Write, sifu_Write, adc_Write}),
               .sRead (sRead),
-              .sAddr ({gpio_Addr, tm1638_Addr, uart_Addr, sifu_Addr, adc_v_Addr, adc_c_Addr, pi_u_Addr, pi_i_Addr}),
-              .sWData({gpio_WriteData, tm1638_WriteData, uart_WriteData, sifu_WriteData, adc_v_WriteData, adc_c_WriteData, pi_u_WriteData, pi_i_WriteData}),
-              .sRData({gpio_ReadData, tm1638_ReadData, uart_ReadData, sifu_ReadData, adc_v_ReadData, adc_c_ReadData, pi_u_ReadData, pi_i_ReadData}));
-
-    //#4 Прямые связи между блоками ("links" в .gwsoc): выходы блоков, которые можно подать на входы других
-    //    без процессора; не подключённые никуда синтезатор убирает
-    logic        lnk_sifu_tick;   //SIFU.tick: начало полуволны любой пары (раз в 60 эл. град.)
-    logic        lnk_sifu_run;   //SIFU.run: импульсы идут (EN, сеть, синхронизация)
-    logic [15:0] lnk_adc_v_wmean;   logic lnk_adc_v_wmean_stb;   //ADC_V.wmean: среднее за окно, код * 16
-    logic [15:0] lnk_adc_c_wmean;   logic lnk_adc_c_wmean_stb;   //ADC_C.wmean: среднее за окно, код * 16
-    logic [15:0] lnk_pi_u_out;   logic lnk_pi_u_out_stb;   //PI_U.out: выход регулятора
-    logic [15:0] lnk_pi_i_out;   logic lnk_pi_i_out_stb;   //PI_I.out: выход регулятора
-    //    SIFU.u <- PI_U.out
-    //    ADC_V.win <- SIFU.tick
-    //    ADC_C.win <- SIFU.tick
-    //    PI_U.fb <- ADC_V.wmean
-    //    PI_U.lim <- PI_I.out
-    //    PI_U.run <- SIFU.run
-    //    PI_I.fb <- ADC_C.wmean
-    //    PI_I.trk <- PI_U.out
-    //    PI_I.run <- SIFU.run
+              .sAddr ({gpio_Addr, tm1638_Addr, uart_Addr, sifu_Addr, adc_Addr}),
+              .sWData({gpio_WriteData, tm1638_WriteData, uart_WriteData, sifu_WriteData, adc_WriteData}),
+              .sRData({gpio_ReadData, tm1638_ReadData, uart_ReadData, sifu_ReadData, adc_ReadData}));
 
     //-1- GPIO: 6 лин., регистры с 32'h1100_0000 (линия 0 - младший разряд)
     gpio_top #(.MEMORY_TYPE(DMEM_TYPE), .WIDTH(6)) gpio
@@ -184,71 +162,38 @@ module top #(
     logic irq_uart;
     uart_top #(.MEMORY_TYPE(DMEM_TYPE), .DEPTH(16), .DIV_INIT(351), .STOP_INIT(1), .PARITY_INIT(0)) uart
                 (.clk(clk_per), .rst(rst_per),
-                 .Write(uart_Write), .Read(sRead[5]), .Addr(uart_Addr), .WData(uart_WriteData), .RData(uart_ReadData),
+                 .Write(uart_Write), .Read(sRead[2]), .Addr(uart_Addr), .WData(uart_WriteData), .RData(uart_ReadData),
                  .tx(UART_TX), .rx(UART_RX), .irq(irq_uart));
 
     //-4- SIFU: СИФУ трёхфазного мостового выпрямителя, тик ГПН 500 кГц (DIV 80), DELAY 400, импульс 150 тиков
     //    регистры с 32'h1600_0000; входы - плата синхронизации NSB (0 - оптрон открыт), выходы - тиристоры VS1..VS6; есть имитатор сети
     logic irq_sifu;
     sifu_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(16'd80), .DELAY_INIT(12'd400), .WIDTH_INIT(12'd150), .SIM_EN(1),
-               .AMAX_INIT(12'd3333), .UEXT_EN(1'b1)) sifu
+               .AMAX_INIT(12'd3333), .UEXT_EN(1'b0)) sifu
                 (.clk(clk_per), .rst(rst_per),
                  .Write(sifu_Write), .Addr(sifu_Addr), .WData(sifu_WriteData), .RData(sifu_ReadData),
                  .sync_ab(NSB_AB), .sync_ba(NSB_BA), .sync_bc(NSB_BC), .sync_cb(NSB_CB), .sync_ca(NSB_CA), .sync_ac(NSB_AC),
                  .vs1(VS1), .vs2(VS2), .vs3(VS3), .vs4(VS4), .vs5(VS5), .vs6(VS6),
                  .grid_o(GRID),
-                 .tick_o(lnk_sifu_tick), .run_o(lnk_sifu_run), .u_i(lnk_pi_u_out),
+                 .tick_o(), .run_o(), .u_i(16'd0),   //Угол - регистр ALPHA (регулятор - программа)
                  .irq(irq_sifu));
 
-    //-5- ADC_V (ADC121): АЦП ADC121S051, плата ADC_V (DC), такт clk_adc 54 МГц, SCLK 6.75 МГц (DIV 3), до 394 тыс. отсчётов/с, среднее по 256
-    //    регистры с 32'h1700_0000
-    logic irq_adc_v;
-    adc121_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(8'd3), .AVGSH_INIT(4'd8), .CSS_INIT(4'd1), .QUIET_INIT(4'd1), .CSINV_INIT(1'b0),
-                 .CMP_EN(1'b1), .CPOL_INIT(1'b0), .CLK_HZ(32'd54000000), .WIN_EN(1'b1)) adc_v
-                (.clk(clk_per), .rst(rst_per), .adc_clk(clk_adc), .adc_lock(adc_lock),
-                 .Write(adc_v_Write), .Addr(adc_v_Addr), .WData(adc_v_WriteData), .RData(adc_v_ReadData),
-                 .adc_cs_n(ADC_V_CS), .adc_sclk(ADC_V_SCLK), .adc_sdo(ADC_V_SDO),
-                 .adc_cmp(ADC_V_CMP),
-                 .win_i(lnk_sifu_tick), .wmean_o(lnk_adc_v_wmean), .wstb_o(lnk_adc_v_wmean_stb),
-                 .irq(irq_adc_v));
+    //-5- ADC: АЦП ADC121S051, каналов 2 (V - плата ADC_V, C - плата ADC_C), такт clk_adc 54 МГц, SCLK 6.75 МГц (DIV 3), до 394 тыс. отсчётов/с на канал, среднее по 256
+    //    регистры канала i - с 32'h1700_0000 + i * 0x40
+    logic irq_adc;
+    logic [1:0][15:0] adc_wmean;   logic [1:0] adc_wstb;   //Средние за окно каналов (код * 16)
+    adc_top #(.MEMORY_TYPE(DMEM_TYPE), .NCH(2), .DIV_INIT(8'd3), .AVGSH_INIT(4'd8), .CSS_INIT(4'd1), .QUIET_INIT(4'd1),
+              .CSINV_INIT(4'b0000), .CMP_EN(4'b0011), .CPOL_INIT(4'b0000), .CLK_HZ(32'd54000000), .WIN_EN(1'b1)) adc
+             (.clk(clk_per), .rst(rst_per), .adc_clk(clk_adc), .adc_lock(adc_lock),
+              .Write(adc_Write), .Addr(adc_Addr), .WData(adc_WriteData), .RData(adc_ReadData),
+              .adc_cs_n({ADC_C_CS, ADC_V_CS}), .adc_sclk({ADC_C_SCLK, ADC_V_SCLK}),
+              .adc_sdo({ADC_C_SDO, ADC_V_SDO}), .adc_cmp({ADC_C_CMP, ADC_V_CMP}),
+              .win_i(1'b0), .wmean_o(adc_wmean), .wstb_o(adc_wstb), .irq(irq_adc));
 
-    //-6- ADC_C (ADC121): АЦП ADC121S051, плата ADC_C (DC), такт clk_adc 54 МГц, SCLK 6.75 МГц (DIV 3), до 394 тыс. отсчётов/с, среднее по 256
-    //    регистры с 32'h1300_0000
-    logic irq_adc_c;
-    adc121_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(8'd3), .AVGSH_INIT(4'd8), .CSS_INIT(4'd1), .QUIET_INIT(4'd1), .CSINV_INIT(1'b0),
-                 .CMP_EN(1'b1), .CPOL_INIT(1'b0), .CLK_HZ(32'd54000000), .WIN_EN(1'b1)) adc_c
-                (.clk(clk_per), .rst(rst_per), .adc_clk(clk_adc), .adc_lock(adc_lock),
-                 .Write(adc_c_Write), .Addr(adc_c_Addr), .WData(adc_c_WriteData), .RData(adc_c_ReadData),
-                 .adc_cs_n(ADC_C_CS), .adc_sclk(ADC_C_SCLK), .adc_sdo(ADC_C_SDO),
-                 .adc_cmp(ADC_C_CMP),
-                 .win_i(lnk_sifu_tick), .wmean_o(lnk_adc_c_wmean), .wstb_o(lnk_adc_c_wmean_stb),
-                 .irq(irq_adc_c));
-
-    //-7- PI_U (PIREG): ПИ-регулятор, коэффициенты K / 2^12, выход 0..3333; регистры с 32'h1900_0000
-    logic irq_pi_u;
-    pireg_top #(.MEMORY_TYPE(DMEM_TYPE), .FRAC(12), .OMAX_INIT(16'd3333), .LIM_EN(1'b1), .TRK_EN(1'b0), .RUN_EN(1'b1)) pi_u
-                (.clk(clk_per), .rst(rst_per),
-                 .Write(pi_u_Write), .Addr(pi_u_Addr), .WData(pi_u_WriteData), .RData(pi_u_ReadData),
-                 .fb_i(lnk_adc_v_wmean), .fb_stb(lnk_adc_v_wmean_stb),
-                 .lim_i(lnk_pi_i_out), .trk_i(16'd0), .run_i(lnk_sifu_run),
-                 .out_o(lnk_pi_u_out), .out_stb(lnk_pi_u_out_stb), .irq(irq_pi_u));
-
-    //-8- PI_I (PIREG): ПИ-регулятор, коэффициенты K / 2^12, выход 0..3333; регистры с 32'h1500_0000
-    logic irq_pi_i;
-    pireg_top #(.MEMORY_TYPE(DMEM_TYPE), .FRAC(12), .OMAX_INIT(16'd3333), .LIM_EN(1'b0), .TRK_EN(1'b1), .RUN_EN(1'b1)) pi_i
-                (.clk(clk_per), .rst(rst_per),
-                 .Write(pi_i_Write), .Addr(pi_i_Addr), .WData(pi_i_WriteData), .RData(pi_i_ReadData),
-                 .fb_i(lnk_adc_c_wmean), .fb_stb(lnk_adc_c_wmean_stb),
-                 .lim_i(16'd0), .trk_i(lnk_pi_u_out), .run_i(lnk_sifu_run),
-                 .out_o(lnk_pi_i_out), .out_stb(lnk_pi_i_out_stb), .irq(irq_pi_i));
-
-    //-9- Прерывания периферии: источники PLIC (MEI, векторный режим) и локальные линии LI0..LI15
+    //-6- Прерывания периферии: источники PLIC (MEI, векторный режим) и локальные линии LI0..LI15
     //    UART: источник PLIC 1
     //    SIFU: источник PLIC 2
-    //    ADC_V: источник PLIC 3
-    //    ADC_C: источник PLIC 4
-    //    PI_U: источник PLIC 5
-    //    PI_I: источник PLIC 6
-    assign irq_src   = {1'b0, 1'b0, irq_pi_i, irq_pi_u, irq_adc_c, irq_adc_v, irq_sifu, irq_uart};   //старший разряд - источник 8, младший - источник 1
+    //    ADC: источник PLIC 3
+    assign irq_src   = {1'b0, 1'b0, 1'b0, 1'b0, 1'b0, irq_adc, irq_sifu, irq_uart};   //старший разряд - источник 8, младший - источник 1
     assign irq_local = 16'd0;
 endmodule

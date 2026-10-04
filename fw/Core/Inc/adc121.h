@@ -39,6 +39,19 @@ typedef struct
   __I  uint32_t WMEAN;				//0x28: [15:0] среднее за окно, код * 16; [27:16] отсчётов в окне
 } ADC121_TypeDef;
 
+/* Блок ADC: каналы (платы измерения) - регистры ADC121 со смещения k * 0x40. Указатели каналов -
+   из конфигуратора (soc.h): <БЛОК>_<КАНАЛ>, например ADC_V, ADC_C */
+#define ADC_CH_STRIDE				0x40U
+typedef struct
+{
+  ADC121_TypeDef R;
+  uint32_t       reserved[(ADC_CH_STRIDE - sizeof(ADC121_TypeDef)) / 4U];
+} ADC_Channel;
+typedef struct
+{
+  ADC_Channel CH[4];
+} ADC_TypeDef;
+
 /* Биты CR */
 #define ADC121_CR_EN				(1U << 0)	//Непрерывные преобразования
 #define ADC121_CR_START				(1U << 1)	//Одно преобразование (запись 1)
@@ -69,7 +82,7 @@ typedef struct
 #define ADC121_CODE_MAX				4095U
 #define ADC121_ERROR				0xFFFFFFFFU	//ADC121_ReadSingle: ошибка кадра или тайм-аут
 
-#if ADC121_PRESENT	//Блоки есть в ПЛИС (soc.h)
+#if ADC_PRESENT	//Блоки есть в ПЛИС (soc.h)
 
 #define __ADC121_INLINE		static inline __attribute__((always_inline))
 
@@ -141,5 +154,5 @@ int32_t ADC121_MeanMilli(ADC121_TypeDef *adc, ADC121_Cal cal);
    опросе программой). Возвращает число записанных отсчётов (меньше n - тайм-аут) */
 uint32_t ADC121_Capture(ADC121_TypeDef *adc, uint16_t *buf, uint32_t n);
 
-#endif /* ADC121_PRESENT */
+#endif /* ADC_PRESENT */
 #endif /* __ADC121_H */

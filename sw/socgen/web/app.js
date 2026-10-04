@@ -76,42 +76,20 @@ const TYPES = {
     defaults: () => ({ ab: null, ba: null, bc: null, cb: null, ca: null, ac: null,
                        vs1: null, vs2: null, vs3: null, vs4: null, vs5: null, vs6: null,
                        grid: null, sawHz: 500000, delayTicks: 400, pulseTicks: 150, sim: true, irq: 'plic' }) },
-  adc121: { title: 'ADC121', ru: 'АЦП ADC121S051', cat: 'custom', slot: 0x17, irq: true,
-    about: 'Аналоговые измерения: АЦП ADC121S051 (12 бит, до ~470 тыс. отсчётов/с на своём такте 96 МГц) на плате ADC_V (напряжение ±600 В) или ADC_C (ток) через цифровые изоляторы. Блок сам опрашивает АЦП, проверяет кадр, усредняет 2^N отсчётов; период отсчётов, прерывания, пересчёт кода в вольты/амперы - коэффициент и смещение в настройках.',
-    defaults: () => ({ cs: null, sclk: null, sdo: null, cmp: null, cmpPol: 'low', board: 'adc_v', mode: 'dc', clkMHz: 96, sclkHz: 8000000, css: 1, quiet: 1, csInv: false,
-                       avgShift: 8, scaleUv: 323242, offset: 0, wavg: true, links: {}, irq: 'plic' }) },
-  pireg: { title: 'PIREG', ru: 'ПИ-регулятор', cat: 'custom', slot: 0x19, irq: true,
-    about: 'ПИ-регулятор (один контур) в фиксированной точке: задание SP, коэффициенты KP, KI (K / 2^FRAC), предел выхода, антинасыщение интегратора. Работает от процессора (обратная связь в регистр, шаг командой) или по прямым связям: обратная связь - среднее за окно блока ADC121, выход - на угол SIFU, внешний предел lim (выход регулятора тока для регулятора напряжения), предел интегратора trk, стоп run (импульсы СИФУ сняты).',
-    defaults: () => ({ frac: 12, omax: 65535, links: {}, irq: 'plic' }) },
+  adc: { title: 'ADC', ru: 'АЦП (платы U, I)', cat: 'custom', slot: 0x17, irq: true,
+    about: 'Блок АЦП: каналы - платы измерения на АЦП ADC121S051 (ADC_V - напряжение, ADC_C - ток), у каждого свои выводы CS, SCLK, SDO (и вход компаратора) и свой пересчёт кода. Общие: такт АЦП (свой rPLL 96 МГц - SCLK 8 МГц), SCLK, среднее 2^N, среднее за окно; регистры канала i - со смещения i · 0x40, в Си - указатели <блок>_<канал> (ADC_V, ADC_C).',
+    defaults: () => ({ cs0: null, sclk0: null, sdo0: null, cmp0: null, cs1: null, sclk1: null, sdo1: null, cmp1: null,
+                       clkMHz: 96, sclkHz: 8000000, css: 1, quiet: 1, avgShift: 8, wavg: true,
+                       channels: [{ name: 'V', board: 'adc_v', mode: 'dc', csInv: false, cmpPol: 'low', scaleUv: 323242, offset: 0 },
+                                  { name: 'C', board: 'adc_c', mode: 'dc', csInv: false, cmpPol: 'low', scaleUv: 48340, offset: 2048, shuntMohm: 0.16667 }],
+                       irq: 'plic' }) },
 };
-//Прямые связи между блоками в ПЛИС ("links": {"вход": "БЛОК.выход"}, как LINK_OUTS, LINK_INS в socgen.py).
-//Вид: val - 16 бит со стробом, stb - строб, lvl - уровень. Вход stb берёт и строб выхода val
-const LINK_OUTS = {
-  sifu:   { tick: ['stb', 'начало полуволны (раз в 60 эл. град.)'], run: ['lvl', 'импульсы идут'] },
-  adc121: { wmean: ['val', 'среднее за окно, код · 16'] },
-  pireg:  { out: ['val', 'выход регулятора'] },
-};
-const LINK_INS = {
-  sifu:   { u: ['val', 'управление: угол = AMAX - u'] },
-  adc121: { win: ['stb', 'закрыть окно усреднения'] },
-  pireg:  { fb: ['val', 'обратная связь (шаг по её стробу)'], lim: ['val', 'внешний предел выхода'],
-            trk: ['val', 'предел интегратора'], run: ['lvl', 'работа / стоп'] },
-};
-const linkOk = (kin, kout) => kin === kout || (kin === 'stb' && kout === 'val');
-//Источник входа key: { src, out, kind } или null
-function linkSrc(m, inst, key) {
-  const s = (inst.links || {})[key];
-  if (!s || !s.includes('.')) return null;
-  const [sn, out] = s.split('.');
-  const src = m.periph.find(i => i.name === sn);
-  if (!src || !(LINK_OUTS[src.type] || {})[out]) return null;
-  return { src, out, kind: LINK_OUTS[src.type][out][0] };
-}
-//Переименование блока - в связях других блоков
-function renameLinks(m, from, to) {
-  for (const i of m.periph) for (const [k, s] of Object.entries(i.links || {}))
-    if (s && s.split('.')[0] === from) i.links[k] = to + '.' + s.split('.')[1];
-}
+//Переименование блока: прямых связей в этой версии нет
+function renameLinks() {}
+//Каналы блока АЦП и настройки канала вместе с общими (такт, SCLK, CSS, QUIET, среднее) - как adc_ch в socgen.py
+const ADC_MAX_CH = 4;
+const adcChannels = inst => inst.channels || [];
+const adcCh = (inst, i) => Object.assign({}, inst, adcChannels(inst)[i]);
 //АЦП ADC121S051: платы и пересчёт кода (как ADC121_BOARDS в socgen.py). ADC_V, DC: 323242 мкВ на код - issue Artel-Inc/temporary#3
 const ADC121_BOARDS = {
   adc_v: { title: 'ADC_V - напряжение', unit: 'В', scale: 323242, offset: { dc: 0, ac: 2045 } },
@@ -154,7 +132,7 @@ const SV_KEYWORDS = new Set(['input', 'output', 'inout', 'wire', 'logic', 'reg',
 const RESERVED_NETS = new Set(['tck_pad_i', 'tms_pad_i', 'tdi_pad_i', 'tdo_pad_o',
   'clk_per', 'rst_per', 'bus_per_Write', 'bus_per_Read', 'bus_per_Addr', 'bus_per_WData', 'bus_per_RData', 'irq_local', 'irq_src',
   'sRead', 'top', 'cpu', 'permux', 'memmux', 'gpio_top', 'stim_top', 'tm1638_top', 'uart_top',
-  'spiflash_top', 'sifu_top', 'adc121_top', 'boot_hold', 'boot_Write', 'boot_Addr', 'boot_WData',
+  'spiflash_top', 'sifu_top', 'adc_top', 'boot_hold', 'boot_Write', 'boot_Addr', 'boot_WData',
   'CORE_TYPE', 'M_EXT', 'DIV_BPC', 'RF_TYPE', 'IMEM_TYPE', 'BSRAM_IMEM_SIZE', 'SYNTH_IMEM_SIZE', 'IMEM_INIT_FILE',
   'DMEM_TYPE', 'BSRAM_DMEM_SIZE', 'SYNTH_DMEM_SIZE', 'DMEM_INIT_FILE', 'DEBUG_EN', 'PLIC_SOURCES',
   'FCLKIN', 'PLL_DEVICE', 'XTAL_KHZ', 'PLL_IDIV_SEL', 'PLL_FBDIV_SEL', 'PLL_ODIV_SEL', 'WIN_MASK', 'CLK_BASE_MHZ', 'CLK_DMEM_MHZ']);
@@ -236,9 +214,10 @@ function instSignals(inst) {
     case 'uart': return [{ key: 'tx', label: 'TX', dir: 'output' }, { key: 'rx', label: 'RX', dir: 'input' }];
     case 'spiflash': return [{ key: 'sck', label: 'SCK', dir: 'output' }, { key: 'cs', label: 'CS#', dir: 'output' },
                              { key: 'mosi', label: 'MOSI', dir: 'output' }, { key: 'miso', label: 'MISO', dir: 'input' }];
-    case 'adc121': return [{ key: 'cs', label: 'CS', dir: 'output' }, { key: 'sclk', label: 'SCLK', dir: 'output' },
-                           { key: 'sdo', label: 'SDO', dir: 'input' },
-                           ...(inst.cmp != null ? [{ key: 'cmp', label: 'CMP', dir: 'input' }] : [])];
+    case 'adc': return adcChannels(inst).flatMap((c, i) => [
+                      { key: 'cs' + i, label: c.name + ' CS', dir: 'output' }, { key: 'sclk' + i, label: c.name + ' SCLK', dir: 'output' },
+                      { key: 'sdo' + i, label: c.name + ' SDO', dir: 'input' },
+                      ...(inst['cmp' + i] != null ? [{ key: 'cmp' + i, label: c.name + ' CMP', dir: 'input' }] : [])]);
     case 'sifu': return [...SIFU_SYNC.map(k => ({ key: k, label: k.toUpperCase(), dir: 'input' })),
                          ...SIFU_GATES.map(k => ({ key: k, label: k.toUpperCase(), dir: 'output' })),
                          ...(inst.grid != null ? [{ key: 'grid', label: 'GRID', dir: 'output' }] : [])];
@@ -247,7 +226,11 @@ function instSignals(inst) {
 }
 const instPin = (inst, key) => key.startsWith('line') ? inst.lines[Number(key.slice(4))] : inst[key];
 //Имя цепи по умолчанию для нового вывода (заглавными: имя цепи - и порт top.sv, и define в Си)
-const defNet = (inst, key) => (key.startsWith('line') ? `${inst.name}_IO${key.slice(4)}` : `${inst.name}_${key === 'out' ? 'PWM' : key}`).toUpperCase();
+const defNet = (inst, key) => {
+  const ch = inst.type === 'adc' && /^(cs|sclk|sdo|cmp)(\d)$/.exec(key);   //Канал АЦП: ADC_V_CS
+  if (ch) return `${inst.name}_${(adcChannels(inst)[Number(ch[2])] || {}).name || ch[2]}_${ch[1]}`.toUpperCase();
+  return (key.startsWith('line') ? `${inst.name}_IO${key.slice(4)}` : `${inst.name}_${key === 'out' ? 'PWM' : key}`).toUpperCase();
+};
 
 //Все сигналы, которым нужен вывод (система + периферия)
 function signals(m) {
@@ -342,7 +325,7 @@ function uartDiv(m, u) {
 }
 //Свой такт блоков ADC121 (clkMHz > 0): один rPLL на все такие блоки (как adc121_clock в socgen.py); null - такт шины
 function adc121Clock(m) {
-  const ts = [...new Set(m.periph.filter(i => i.type === 'adc121' && Number(i.clkMHz) > 0).map(i => Number(i.clkMHz)))].sort((x, y) => x - y);
+  const ts = [...new Set(m.periph.filter(i => i.type === 'adc' && Number(i.clkMHz) > 0).map(i => Number(i.clkMHz)))].sort((x, y) => x - y);
   if (!ts.length) return null;
   const r = pllSolve(Number(m.clock.xtalMHz), ts[0]);
   if (!r) return { target: ts[0], targets: ts, fout: 0, errs: [`такт АЦП ${ts[0]} МГц: делителей rPLL нет`] };
@@ -603,35 +586,32 @@ function validate(m) {
         else if (fi.bootAddr < CFG_REGION) out.push({ lvl: 'err', text: `${inst.name}: флеш хранит конфигурацию ПЛИС (с адреса 0) - образ программы не ниже ${hex6(CFG_REGION)}`, inst: inst.name });
       }
     }
-    if (inst.type === 'adc121' && !pll.errs.length) {
-      const ai = adc121Info(m, inst);
-      if (!(ai.avgsh >= 0 && ai.avgsh <= 12)) out.push({ lvl: 'err', text: `${inst.name}: усреднение - 2^0..2^12 отсчётов`, inst: inst.name });
-      if (!(ai.css >= 1 && ai.css <= 15)) out.push({ lvl: 'err', text: `${inst.name}: от CS до SCLK - 1..15 полупериодов`, inst: inst.name });
-      if (!(ai.quiet >= 1 && ai.quiet <= 15)) out.push({ lvl: 'err', text: `${inst.name}: пауза между кадрами - 1..15 полупериодов`, inst: inst.name });
-      if (ai.own) {
-        for (const e of ai.ac.errs) out.push({ lvl: 'err', text: `${inst.name}: rPLL такта АЦП: ${e}`, inst: inst.name });
-        if (ai.ac.targets.length > 1)
-          out.push({ lvl: 'err', text: `${inst.name}: у блоков ADC121 с отдельным тактом одна частота (rPLL один) - сейчас ${ai.ac.targets.map(fmt).join(', ')} МГц`, inst: inst.name });
-        else if (ai.ac.fout && Math.abs(ai.ac.fout - ai.ac.target) > 0.005 * ai.ac.target)
-          out.push({ lvl: 'warn', text: `${inst.name}: такт АЦП ${fmt(ai.ac.fout)} МГц вместо ${fmt(ai.ac.target)}`, inst: inst.name });
+    if (inst.type === 'adc' && !pll.errs.length) {
+      const chs = adcChannels(inst);
+      if (!(chs.length >= 1 && chs.length <= ADC_MAX_CH)) out.push({ lvl: 'err', text: `${inst.name}: каналов - 1..${ADC_MAX_CH}`, inst: inst.name });
+      chs.forEach((c, k) => {
+        if (!/^[A-Za-z][A-Za-z0-9_]{0,7}$/.test(c.name || '')) out.push({ lvl: 'err', text: `${inst.name}: имя канала ${k} - латиница и цифры, до 8 знаков`, inst: inst.name });
+        else if (chs.filter(x => x.name === c.name).length > 1) out.push({ lvl: 'err', text: `${inst.name}: имя канала ${c.name} повторяется`, inst: inst.name });
+        const ci = adc121Info(m, adcCh(inst, k));
+        if (!(ci.offset >= 0 && ci.offset <= 4095)) out.push({ lvl: 'err', text: `${inst.name}.${c.name}: смещение - 0..4095 кодов`, inst: inst.name });
+      });
+      if (chs.length) {
+        const ai = adc121Info(m, adcCh(inst, 0));
+        if (!(ai.avgsh >= 0 && ai.avgsh <= 12)) out.push({ lvl: 'err', text: `${inst.name}: усреднение - 2^0..2^12 отсчётов`, inst: inst.name });
+        if (!(ai.css >= 1 && ai.css <= 15)) out.push({ lvl: 'err', text: `${inst.name}: от CS до SCLK - 1..15 полупериодов`, inst: inst.name });
+        if (!(ai.quiet >= 1 && ai.quiet <= 15)) out.push({ lvl: 'err', text: `${inst.name}: пауза между кадрами - 1..15 полупериодов`, inst: inst.name });
+        if (ai.own) {
+          for (const e of ai.ac.errs) out.push({ lvl: 'err', text: `${inst.name}: rPLL такта АЦП: ${e}`, inst: inst.name });
+          if (ai.ac.targets.length > 1)
+            out.push({ lvl: 'err', text: `${inst.name}: у блоков АЦП с отдельным тактом одна частота (rPLL один) - сейчас ${ai.ac.targets.map(fmt).join(', ')} МГц`, inst: inst.name });
+          else if (ai.ac.fout && Math.abs(ai.ac.fout - ai.ac.target) > 0.005 * ai.ac.target)
+            out.push({ lvl: 'warn', text: `${inst.name}: такт АЦП ${fmt(ai.ac.fout)} МГц вместо ${fmt(ai.ac.target)}`, inst: inst.name });
+        }
+        if (ai.sclk < ADC121_SCLK_MIN || ai.sclk > ADC121_SCLK_MAX)
+          out.push({ lvl: 'warn', text: `${inst.name}: SCLK ${(ai.sclk / 1e6).toFixed(2)} МГц вне 3.2..8 МГц ADC121S051 (DIV ${ai.div})`, inst: inst.name });
+        if (ai.budget < ADC121_DELAY_NS)
+          out.push({ lvl: 'err', text: `${inst.name}: при SCLK ${(ai.sclk / 1e6).toFixed(2)} МГц на задержку DOUT остаётся ${Math.round(ai.budget)} нс (нужно не меньше ${ADC121_DELAY_NS}) - уменьшите частоту SCLK`, inst: inst.name });
       }
-      if (!(ai.offset >= 0 && ai.offset <= 4095)) out.push({ lvl: 'err', text: `${inst.name}: смещение - 0..4095 кодов`, inst: inst.name });
-      if (ai.sclk < ADC121_SCLK_MIN || ai.sclk > ADC121_SCLK_MAX)
-        out.push({ lvl: 'warn', text: `${inst.name}: SCLK ${(ai.sclk / 1e6).toFixed(2)} МГц вне 3.2..8 МГц ADC121S051 (DIV ${ai.div})`, inst: inst.name });
-      if (ai.budget < ADC121_DELAY_NS)
-        out.push({ lvl: 'err', text: `${inst.name}: при SCLK ${(ai.sclk / 1e6).toFixed(2)} МГц на задержку DOUT остаётся ${Math.round(ai.budget)} нс (нужно не меньше ${ADC121_DELAY_NS}) - уменьшите частоту SCLK`, inst: inst.name });
-    }
-    for (const [k, s] of Object.entries(inst.links || {})) {
-      if (!s) continue;
-      const r = linkSrc(m, inst, k), kin = ((LINK_INS[inst.type] || {})[k] || [])[0];
-      if (!kin) out.push({ lvl: 'err', text: `${inst.name}: нет входа прямой связи «${k}»`, inst: inst.name });
-      else if (!r) out.push({ lvl: 'err', text: `${inst.name}.${k}: нет выхода «${s}»`, inst: inst.name });
-      else if (r.src === inst) out.push({ lvl: 'err', text: `${inst.name}.${k}: связь блока с самим собой`, inst: inst.name });
-      else if (!linkOk(kin, r.kind)) out.push({ lvl: 'err', text: `${inst.name}.${k}: вид входа ${kin} не подходит к ${s} (${r.kind})`, inst: inst.name });
-    }
-    if (inst.type === 'pireg') {
-      if (!(Number(inst.omax) >= 0 && Number(inst.omax) <= 65535)) out.push({ lvl: 'err', text: `${inst.name}: предел выхода - 0..65535`, inst: inst.name });
-      if (!(Number(inst.frac) >= 4 && Number(inst.frac) <= 16)) out.push({ lvl: 'err', text: `${inst.name}: дробных бит - 4..16`, inst: inst.name });
     }
     if (inst.type === 'sifu' && !pll.errs.length) {
       const si = sifuInfo(m, inst);
@@ -1048,7 +1028,7 @@ function instRows(inst) {
   if (inst.type === 'gpio' && inst.lines.length < 32) rows.push({ kind: 'add', key: 'newline', label: 'добавить линию' });
   if (inst.type === 'stim' && inst.out == null) rows.push({ kind: 'add', key: 'out', label: 'вывести ШИМ' });
   if (inst.type === 'sifu' && inst.grid == null) rows.push({ kind: 'add', key: 'grid', label: 'вывести «сеть есть»' });
-  if (inst.type === 'adc121' && inst.cmp == null) rows.push({ kind: 'add', key: 'cmp', label: 'вход компаратора' });
+  if (inst.type === 'adc') adcChannels(inst).forEach((c, i) => { if (inst['cmp' + i] == null) rows.push({ kind: 'add', key: 'cmp' + i, label: c.name + ': вход компаратора' }); });
   return rows;
 }
 
@@ -1520,31 +1500,42 @@ function instForm(inst, v) {
       <label>Адрес образа</label><input type="text" class="mono" name="bootAddr" style="width:116px" value="${esc(inst.bootAddr)}" ${fi.boot ? '' : 'disabled'}>
       <div class="full readout">${fi.fpgaConfig ? `ПЛИС: <b>0x000000</b>.. · ` : ''}${fi.boot ? `образ: <b>${hex6(fi.bootAddr)}</b>..${hex6(fi.bootAddr + BOOT_REGION - 1)} · ` : ''}свободно: <b>${hex6(fi.user)}</b>, ${Math.round(fi.userSize / 1024)} кБайт</div>`;
   }
-  if (inst.type === 'adc121') {
-    const ai = adc121Info(model, inst), pe = pllOf(model).errs.length;
+  if (inst.type === 'adc') {
+    const chs = adcChannels(inst), pe = pllOf(model).errs.length;
+    const ai = adc121Info(model, adcCh(inst, 0));
     const avgOpts = []; for (let k = 0; k <= 12; k++) avgOpts.push([k, `${Math.pow(2, k)} отсч.`]);
     const bad = ai.budget < ADC121_DELAY_NS || ai.sclk < ADC121_SCLK_MIN || ai.sclk > ADC121_SCLK_MAX;
-    h += `<label>Плата</label><select name="adcBoard">${opts(Object.entries(ADC121_BOARDS).map(([k, b]) => [k, b.title]), inst.board)}</select>
-      <label>Режим платы</label><select name="adcMode">${opts([['dc', 'DC (без смещения)'], ['ac', 'AC (смещение 1.65 В)']], inst.mode)}</select>
-      <label>Такт блока, МГц</label><input type="number" name="clkMHz" min="0" max="200" step="any" value="${inst.clkMHz ?? 0}" style="width:90px"
-        title="Свой rPLL для кадра АЦП: 96 МГц - SCLK ровно 8 МГц (предел ADC121S051). 0 - такт шины. У всех блоков ADC121 со своим тактом частота одна">
+    h += `<label>Такт блока, МГц</label><input type="number" name="clkMHz" min="0" max="200" step="any" value="${inst.clkMHz ?? 0}" style="width:90px"
+        title="Свой rPLL для кадров АЦП: 96 МГц - SCLK ровно 8 МГц (предел ADC121S051). 0 - такт шины">
       <label>SCLK, МГц</label><input type="number" name="sclkMHz" min="1" max="12" step="any" value="${inst.sclkHz / 1e6}" style="width:90px">
       <label>Среднее</label><select name="avgShift">${opts(avgOpts, inst.avgShift)}</select>
       <label>CS → SCLK, полупериодов</label><input type="number" name="css" min="1" max="15" value="${inst.css}" style="width:90px"
         title="Выдержка от спада CS до первого такта SCLK: запас на медленный оптрон в цепи CS">
       <label>Пауза между кадрами, полупериодов</label><input type="number" name="quiet" min="1" max="15" value="${inst.quiet ?? 2}" style="width:90px"
         title="QUIET: CS# в 1 между кадрами (t_QUIET АЦП - не меньше 50 нс)">
-      <label>Вывод CS</label><select name="csInv">${opts([['0', 'прямой (CS# = 0 - кадр)'], ['1', 'инвертированный']], inst.csInv ? '1' : '0')}</select>
-      ${inst.board === 'adc_c' ? `<label>Шунт, мОм</label><input type="number" name="shuntMohm" step="any" min="0.01" value="${inst.shuntMohm ?? 0.16667}" style="width:90px"
-        title="Сопротивление шунта: 3 × 0,5 мОм = 0,1667 (±99 А), 1 × 0,5 мОм (±33 А). Масштаб = 3,3 В / 4096 / (Rш · 100)">` : ''}
-      <label>Масштаб, мк${esc(ai.board.unit)}/код</label><input type="number" name="scaleUv" value="${inst.scaleUv}" style="width:110px">
-      <label>Смещение, код</label><input type="number" name="offset" min="0" max="4095" step="any" value="${inst.offset}" style="width:90px"
-        title="Код при нулевом входе, можно с дробью (среднее по 4096 отсчётам при нуле)">
+      <label>Среднее за окно</label><select name="wavg" title="Отсчёты между закрытиями окна (CR.WCLOSE), WMEAN = код · 16: обратная связь регулятора, около 120 ячеек на канал">${opts([['1', 'есть (WMEAN)'], ['0', 'нет']], inst.wavg !== false ? '1' : '0')}</select>
       <div class="full readout">${pe ? '<span class="bad">нет частоты rPLL</span>' :
         `такт ${ai.own ? `<b>${fmt(ai.f / 1e6)} МГц</b> (свой rPLL)` : 'шины ' + fmt(ai.f / 1e6) + ' МГц'} ·
-         DIV = <b>${ai.div}</b> · SCLK <b class="${bad ? 'bad' : 'good'}">${fmt(ai.sclk / 1e6)} МГц</b> · до <b>${Math.round(ai.rate / 1000)}</b> тыс. отсч./с,
-         средних ${Math.round(ai.avgRate)} в с<br>запас на задержку DOUT ${Math.round(ai.budget)} нс · 1 код = ${fmt(ai.scale / 1e6)} ${esc(ai.board.unit)},
-         полная шкала ${fmt((4095 - ai.offset) * ai.scale / 1e6)} ${esc(ai.board.unit)}`}</div>`;
+         DIV = <b>${ai.div}</b> · SCLK <b class="${bad ? 'bad' : 'good'}">${fmt(ai.sclk / 1e6)} МГц</b> · до <b>${Math.round(ai.rate / 1000)}</b> тыс. отсч./с на канал ·
+         запас на задержку DOUT ${Math.round(ai.budget)} нс`}</div>`;
+    h += `</div><h3 class="pane-sub">Каналы (платы измерения)</h3><div class="form">`;
+    chs.forEach((c, k) => {
+      const ci = adc121Info(model, adcCh(inst, k));
+      h += `<div class="full readout"><b>Канал ${k}</b> - регистры с +0x${(k * 0x40).toString(16).toUpperCase()}, в Си ${esc(inst.name)}_${esc(c.name)}
+          ${chs.length > 1 ? `<button type="button" class="mini" data-act="delch" data-ch="${k}" title="Убрать канал">✕</button>` : ''}</div>
+        <label>Имя канала</label><input type="text" class="mono" name="ch_name" data-ch="${k}" value="${esc(c.name)}" style="width:90px">
+        <label>Плата</label><select name="ch_board" data-ch="${k}">${opts(Object.entries(ADC121_BOARDS).map(([kk, b]) => [kk, b.title]), c.board)}</select>
+        <label>Режим платы</label><select name="ch_mode" data-ch="${k}">${opts([['dc', 'DC (без смещения)'], ['ac', 'AC (смещение 1.65 В)']], c.mode)}</select>
+        <label>Вывод CS</label><select name="ch_csInv" data-ch="${k}">${opts([['0', 'прямой (CS# = 0 - кадр)'], ['1', 'инвертированный']], c.csInv ? '1' : '0')}</select>
+        ${c.board === 'adc_c' ? `<label>Шунт, мОм</label><input type="number" name="ch_shunt" data-ch="${k}" step="any" min="0.01" value="${c.shuntMohm ?? 0.16667}" style="width:90px"
+          title="Сопротивление шунта: 3 × 0,5 мОм = 0,1667 (±99 А). Масштаб = 3,3 В / 4096 / (Rш · 100)">` : ''}
+        <label>Масштаб, мк${esc(ci.board.unit)}/код</label><input type="number" name="ch_scale" data-ch="${k}" value="${c.scaleUv}" style="width:110px">
+        <label>Смещение, код</label><input type="number" name="ch_offset" data-ch="${k}" min="0" max="4095" step="any" value="${c.offset}" style="width:90px"
+          title="Код при нулевом входе, можно с дробью">
+        ${inst['cmp' + k] != null ? `<label>Активный уровень CMP</label><select name="ch_cmpPol" data-ch="${k}">${opts([['low', 'низкий (LM311)'], ['high', 'высокий']], c.cmpPol || 'low')}</select>` : ''}
+        <div class="full readout">1 код = ${fmt(ci.scale / 1e6)} ${esc(ci.board.unit)}, полная шкала ${fmt((4095 - ci.offset) * ci.scale / 1e6)} ${esc(ci.board.unit)}</div>`;
+    });
+    if (chs.length < ADC_MAX_CH) h += `<div class="full"><button type="button" data-act="addch">+ Канал (плата измерения)</button></div>`;
   }
   if (inst.type === 'sifu') {
     const si = sifuInfo(model, inst), pe = pllOf(model).errs.length;
@@ -1569,34 +1560,6 @@ function instForm(inst, v) {
       <div class="full readout">${pe ? '<span class="bad">нет частоты rPLL</span>' :
         `DIV = <b>${u.div}</b> · фактически <b class="${bad ? 'bad' : 'good'}">${Math.round(u.real)} бит/с</b> (ошибка ${u.err.toFixed(2)} %)`}</div>`;
   }
-  if (inst.type === 'pireg') {
-    const frac = Number(inst.frac);
-    h += `<label>Дробных бит KP, KI</label><input type="number" name="frac" min="4" max="16" value="${inst.frac}" style="width:90px"
-        title="Коэффициент = K / 2^FRAC: при 12 значение 4096 - это 1,0, наименьший шаг 1/4096">
-      <label>Предел выхода после сброса</label><input type="number" name="omax" min="0" max="65535" value="${inst.omax}" style="width:110px"
-        title="Нижний предел - 0. Для угла СИФУ - AMAX (120 эл. град.: 3333 тика при 500 кГц и 50 Гц)">
-      <div class="full readout">K = 1,0 - это ${Math.pow(2, frac)}; шаг ${fmt(1 / Math.pow(2, frac))}; задание и коэффициенты пишет программа</div>`;
-  }
-  if (inst.type === 'adc121')
-    h += `<label>Среднее за окно</label><select name="wavg" title="Отсчёты между закрытиями окна (связь win или CR.WCLOSE), WMEAN = код · 16: обратная связь регулятора, около 120 ячеек">${opts([['1', 'есть (WMEAN)'], ['0', 'нет']], inst.wavg || linkSrc(model, inst, 'win') ? '1' : '0')}</select>`;
-  if (LINK_INS[inst.type]) {
-    h += `</div><h3 class="pane-sub">Прямые связи</h3><div class="form">`;
-    for (const [k, [kin, txt]] of Object.entries(LINK_INS[inst.type])) {
-      const cur = (inst.links || {})[k] || '';
-      const choices = [['', '— нет (через процессор) —']];
-      for (const i of model.periph) if (i !== inst)
-        for (const [o, [kout, otxt]] of Object.entries(LINK_OUTS[i.type] || {}))
-          if (linkOk(kin, kout)) choices.push([`${i.name}.${o}`, `${i.name}.${o} - ${otxt}`]);
-      if (cur && !choices.some(c => c[0] === cur)) choices.push([cur, `${cur} (нет такого выхода)`]);
-      h += `<label title="${esc(txt)}">${esc(k)}</label><select name="link_${esc(k)}" title="${esc(txt)}">${opts(choices, cur)}</select>`;
-    }
-    const outs = Object.entries(LINK_OUTS[inst.type] || {}).map(([o, [, otxt]]) => {
-      const users = model.periph.flatMap(i => Object.entries(i.links || {}).filter(([, s]) => s === `${inst.name}.${o}`).map(([k]) => `${i.name}.${k}`));
-      return `<b>${esc(o)}</b> (${esc(otxt)})` + (users.length ? ' → ' + esc(users.join(', ')) : '');
-    });
-    if (outs.length) h += `<div class="full readout">Выходы: ${outs.join('; ')}</div>`;
-    h += `<p class="note full">Связь работает в ПЛИС без процессора: блоки обмениваются значениями и стробами каждый такт. Не подключённый вход - работа через регистры.</p>`;
-  }
   h += `</div><h3 class="pane-sub">Выводы</h3>`;
   const rows = instSignals(inst).map(g => ({ key: g.key, label: g.label }));
   if (inst.type === 'gpio') {
@@ -1619,18 +1582,13 @@ function instForm(inst, v) {
     в soc.h); прошивка может сменить их регистрами. UART программатора платы: Tang Nano 9K (BL702) - выводы 17 (TX) и 18 (RX),
     Tang Primer 20K (BL616 на Dock) - M11 (TX) и T13 (RX).</p>`;
   if (inst.type === 'tm1638') h += `<p class="note">Знакогенератор занимает 1 блок BSRAM; делители интерфейса считаются от частоты шины.</p>`;
-  if (inst.type === 'adc121') h += pinRowsHtml(inst, [], false) + (inst.cmp == null
-      ? `<button type="button" data-act="addcmp">+ Вход компаратора (CMP)</button>`
-      : `<label class="inline">Активный уровень CMP <select name="cmpPol">${opts([['low', 'низкий (LM311)'], ['high', 'высокий']], inst.cmpPol)}</select></label>
-         <button type="button" data-act="delcmp">Убрать вход компаратора</button>`) +
-    `<p class="note">Плата ADC_V: CS, SCLK, SDO - через цифровые изоляторы (3.3 В).
-    ADC_C: ток через шунт и INA181A3 (100 В/В), ноль - код 2048 (опора 1,65 В), вход CMP - выход компаратора защиты U2 (LM311, мгновенный ток,
-    только положительная полуволна; низкий уровень - перегрузка).`;
-  if (inst.type === 'adc121') h += `<p class="note"> Пересчёт:
-    величина = (код - смещение) · масштаб. ADC_V, режим DC (исходная плата, 5 × 360 кОм) - 323242 мкВ/код по issue Artel-Inc/temporary#3;
-    ниже ~40 В плата нелинейна (код у нуля - около 68). Режим AC - смещение около 2045. Плата стенда (доработана по issue, JP1 и JP3 разомкнуты,
-    JP4 в положении 2–3) - 222181 мкВ/код, ноль 0, полоса 22 кГц. Второй блок (ADC_C) добавляется так же, со своими выводами.
-    В Си: ${esc(inst.name)}_SCALE_U, ${esc(inst.name)}_OFFSET, ADC121_CAL(${esc(inst.name)}).</p>`;
+  if (inst.type === 'adc') h += adcChannels(inst).map((c, k) => inst['cmp' + k] == null
+      ? `<button type="button" data-act="addcmp" data-ch="${k}">+ ${esc(c.name)}: вход компаратора (CMP)</button> `
+      : `<button type="button" data-act="delcmp" data-ch="${k}">Убрать вход компаратора ${esc(c.name)}</button> `).join('') +
+    `<p class="note">Каналы - платы измерения: ADC_V (напряжение; CS, SCLK, SDO - через цифровые изоляторы, 3.3 В) и ADC_C (ток через шунт
+    и INA181A3, ноль - код 2048 при опоре 1,65 В; вход CMP - выход компаратора защиты U2, LM311, низкий уровень - перегрузка).
+    Пересчёт: величина = (код - смещение) · масштаб; плата стенда ADC_V - 222181 мкВ/код, ADC_C - 45662 мкА/код, ноль 2049,3.
+    В Си: ${esc(inst.name)}_&lt;канал&gt; - указатель на регистры канала (ADC121_TypeDef), ${esc(inst.name)}_&lt;канал&gt;_SCALE_U, _OFFSET_M, ADC121_CAL(${esc(inst.name)}_&lt;канал&gt;).</p>`;
   if (inst.type === 'sifu') h += `<p class="note">Входы AB…AC - выходы платы синхронизации NSB (OUT_AB…OUT_AC, 0 - оптрон открыт). Высокий уровень NSB -
     около 1,8 В (делитель 47k/27k от 5 В): на Tang Nano 9K - банк 3 (1,8 В, выводы 79–86), для банков 3,3 В нужен другой делитель NSB.
     Выходы VS1…VS6 - на драйверы тиристоров в порядке включения: VS1, VS3, VS5 - катодная группа фаз A, B, C; VS4, VS6, VS2 - анодная.
@@ -1665,38 +1623,46 @@ function wireInstForm(box, inst) {
   q('base').addEventListener('change', e => { inst.base = e.target.value.trim().replace(/_/g, ''); changed(); });
   for (const k of ['irq', 'parity']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = e.target.value; changed(); });
   for (const k of ['width', 'stop', 'fifo', 'baud', 'sizeMB', 'div', 'delayTicks', 'pulseTicks']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
-  if (q('shuntMohm')) q('shuntMohm').addEventListener('change', e => {
-    inst.shuntMohm = Number(e.target.value);
-    if (inst.shuntMohm > 0) inst.scaleUv = Math.round(3.3 / 4096 / (inst.shuntMohm * 1e-3 * 100) * 1e6);
-    changed();
-  });
-  if (q('cmpPol')) q('cmpPol').addEventListener('change', e => { inst.cmpPol = e.target.value; changed(); });
-  const addCmp = box.querySelector('[data-act=addcmp]'), delCmp = box.querySelector('[data-act=delcmp]');
-  if (addCmp) addCmp.addEventListener('click', () => pinPicker({ id: `${inst.name}.cmp`, inst, key: 'cmp', name: `${inst.name} CMP`, dir: 'input', def: defNet(inst, 'cmp') }));
-  if (delCmp) delCmp.addEventListener('click', () => { inst.cmp = null; changed(); });
-  if (q('adcBoard')) q('adcBoard').addEventListener('change', e => {
-    inst.board = e.target.value;
-    const b = ADC121_BOARDS[inst.board];
-    inst.scaleUv = b.scale; inst.offset = b.offset[inst.mode] || 0;          //Пересчёт платы по умолчанию
-    changed();
-  });
-  if (q('adcMode')) q('adcMode').addEventListener('change', e => {
-    inst.mode = e.target.value;
-    inst.offset = (ADC121_BOARDS[inst.board] || ADC121_BOARDS.raw).offset[inst.mode] || 0;
-    changed();
-  });
   if (q('sclkMHz')) q('sclkMHz').addEventListener('change', e => { inst.sclkHz = Math.round(Number(e.target.value) * 1e6); changed(); });
-  if (q('csInv')) q('csInv').addEventListener('change', e => { inst.csInv = e.target.value === '1'; changed(); });
-  for (const k of ['avgShift', 'css', 'quiet', 'clkMHz', 'scaleUv', 'offset']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
+  for (const k of ['avgShift', 'css', 'quiet', 'clkMHz']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
   if (q('sim')) q('sim').addEventListener('change', e => { inst.sim = e.target.value === '1'; changed(); });
   if (q('wavg')) q('wavg').addEventListener('change', e => { inst.wavg = e.target.value === '1'; changed(); });
-  for (const k of ['frac', 'omax']) if (q(k) && inst.type === 'pireg') q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
-  box.querySelectorAll('select[name^=link_]').forEach(s => s.addEventListener('change', () => {
-    inst.links = Object.assign({}, inst.links || {});
-    const k = s.name.slice(5);
-    if (s.value) inst.links[k] = s.value; else delete inst.links[k];
-    changed();
-  }));
+  if (inst.type === 'adc') {
+    const ch = el => adcChannels(inst)[Number(el.dataset.ch)];
+    box.querySelectorAll('[name^=ch_]').forEach(f => f.addEventListener('change', e => {
+      const c = ch(f), v = e.target.value;
+      switch (f.name) {
+        case 'ch_name': c.name = v.trim(); break;
+        case 'ch_board': { c.board = v; const b = ADC121_BOARDS[v]; c.scaleUv = b.scale; c.offset = b.offset[c.mode] || 0; break; }
+        case 'ch_mode': c.mode = v; c.offset = (ADC121_BOARDS[c.board] || ADC121_BOARDS.raw).offset[v] || 0; break;
+        case 'ch_csInv': c.csInv = v === '1'; break;
+        case 'ch_shunt': c.shuntMohm = Number(v); if (c.shuntMohm > 0) c.scaleUv = Math.round(3.3 / 4096 / (c.shuntMohm * 1e-3 * 100) * 1e6); break;
+        case 'ch_scale': c.scaleUv = Number(v); break;
+        case 'ch_offset': c.offset = Number(v); break;
+        case 'ch_cmpPol': c.cmpPol = v; break;
+      }
+      changed();
+    }));
+    const add = box.querySelector('[data-act=addch]');
+    if (add) add.addEventListener('click', () => {
+      const k = adcChannels(inst).length;
+      inst.channels.push({ name: 'CH' + k, board: 'raw', mode: 'dc', csInv: false, cmpPol: 'low', scaleUv: 1000000, offset: 0 });
+      for (const s of ['cs', 'sclk', 'sdo', 'cmp']) if (!((s + k) in inst)) inst[s + k] = null;
+      changed();
+    });
+    box.querySelectorAll('[data-act=delch]').forEach(b => b.addEventListener('click', () => {
+      const k = Number(b.dataset.ch), n = adcChannels(inst).length;
+      inst.channels.splice(k, 1);
+      for (let i = k; i < n; i++) for (const s of ['cs', 'sclk', 'sdo', 'cmp']) inst[s + i] = i + 1 < n ? inst[s + (i + 1)] : null;
+      for (const s of ['cs', 'sclk', 'sdo', 'cmp']) delete inst[s + (n - 1)];
+      changed();
+    }));
+    box.querySelectorAll('[data-act=addcmp]').forEach(b => b.addEventListener('click', () => {
+      const k = Number(b.dataset.ch), key = 'cmp' + k;
+      pinPicker({ id: `${inst.name}.${key}`, inst, key, name: `${inst.name} ${adcChannels(inst)[k].name} CMP`, dir: 'input', def: defNet(inst, key) });
+    }));
+    box.querySelectorAll('[data-act=delcmp]').forEach(b => b.addEventListener('click', () => { inst['cmp' + b.dataset.ch] = null; changed(); }));
+  }
   if (q('sawKHz')) q('sawKHz').addEventListener('change', e => { inst.sawHz = Math.round(Number(e.target.value) * 1000); changed(); });
   if (q('fpgaConfig')) q('fpgaConfig').addEventListener('change', e => {
     inst.fpgaConfig = e.target.value === '1';
