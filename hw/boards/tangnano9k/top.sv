@@ -62,14 +62,14 @@ module top #(
     output wire         VS6,                  //вывод 56
     output wire         GRID,                 //вывод 51
     //ADC
-    output wire         ADC_V_CS,             //вывод 82
+    output wire         ADC_V_CS,             //вывод 48
     output wire         ADC_V_SCLK,           //вывод 70
     input wire          ADC_V_SDO,            //вывод 71
-    input wire          ADC_V_CMP,            //вывод 48
-    output wire         ADC_C_CS,             //вывод 79
+    input wire          ADC_V_CMP,            //вывод 82
+    output wire         ADC_C_CS,             //вывод 32
     output wire         ADC_C_SCLK,           //вывод 72
     input wire          ADC_C_SDO,            //вывод 73
-    input wire          ADC_C_CMP             //вывод 32
+    input wire          ADC_C_CMP             //вывод 79
 `ifndef GWSOC_NO_JTAG_PINS
     //Выводы JTAG ПЛИС: для примитива GW_JTAG (отладчик), назначения в .cst не требуются
    ,input  logic        tck_pad_i, tms_pad_i, tdi_pad_i,

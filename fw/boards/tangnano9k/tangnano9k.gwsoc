@@ -68,8 +68,8 @@
       "type": "adc",
       "name": "ADC",
       "base": "auto",
-      "cs0": 82, "sclk0": 70, "sdo0": 71, "cmp0": 48,
-      "cs1": 79, "sclk1": 72, "sdo1": 73, "cmp1": 32,
+      "cs0": 48, "sclk0": 70, "sdo0": 71, "cmp0": 82,
+      "cs1": 32, "sclk1": 72, "sdo1": 73, "cmp1": 79,
       "clkMHz": 54,
       "sclkHz": 6750000,
       "css": 1,
@@ -105,10 +105,10 @@
     "27": { "net": "GPIO[2]" },
     "29": { "net": "VS2" },
     "30": { "net": "VS5" },
-    "32": { "net": "ADC_C_CMP" },
+    "32": { "net": "ADC_C_CS" },
     "36": { "net": "DI3" },
     "39": { "net": "RO3" },
-    "48": { "net": "ADC_V_CMP" },
+    "48": { "net": "ADC_V_CS" },
     "51": { "net": "GRID" },
     "52": { "net": "CLOCK" },
     "56": { "net": "VS6" },
@@ -123,8 +123,8 @@
     "75": { "net": "DI1" },
     "76": { "net": "RO2" },
     "77": { "net": "DI2" },
-    "79": { "net": "ADC_C_CS" },
-    "82": { "net": "ADC_V_CS" }
+    "79": { "net": "ADC_C_CMP" },
+    "82": { "net": "ADC_V_CMP" }
   },
   "build": { "toolchain": "gowin", "placeOption": "1", "loadingRate": "25.000" }
 }
