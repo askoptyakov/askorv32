@@ -27,9 +27,12 @@
  *              обратной связи. Выбранный параметр мигает - его можно менять; через 5 с без нажатий -
  *              ток и напряжение по очереди через 2 с. Ток и напряжение - среднее окон за 0.5 с.
  *              Светодиоды: 1 - сеть, 2 - нет синхронизации, 3 - импульсы (EN), 4 - имитатор,
- *              5 - ограничение тока, 6 - регулирование.
+ *              5 - ограничение тока, 6 - регулирование, 7 - управление с ПК.
  *              Терминал (115200 8-N-1, cp1251; Enter - состояние): u <В>, i <А>, a <град.>,
  *              ku <KP> <KI>, ki <KP> <KI> (K * 4096), d - платы АЦП подробно, m <0..3> - режим (без DI).
+ *              Пульт на ПК (плагин Eclipse «Пульт выпрямителя», sw/rectgui): строки «@...» - без эха,
+ *              ответы «#...»; управление с ПК (режим, импульсы) - вместо DI, пока ПК на связи; осциллограмма
+ *              U и I - кадр 20 мс раз в секунду с запуском по фронту. Протокол - hw/info/rectifier_gui.md.
  *****************************************************************************************
  */
 
@@ -134,6 +137,7 @@ static int parse_two(const char *s, uint32_t *a, uint32_t *b) {
  * --------------------------------------------------------------------------------------------- */
 #define ADC_PAUSE_MS		20U			//Пауза с поднятым CS перед пуском
 #define ADC_CHECK_MS		100U		//Нет годных отсчётов столько при ошибках кадра - перезапуск
+#define ADC_AVGSH			4U			//Среднее MEAN по 2^4 = 16 отсчётам (около 40 мкс) - точки осциллограммы
 
 typedef struct
 {
@@ -147,13 +151,25 @@ typedef struct
 static AdcBoard brd_u = { ADC_V, { ADC_V_SCALE_U, ADC_V_OFFSET_M }, "ADC_V", 0, 0, 0, 0, 0 };
 static AdcBoard brd_i = { ADC_C, { ADC_C_SCALE_U, ADC_C_OFFSET_M }, "ADC_C", 0, 0, 0, 0, 0 };
 static AdcBoard *const brds[] = { &brd_u, &brd_i };
+
+/* Биты ошибок для пульта ПК (#S err=): текущие и защёлкнутые до команды @X */
+#define E_GRID				(1U << 0)	//Нет сети
+#define E_LOST				(1U << 1)	//Нет синхронизации (сейчас)
+#define E_LOSSF				(1U << 2)	//Была потеря синхронизации (SIFU SR.LOSSF)
+#define E_ADCU				(1U << 3)	//Плата напряжения: ошибки кадра или перезапуск
+#define E_ADCI				(1U << 4)	//Плата тока: ошибки кадра или перезапуск
+#define E_CMPU				(1U << 5)	//Вход CMP платы напряжения
+#define E_CMPI				(1U << 6)	//Вход CMP платы тока (защита по мгновенному току)
+#define E_MANY				(1U << 7)	//Включено несколько DI
+static uint32_t err_latch = 0U;
 #define NBRD	(sizeof brds / sizeof brds[0])
 
-/* Пуск: значения конфигуратора, пауза ADC_PAUSE_MS с поднятым CS (плата ADC_V на стенде после загрузки
-   ПЛИС иначе иногда отвечает одними единицами), непрерывные преобразования */
+/* Пуск: делитель SCLK из конфигуратора, среднее MEAN по 2^ADC_AVGSH отсчётам, пауза ADC_PAUSE_MS с поднятым
+   CS (плата ADC_V на стенде после загрузки ПЛИС иначе иногда отвечает одними единицами), непрерывные
+   преобразования. Средние за окно (WMEAN) от AVG не зависят */
 static void adc_start(void) {
 	for (uint32_t i = 0; i < NBRD; i++)
-		ADC121_Init(brds[i]->adc, brds[i]->adc->DIV & ADC121_DIV_MSK, brds[i]->adc->AVG & 0xFU);
+		ADC121_Init(brds[i]->adc, brds[i]->adc->DIV & ADC121_DIV_MSK, ADC_AVGSH);
 	delay_ms(ADC_PAUSE_MS);
 	for (uint32_t i = 0; i < NBRD; i++) {
 		AdcBoard *b = brds[i];
@@ -169,7 +185,11 @@ static void adc_poll(void) {
 	for (uint32_t i = 0; i < NBRD; i++) {
 		AdcBoard *b = brds[i];
 		uint32_t f = ADC121_GetFlags(b->adc) & (ADC121_SR_ERR | ADC121_SR_CMPF);
-		if (f) { ADC121_ClearFlags(b->adc, f); if (f & ADC121_SR_ERR) b->errs++; }
+		if (f) {
+			ADC121_ClearFlags(b->adc, f);
+			if (f & ADC121_SR_ERR) { b->errs++; err_latch |= E_ADCU << i; }
+			if (f & ADC121_SR_CMPF) err_latch |= E_CMPU << i;
+		}
 		if (b->t_start) {
 			if (now >= b->t_start) {
 				b->t_start = 0U;
@@ -184,6 +204,7 @@ static void adc_poll(void) {
 		if (c == b->cnt_chk && (f & ADC121_SR_ERR) && (b->adc->CR & ADC121_CR_EN)) {
 			ADC121_Stop(b->adc);
 			b->t_start = now + ms_ticks(ADC_PAUSE_MS);
+			err_latch |= E_ADCU << i;
 			if (b->restarts++ == 0U) {
 				UART_PutText("\r\n"); UART_PutText(b->name);
 				UART_PutText(": нет годных отсчётов (ошибка кадра) - перезапуск преобразований\r\n");
@@ -268,6 +289,8 @@ static uint32_t mode = MODE_OFF, alpha10 = 1200U;		//Режим, угол вручную (десяты
 static uint32_t pending = 0U;
 static uint32_t cmd_mode __attribute__((unused)) = MODE_OFF;	//Режим командой m (без DI)
 static uint64_t hold_end = 0U;
+static uint32_t remote = 0U, pc_mode = MODE_GRID, pc_on = 0U;	//Управление с ПК: есть, режим, импульсы
+static uint32_t local_mode = MODE_OFF, di_bits = 0U;			//Режим по DI (или m), входы DI1..DI3
 
 #if STAND_IO
 static void stand_init(void) {
@@ -283,8 +306,8 @@ static void stand_init(void) {
 }
 #endif
 
-/* Режим по входам (с подавлением дребезга) или по команде m */
-static uint32_t mode_now(void) {
+/* Местный режим: по входам (с подавлением дребезга) или по команде m */
+static uint32_t mode_local(void) {
 #if STAND_IO
 	static uint32_t raw_old = 0xFFU, stable = MODE_OFF;
 	static uint64_t since = 0U;
@@ -292,6 +315,7 @@ static uint32_t mode_now(void) {
 	GPIO_WRITE(RO1, d1);
 	GPIO_WRITE(RO2, d2);
 	GPIO_WRITE(RO3, d3);
+	di_bits = d1 | (d2 << 1) | (d3 << 2);
 	uint32_t n = d1 + d2 + d3;
 	uint32_t raw = n == 0U ? MODE_OFF : n > 1U ? MODE_MANY : d1 ? MODE_SIM : d2 ? MODE_GRID : MODE_REG;
 	uint64_t now = CORE_GetCycles();
@@ -302,6 +326,12 @@ static uint32_t mode_now(void) {
 #else
 	return cmd_mode;
 #endif
+}
+
+/* Режим: с ПК (пульт: @R 1, @M, @E), иначе местный. Входы опрашиваются всегда (RO, дребезг) */
+static uint32_t mode_now(void) {
+	local_mode = mode_local();
+	return remote ? (pc_on ? pc_mode : MODE_OFF) : local_mode;
 }
 
 static void apply_alpha(void) {
@@ -494,7 +524,7 @@ static void display(void) {
 	uint32_t sr = SIFU->SR, cr = SIFU->CR;
 	TM1638_WriteLeds(((sr & SIFU_SR_GRID) ? 1U : 0U) | ((sr & SIFU_SR_LOST) ? 2U : 0U) |
 	                 ((cr & SIFU_CR_EN) ? 4U : 0U) | ((cr & SIFU_CR_SIM) ? 8U : 0U) |
-	                 (cc ? 16U : 0U) | (mode == MODE_REG ? 32U : 0U));
+	                 (cc ? 16U : 0U) | (mode == MODE_REG ? 32U : 0U) | (remote ? 64U : 0U));
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -554,8 +584,242 @@ static void command(const char *line) {
 	reg_apply();
 }
 
+/* ---------------------------------------------------------------------------------------------
+ * Пульт на ПК (плагин Eclipse «Пульт выпрямителя», sw/rectgui). Строка от ПК начинается с '@' (эха
+ * нет), ответ на каждую - одна строка: «#S ...» (состояние), «#I ...» (сведения) или «#E ...»
+ * (не понял). Осциллограмма - сама, раз в секунду: «#W ...» и строки «#D U|C <смещение> <код hex3>...».
+ * ПК молчит PC_TIMEOUT_MS - управление снова местное, осциллограмма выключена. Протокол -
+ * hw/info/rectifier_gui.md
+ * --------------------------------------------------------------------------------------------- */
+#define PC_TIMEOUT_MS		3000U
+#define SCOPE_N				400U		//Точек на канал: 20 мс (период сети)
+#define SCOPE_US			50U			//Шаг, мкс (20 тыс. точек/с)
+#define SCOPE_MS			1000U		//Кадр раз в секунду
+#define SCOPE_LINE			50U			//Точек в строке #D
+#define SCOPE_LINES			(2U * SCOPE_N / SCOPE_LINE)
+#define SCOPE_HYST			16U			//Гистерезис запуска, кодов
+#define SCOPE_EDGE_FREE		2U			//Без запуска
+
+static uint16_t sc_u[SCOPE_N], sc_i[SCOPE_N];				//Кольцо отсчётов U и I
+static uint32_t sc_on = 0U, sc_src = 0U, sc_edge = 0U, sc_level = 2048U, sc_pre = SCOPE_N / 4U;
+static uint32_t sc_start = 0U, sc_trig = 0U, sc_seq = 0U, sc_lines = 0U;
+static uint64_t sc_next = 0U, pc_last = 0U;
+
+/* Приём: FIFO UART (16 байт) - в кольцо; вызывается и во время передачи и захвата */
+#define RX_RING				128U
+static char rx_ring[RX_RING];
+static uint32_t rx_head = 0U, rx_tail = 0U;
+
+static void rx_poll(void) {
+	int c;
+	while ((c = UART_GetChar()) >= 0) {
+		uint32_t nx = (rx_head + 1U) & (RX_RING - 1U);
+		if (nx != rx_tail) { rx_ring[rx_head] = (char)c; rx_head = nx; }
+	}
+}
+
+/* Строка из кольца: 1 - готова. Строки терминала - с эхом, «@...» - без */
+static int line_poll(char *buf, uint32_t size) {
+	static uint32_t n = 0U;
+	rx_poll();
+	if (UART_GetErrors()) UART_ClearErrors(UART_GetErrors());
+	while (rx_tail != rx_head) {
+		char c = rx_ring[rx_tail];
+		int echo = (n == 0U) ? (c != '@') : (buf[0] != '@');
+		rx_tail = (rx_tail + 1U) & (RX_RING - 1U);
+		if (c == '\r' || c == '\n') {
+			if (n == 0U && c == '\n') continue;				//LF после CR предыдущей строки
+			buf[n] = '\0';
+			if (buf[0] != '@') UART_PutString("\r\n");
+			n = 0U;
+			return 1;
+		}
+		if (c == '\b' || c == 0x7F) {						//Backspace: стереть последний байт
+			if (n > 0U) { n--; if (echo) UART_PutString("\b \b"); }
+			continue;
+		}
+		if (n < size - 1U) { buf[n++] = c; if (echo) UART_PutChar(c); }
+	}
+	return 0;
+}
+
+/* Передача: пока FIFO полон - приём и средние окон (шаги регулятора не теряются) */
+static void tx_char(char c) {
+	while (UART->TXDATA & UART_TXDATA_FULL) { rx_poll(); windows(); }
+	UART->TXDATA = (uint8_t)c;
+}
+
+static void tx_str(const char *s) { while (*s) tx_char(*s++); }
+
+static void tx_dec(int32_t v) {
+	char d[12];
+	int m = 0;
+	uint32_t u = v < 0 ? (uint32_t)(-v) : (uint32_t)v;
+	if (v < 0) tx_char('-');
+	do { d[m++] = (char)('0' + u % 10U); u /= 10U; } while (u);
+	while (m) tx_char(d[--m]);
+}
+
+static void tx_kv(const char *k, int32_t v) { tx_char(' '); tx_str(k); tx_char('='); tx_dec(v); }
+
+/* Ошибки: текущие и защёлкнутые */
+static uint32_t errors(void) {
+	uint32_t e = err_latch;
+	if (!SIFU_GridPresent()) e |= E_GRID;
+	if (SIFU_SyncLost()) e |= E_LOST;
+	if (ADC121_CmpActive(ADC_V)) e |= E_CMPU;
+	if (ADC121_CmpActive(ADC_C)) e |= E_CMPI;
+	if (!remote && local_mode == MODE_MANY) e |= E_MANY;
+	return e;
+}
+
+static void pc_status(void) {
+	tx_str("#S");
+	tx_kv("m", (int32_t)mode); tx_kv("r", (int32_t)remote); tx_kv("pm", (int32_t)pc_mode); tx_kv("on", (int32_t)pc_on);
+	tx_kv("en", (SIFU->CR & SIFU_CR_EN) != 0U); tx_kv("run", (int32_t)running()); tx_kv("cc", (int32_t)cc);
+	tx_kv("err", (int32_t)errors()); tx_kv("di", (int32_t)di_bits);
+	tx_kv("u", ADC121_Code16ToMilli(ADC121_CAL(ADC_V), show_u16));
+	tx_kv("i", ADC121_Code16ToMilli(ADC121_CAL(ADC_C), show_i16));
+	tx_kv("us", u_set_mv); tx_kv("il", i_lim_ma);
+	tx_kv("a", (int32_t)alpha10); tx_kv("ae", (int32_t)SIFU_TicksToDeg10(SIFU_GetAlphaEff()));
+	tx_kv("kpu", (int32_t)kp_u); tx_kv("kiu", (int32_t)ki_u); tx_kv("kpi", (int32_t)kp_i); tx_kv("kii", (int32_t)ki_i);
+	tx_kv("f", (int32_t)SIFU_GridFreq100()); tx_kv("st", (int32_t)steps_s);
+	tx_kv("ou", (int32_t)PIREG_GetOut(PI_U)); tx_kv("oi", (int32_t)PIREG_GetOut(PI_I));
+	tx_kv("sc", (int32_t)sc_on);
+	tx_str("\r\n");
+}
+
+static void pc_info(void) {
+	tx_str("#I fw=hw_rect");
+	tx_kv("io", STAND_IO); tx_kv("amax", (int32_t)SIFU_TicksToDeg10(amax));
+	tx_kv("n", SCOPE_N); tx_kv("dt", SCOPE_US); tx_kv("avg", 1 << ADC_AVGSH);
+	tx_kv("vs", ADC_V_SCALE_U); tx_kv("vo", ADC_V_OFFSET_M);
+	tx_kv("cs", ADC_C_SCALE_U); tx_kv("co", ADC_C_OFFSET_M);
+	tx_str("\r\n");
+}
+
+/* Захват кадра: точки U и I через SCOPE_US в кольцо - аппаратное среднее канала MEAN по 16 отсчётам (около
+   40 мкс): фильтр перед прореживанием, шум отсчётов платы тока - быстрый, мгновенный отсчёт DATA даёт СКО
+   около 10 кодов, среднее - около 2 (hw/info/rectifier_gui.md, «Шум сигнала тока»); запуск - переход уровня sc_level по фронту
+   sc_edge (0 - передний, 1 - задний) канала sc_src (0 - U, 1 - I) с гистерезисом; до запуска - не меньше
+   sc_pre точек. Запуска нет за два периода - кадр без запуска (sc_trig = 0). Занимает 20..60 мс */
+static void scope_capture(void) {
+	uint64_t dt = (uint64_t)MTIME_HZ / (1000000U / SCOPE_US), t = CORE_GetCycles();
+	uint32_t k = 0U, n = 0U, post = 0U, armed = 0U, trig = 0U;
+	uint64_t late = 0U, now;
+	uint32_t limit = (sc_edge == SCOPE_EDGE_FREE) ? SCOPE_N : sc_pre + 2U * SCOPE_N;
+	for (;;) {
+		while ((now = CORE_GetCycles()) < t) ;
+		if (now - t > late) late = now - t;						//Опоздание отсчёта: цикл не успел
+		t += dt;
+		uint32_t u = ADC121_GetMean(ADC_V), i = ADC121_GetMean(ADC_C);
+		sc_u[k] = (uint16_t)u; sc_i[k] = (uint16_t)i;
+		k = (k + 1U == SCOPE_N) ? 0U : k + 1U;
+		n++;
+		rx_poll();
+		if ((n & 7U) == 0U) windows();
+		if (trig) { if (--post == 0U) break; continue; }
+		if (n >= limit) break;
+		if (sc_edge == SCOPE_EDGE_FREE) continue;
+		uint32_t s = sc_src ? i : u;
+		if (sc_edge == 0U) { if (s + SCOPE_HYST <= sc_level) armed = 1U; else if (armed && s >= sc_level && n > sc_pre) trig = 1U; }
+		else               { if (s >= sc_level + SCOPE_HYST) armed = 1U; else if (armed && s <= sc_level && n > sc_pre) trig = 1U; }
+		if (trig) { post = SCOPE_N - 1U - sc_pre; if (post == 0U) break; }
+	}
+	sc_start = k;												//Самая старая точка
+	sc_trig = trig;
+	tx_str("#W");
+	tx_kv("seq", (int32_t)sc_seq++); tx_kv("n", SCOPE_N); tx_kv("dt", SCOPE_US); tx_kv("pre", (int32_t)sc_pre);
+	tx_kv("trig", (int32_t)trig); tx_kv("src", (int32_t)sc_src); tx_kv("edge", (int32_t)sc_edge); tx_kv("lvl", (int32_t)sc_level);
+	tx_kv("late", (int32_t)(late * 1000000U / MTIME_HZ));
+	tx_str("\r\n");
+	sc_lines = SCOPE_LINES;
+}
+
+/* Одна строка кадра за проход цикла: «#D U 0 7FF800...» */
+static void scope_line(void) {
+	static const char hex[] = "0123456789ABCDEF";
+	uint32_t ln = SCOPE_LINES - sc_lines, per = SCOPE_N / SCOPE_LINE;
+	uint32_t ch = ln / per, off = ln % per * SCOPE_LINE;
+	const uint16_t *b = ch ? sc_i : sc_u;
+	tx_str(ch ? "#D C " : "#D U ");
+	tx_dec((int32_t)off);
+	tx_char(' ');
+	for (uint32_t j = 0U, p = (sc_start + off) % SCOPE_N; j < SCOPE_LINE; j++) {
+		uint32_t v = b[p];
+		tx_char(hex[v >> 8]); tx_char(hex[(v >> 4) & 15U]); tx_char(hex[v & 15U]);
+		p = (p + 1U == SCOPE_N) ? 0U : p + 1U;
+	}
+	tx_str("\r\n");
+	sc_lines--;
+}
+
+/* Числа через пробел (до max): сколько прочитано, -1 - не число */
+static int pc_nums(const char *s, uint32_t *v, int max) {
+	int n = 0;
+	for (;;) {
+		while (*s == ' ') s++;
+		if (*s == '\0') return n;
+		if (*s < '0' || *s > '9' || n == max) return -1;
+		uint32_t x = 0U;
+		while (*s >= '0' && *s <= '9') x = x * 10U + (uint32_t)(*s++ - '0');
+		v[n++] = x;
+	}
+}
+
+/* @R 1: управление с ПК без удара - текущий местный режим продолжается */
+static void pc_remote(uint32_t on) {
+	if (on && !remote) {
+		pc_on = (mode >= MODE_SIM && mode <= MODE_REG);
+		if (pc_on) pc_mode = mode;
+	}
+	if (!on) pc_on = 0U;
+	remote = on;
+}
+
+static void pc_command(const char *s) {
+	uint32_t v[4];
+	char c = s[1];
+	const char *p = s + 2;
+	if (c == 'K') { c = (s[2] == 'U') ? 'k' : (s[2] == 'I') ? 'g' : '?'; p = s + 3; }
+	int n = pc_nums(p, v, 4), ok = (n >= 0);
+	switch (c) {
+	case 'S': ok = ok && n == 0; break;
+	case 'I': if (ok && n == 0) { pc_info(); return; } ok = 0; break;
+	case 'R': ok = ok && n == 1 && v[0] <= 1U; if (ok) pc_remote(v[0]); break;
+	case 'M': ok = ok && n == 1 && v[0] >= MODE_SIM && v[0] <= MODE_REG; if (ok) pc_mode = v[0]; break;
+	case 'E': ok = ok && n == 1 && v[0] <= 1U && remote; if (ok) pc_on = v[0]; break;
+	case 'U': ok = ok && n == 1 && v[0] <= 2000000U; if (ok) { u_set_mv = (int32_t)v[0]; reg_apply(); } break;
+	case 'L': ok = ok && n == 1 && v[0] <= 1000000U; if (ok) { i_lim_ma = (int32_t)v[0]; reg_apply(); } break;
+	case 'A': ok = ok && n == 1 && v[0] <= 1800U; if (ok) { alpha10 = v[0]; apply_alpha(); } break;
+	case 'k': ok = ok && n == 2 && v[0] <= 0xFFFFU && v[1] <= 0xFFFFU; if (ok) { kp_u = v[0]; ki_u = v[1]; reg_apply(); } break;
+	case 'g': ok = ok && n == 2 && v[0] <= 0xFFFFU && v[1] <= 0xFFFFU; if (ok) { kp_i = v[0]; ki_i = v[1]; reg_apply(); } break;
+	case 'T':
+		ok = ok && n == 4 && v[0] <= 1U && v[1] <= SCOPE_EDGE_FREE && v[2] <= ADC121_CODE_MAX && v[3] < SCOPE_N;
+		if (ok) { sc_src = v[0]; sc_edge = v[1]; sc_level = v[2]; sc_pre = v[3]; }
+		break;
+	case 'O': ok = ok && n == 1 && v[0] <= 1U; if (ok) { sc_on = v[0]; sc_next = 0U; if (!sc_on) sc_lines = 0U; } break;
+	case 'X': ok = ok && n == 0; if (ok) { err_latch = 0U; SIFU_ClearFlags(SIFU_SR_LOSSF); } break;
+	default: ok = 0; break;
+	}
+	if (!ok) { tx_str("#E "); tx_str(s); tx_str("\r\n"); return; }
+	pc_status();
+}
+
+/* Раз за проход: молчание ПК, защёлка потери синхронизации, осциллограмма */
+static void pc_poll(void) {
+	uint64_t now = CORE_GetCycles();
+	if ((remote || sc_on) && now - pc_last >= ms_ticks(PC_TIMEOUT_MS)) {
+		if (remote) UART_PutText("\r\nПульт ПК молчит 3 с - управление местное\r\n");
+		remote = pc_on = sc_on = sc_lines = 0U;
+	}
+	if (SIFU_GetFlags() & SIFU_SR_LOSSF) { SIFU_ClearFlags(SIFU_SR_LOSSF); err_latch |= E_LOSSF; }
+	if (sc_lines) scope_line();
+	else if (sc_on && now >= sc_next) { sc_next = now + ms_ticks(SCOPE_MS); scope_capture(); }
+}
+
 int main(void) {
-	char line[32];
+	char line[40];
 	uint64_t next = 0U;
 
 	GPIO_Init();
@@ -579,7 +843,8 @@ int main(void) {
 	             "Режим - командой m: 0 - импульсы сняты, 1 - имитатор и угол, 2 - сеть и угол, 3 - сеть и регулирование\r\n"
 #endif
 	             "TM1638: 1/2 - больше/меньше, 3 - коэффициенты, 4 - ограничение тока, 5 - задание U, 6 - угол, 7 - U, 8 - I\r\n"
-	             "Терминал: u <В>, i <А>, a <град.>, ku <KP> <KI>, ki <KP> <KI> (K * 4096), d - платы АЦП; Enter - состояние\r\n");
+	             "Терминал: u <В>, i <А>, a <град.>, ku <KP> <KI>, ki <KP> <KI> (K * 4096), d - платы АЦП; Enter - состояние\r\n"
+	             "Пульт на ПК (Eclipse): строки @..., ответы #...\r\n");
 	set_mode(mode_now());
 	while (1) {
 		uint32_t m = mode_now();
@@ -596,9 +861,10 @@ int main(void) {
 			steps_old = steps;
 			apply_alpha();
 		}
-		if (!(UART->IP & UART_IT_RXWM)) continue;
-		if (UART_GetErrors()) UART_ClearErrors(UART_GetErrors());
-		if (UART_ReadLine(line, sizeof line, 1) != 0) command(line);
+		pc_poll();
+		if (!line_poll(line, sizeof line)) continue;
+		if (line[0] == '@') { pc_last = CORE_GetCycles(); pc_command(line); continue; }
+		if (line[0] != '\0') command(line);
 		status();
 		UART_PutText("> ");
 	}

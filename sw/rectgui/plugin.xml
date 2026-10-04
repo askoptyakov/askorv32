@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<!-- Пульт выпрямителя askoRV32: панель управления выпрямителем по UART и кнопка её открытия -->
+<plugin>
+   <extension point="org.eclipse.ui.views">
+      <category id="ru.askorv32" name="%category"/>
+      <view
+            id="ru.askorv32.rectgui.view"
+            name="%viewName"
+            category="ru.askorv32"
+            icon="icons/rect.png"
+            class="ru.askorv32.rectgui.RectView">
+      </view>
+   </extension>
+
+   <extension point="org.eclipse.ui.commands">
+      <command
+            id="ru.askorv32.rectgui.open"
+            name="%openCommand"
+            description="%openCommandDesc"
+            defaultHandler="ru.askorv32.rectgui.OpenViewHandler">
+      </command>
+   </extension>
+
+   <extension point="org.eclipse.ui.menus">
+      <menuContribution locationURI="toolbar:org.eclipse.ui.main.toolbar?after=additions">
+         <toolbar id="ru.askorv32.rectgui.toolbar">
+            <command commandId="ru.askorv32.rectgui.open" icon="icons/rect.png" tooltip="%openCommandDesc" style="push"/>
+         </toolbar>
+      </menuContribution>
+   </extension>
+</plugin>

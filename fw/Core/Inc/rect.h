@@ -20,11 +20,11 @@
 /* Окно блока: SIFU, PI_U, PI_I - по 0x40 байт */
 typedef struct
 {
-  SIFU_TypeDef  SIFU;
+  SIFU_TypeDef  sifu;				//+0x00 (указатель SIFU в soc.h); поля - строчными: имена SIFU, PI_U, PI_I - макросы soc.h
   uint32_t      reserved0[(0x40U - sizeof(SIFU_TypeDef)) / 4U];
-  PIREG_TypeDef PI_U;
+  PIREG_TypeDef pi_u;				//+0x40 (PI_U)
   uint32_t      reserved1[(0x40U - sizeof(PIREG_TypeDef)) / 4U];
-  PIREG_TypeDef PI_I;
+  PIREG_TypeDef pi_i;				//+0x80 (PI_I)
 } RECT_TypeDef;
 
 #endif /* __RECT_H */
