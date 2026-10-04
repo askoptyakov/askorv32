@@ -136,8 +136,9 @@ static int parse_two(const char *s, uint32_t *a, uint32_t *b) {
  * Платы измерения: каналы блока ADC
  * --------------------------------------------------------------------------------------------- */
 #define ADC_PAUSE_MS		20U			//Пауза с поднятым CS перед пуском
-#define ADC_CHECK_MS		100U		//Нет годных отсчётов столько при ошибках кадра - перезапуск
-#define ADC_AVGSH			4U			//Среднее MEAN по 2^4 = 16 отсчётам (около 40 мкс) - точки осциллограммы
+#define ADC_RESTART_MS		500U		//Повторный пуск через столько после первого (см. adc_poll)
+#define ADC_CHECK_MS		100U		//Годных отсчётов за столько меньше половины при ошибках кадра - перезапуск
+#define ADC_AVG_US			50U			//Среднее MEAN - не длиннее шага точки осциллограммы (SCOPE_US)
 
 typedef struct
 {
@@ -162,14 +163,19 @@ static AdcBoard *const brds[] = { &brd_u, &brd_i };
 #define E_CMPI				(1U << 6)	//Вход CMP платы тока (защита по мгновенному току)
 #define E_MANY				(1U << 7)	//Включено несколько DI
 static uint32_t err_latch = 0U;
+static uint64_t adc_t0 = 0U;			//Первый пуск преобразований
+static uint32_t adc_avgsh = 0U;		//Среднее MEAN по 2^adc_avgsh отсчётам: 16 при 394 тыс. отсчётов/с, 8 при 198 тыс.
 #define NBRD	(sizeof brds / sizeof brds[0])
 
-/* Пуск: делитель SCLK из конфигуратора, среднее MEAN по 2^ADC_AVGSH отсчётам, пауза ADC_PAUSE_MS с поднятым
+/* Пуск: делитель SCLK из конфигуратора, среднее MEAN по 2^adc_avgsh отсчётам - столько, сколько АЦП успевает за
+   ADC_AVG_US (частота отсчётов зависит от SCLK: со шлейфами 50 см на стенде 9K - 3,38 МГц), пауза ADC_PAUSE_MS с поднятым
    CS (плата ADC_V на стенде после загрузки ПЛИС иначе иногда отвечает одними единицами), непрерывные
    преобразования. Средние за окно (WMEAN) от AVG не зависят */
 static void adc_start(void) {
+	uint32_t n = ADC121_GetRate(ADC_V) / (1000000U / ADC_AVG_US);		//Отсчётов за шаг точки
+	for (adc_avgsh = 0U; (2U << adc_avgsh) <= n && adc_avgsh < 8U; adc_avgsh++) ;
 	for (uint32_t i = 0; i < NBRD; i++)
-		ADC121_Init(brds[i]->adc, brds[i]->adc->DIV & ADC121_DIV_MSK, ADC_AVGSH);
+		ADC121_Init(brds[i]->adc, brds[i]->adc->DIV & ADC121_DIV_MSK, adc_avgsh);
 	delay_ms(ADC_PAUSE_MS);
 	for (uint32_t i = 0; i < NBRD; i++) {
 		AdcBoard *b = brds[i];
@@ -177,11 +183,24 @@ static void adc_start(void) {
 		b->cnt_chk = ADC121_GetCount(b->adc);
 		b->t_chk = CORE_GetCycles();
 	}
+	adc_t0 = CORE_GetCycles();
 }
 
 /* Ошибки кадра и перезапуск платы, у которой ADC_CHECK_MS нет ни одного годного отсчёта (без ожидания) */
 static void adc_poll(void) {
+	static uint32_t restarted = 0U, errs_chk[NBRD];
 	uint64_t now = CORE_GetCycles();
+	/* Повторный пуск через ADC_RESTART_MS: такт АЦП (свой rPLL) после сброса ПЛИС какое-то время не устоялся, и
+	   настройки первого пуска (DIV, CSS, QUIET) доходят до него искажёнными - платы читаются неверно без ошибок
+	   кадра (стенд 9K, SCLK 3,38 МГц: всегда; 6,75 МГц: изредка ADC_V - одни единицы). Остановка и пуск передают
+	   настройки заново. Исправление в ПЛИС - держать сброс блока, пока rPLL не устоится (hw/info/rectifier.md) */
+	if (!restarted && now - adc_t0 >= ms_ticks(ADC_RESTART_MS)) {
+		restarted = 1U;
+		for (uint32_t i = 0; i < NBRD; i++) {
+			ADC121_Stop(brds[i]->adc);
+			brds[i]->t_start = now + ms_ticks(ADC_PAUSE_MS);
+		}
+	}
 	for (uint32_t i = 0; i < NBRD; i++) {
 		AdcBoard *b = brds[i];
 		uint32_t f = ADC121_GetFlags(b->adc) & (ADC121_SR_ERR | ADC121_SR_CMPF);
@@ -200,16 +219,20 @@ static void adc_poll(void) {
 			continue;
 		}
 		if (now - b->t_chk < ms_ticks(ADC_CHECK_MS)) continue;
+		/* Годных отсчётов (CNT) за ADC_CHECK_MS меньше половины ожидаемых и были ошибки кадра - перезапуск.
+		   Не «ни одного годного»: среди испорченных кадров часть проходит проверку ведущих нулей */
 		uint32_t c = ADC121_GetCount(b->adc);
-		if (c == b->cnt_chk && (f & ADC121_SR_ERR) && (b->adc->CR & ADC121_CR_EN)) {
+		uint32_t need = ADC121_GetRate(b->adc) / (1000U / ADC_CHECK_MS) / 2U;
+		if (c - b->cnt_chk < need && b->errs != errs_chk[i] && (b->adc->CR & ADC121_CR_EN)) {
 			ADC121_Stop(b->adc);
 			b->t_start = now + ms_ticks(ADC_PAUSE_MS);
 			err_latch |= E_ADCU << i;
 			if (b->restarts++ == 0U) {
 				UART_PutText("\r\n"); UART_PutText(b->name);
-				UART_PutText(": нет годных отсчётов (ошибка кадра) - перезапуск преобразований\r\n");
+				UART_PutText(": мало годных отсчётов (ошибки кадра) - перезапуск преобразований\r\n");
 			}
 		}
+		errs_chk[i] = b->errs;
 		b->cnt_chk = c;
 		b->t_chk = now;
 	}
@@ -692,14 +715,14 @@ static void pc_status(void) {
 static void pc_info(void) {
 	tx_str("#I fw=hw_rect");
 	tx_kv("io", STAND_IO); tx_kv("amax", (int32_t)SIFU_TicksToDeg10(amax));
-	tx_kv("n", SCOPE_N); tx_kv("dt", SCOPE_US); tx_kv("avg", 1 << ADC_AVGSH);
+	tx_kv("n", SCOPE_N); tx_kv("dt", SCOPE_US); tx_kv("avg", (int32_t)(1U << adc_avgsh));
 	tx_kv("vs", ADC_V_SCALE_U); tx_kv("vo", ADC_V_OFFSET_M);
 	tx_kv("cs", ADC_C_SCALE_U); tx_kv("co", ADC_C_OFFSET_M);
 	tx_str("\r\n");
 }
 
-/* Захват кадра: точки U и I через SCOPE_US в кольцо - аппаратное среднее канала MEAN по 16 отсчётам (около
-   40 мкс): фильтр перед прореживанием, шум отсчётов платы тока - быстрый, мгновенный отсчёт DATA даёт СКО
+/* Захват кадра: точки U и I через SCOPE_US в кольцо - аппаратное среднее канала MEAN по 2^adc_avgsh отсчётам
+   (не длиннее шага точки): фильтр перед прореживанием, шум отсчётов платы тока - быстрый, мгновенный отсчёт DATA даёт СКО
    около 10 кодов, среднее - около 2 (hw/info/rectifier_gui.md, «Шум сигнала тока»); запуск - переход уровня sc_level по фронту
    sc_edge (0 - передний, 1 - задний) канала sc_src (0 - U, 1 - I) с гистерезисом; до запуска - не меньше
    sc_pre точек. Запуска нет за два периода - кадр без запуска (sc_trig = 0). Занимает 20..60 мс */

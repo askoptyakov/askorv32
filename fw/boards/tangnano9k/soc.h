@@ -100,11 +100,11 @@
 #define ADC_BASE						(0x17000000U)
 #define ADC								((ADC_TypeDef*) ADC_BASE)
 #define ADC_CLK_HZ						54000000U		//Такт блока, Гц: свой rPLL (он же - регистр FCLK каналов)
-#define ADC_DIV_DEFAULT					3U		//Делитель SCLK после сброса: SCLK = CLK_HZ / (2 * (DIV + 1))
+#define ADC_DIV_DEFAULT					7U		//Делитель SCLK после сброса: SCLK = CLK_HZ / (2 * (DIV + 1))
 #define ADC_CSS_DEFAULT					1U		//От CS до SCLK после сброса, полупериодов SCLK
 #define ADC_QUIET_DEFAULT				1U		//Пауза между кадрами после сброса, полупериодов SCLK
-#define ADC_SCLK_HZ						6750000U		//Частота SCLK при DIV_DEFAULT, Гц
-#define ADC_RATE_HZ						394161U		//Отсчётов в секунду на канал при непрерывной работе
+#define ADC_SCLK_HZ						3375000U		//Частота SCLK при DIV_DEFAULT, Гц
+#define ADC_RATE_HZ						197802U		//Отсчётов в секунду на канал при непрерывной работе
 #define ADC_AVGSH_DEFAULT				8U		//Среднее по 2^AVGSH отсчётам
 #define ADC_WIN							1		//Есть среднее за окно (WMEAN, CR.WCLOSE)
 #define ADC_CHANNELS					2U		//Каналов (плат измерения)

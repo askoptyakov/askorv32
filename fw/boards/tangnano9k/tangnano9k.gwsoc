@@ -75,7 +75,7 @@
       "cs0": 82, "sclk0": 70, "sdo0": 71, "cmp0": 48,
       "cs1": 79, "sclk1": 72, "sdo1": 73, "cmp1": 32,
       "clkMHz": 54,
-      "sclkHz": 6750000,
+      "sclkHz": 3375000,
       "css": 1,
       "quiet": 1,
       "avgShift": 8,
