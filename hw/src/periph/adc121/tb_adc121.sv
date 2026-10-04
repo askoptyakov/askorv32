@@ -18,7 +18,9 @@ module tb_adc121;
     `include "periph_tb.svh"
 
     localparam logic [31:0] CR = 32'h00, DIVR = 32'h04, AVG = 32'h08, PER = 32'h0C, DATA = 32'h10,
-                            MEAN = 32'h14, SUM = 32'h18, SR = 32'h1C, CNT = 32'h20, FCLK = 32'h24;
+                            MEAN = 32'h14, SUM = 32'h18, SR = 32'h1C, CNT = 32'h20, FCLK = 32'h24,
+                            WMEAN = 32'h28;
+    localparam logic [31:0] WIE = 1 << 8, WCLOSE = 1 << 9, WRDY = 1 << 4;
 
     //Такт АЦП: 96 МГц (полпериода 5.2 нс), такт шины - 50 МГц; SCLK и кадр считаются в тактах АЦП
     localparam real ADC_HALF = 5.2;
@@ -60,12 +62,18 @@ module tb_adc121;
         if (nfall < 16) dout_m <= #(T_OUT) word[15 - nfall];
     end
 
+    logic win = 1'b0;
+    wire [15:0] wmean_o;
+    wire        wstb_o;
+    int nwstb = 0;
+    always @(posedge clk) if (wstb_o) nwstb++;
     logic cmp_pin = 1'b1;                //Выход компаратора LM311: 1 - норма, 0 - перегрузка
     adc121_top #(.MEMORY_TYPE(1'b1), .DIV_INIT(8'd3), .AVGSH_INIT(4'd8), .CSS_INIT(4'd2), .QUIET_INIT(4'd1),
-                 .CMP_EN(1'b1), .CLK_HZ(ADC_HZ)) dut
+                 .CMP_EN(1'b1), .CLK_HZ(ADC_HZ), .WIN_EN(1'b1)) dut
         (.clk(clk), .rst(rst), .adc_clk(adc_clk), .adc_lock(adc_lock),
          .Write(Write), .Addr(Addr), .WData(WData), .RData(RData),
-         .adc_cs_n(cs_n), .adc_sclk(sclk), .adc_sdo(sdo), .adc_cmp(cmp_pin), .irq(irq));
+         .adc_cs_n(cs_n), .adc_sclk(sclk), .adc_sdo(sdo), .adc_cmp(cmp_pin),
+         .win_i(win), .wmean_o(wmean_o), .wstb_o(wstb_o), .irq(irq));
 
     //От спада CS# до первого подъёма SCLK, тактов АЦП
     longint cs_fall = 0, first_rise = 0;
@@ -106,10 +114,11 @@ module tb_adc121;
         bus_wr(PER, 0);
         bus_wr(AVG, 32'hFFFF_FFF5); check_rd(AVG, 5, "AVGSH 4 бита");
         bus_wrb(DIVR, 32'h0000_3500, 4'b0010); check_rd(DIVR, 32'h0000_3503, "DIV: байт 1 - QUIET, CSS");
-        bus_wr(CR, 32'hFFFF_FF1C); check_rd(CR, 32'h0000_001C, "CR: START не читается, EN не записан");
+        bus_wr(CR, 32'hFFFF_FD1C); check_rd(CR, 32'h0000_011C, "CR: START и WCLOSE не читаются, EN не записан, WIE записан");
         bus_wr(CR, 0);
         bus_wr(DIVR, 32'h0000_2203); bus_wr(AVG, 8);
-        check_rd(32'h28, 0, "нет регистра 0x28 - читается 0");
+        check_rd(32'h2C, 0, "нет регистра 0x2C - читается 0");
+        check_rd(WMEAN, 0, "сброс: WMEAN");
         bus_wr(FCLK, 32'h1234); check_rd(FCLK, ADC_HZ, "FCLK только читается");
 
         //#3 Одиночный запуск: 16 тактов SCLK, код в DATA, частота SCLK = f / 8 при DIV = 3
@@ -276,6 +285,44 @@ module tb_adc121;
         bus_rd(DATA, v); check(v[11:0] == 12'hC35, "8 МГц: код", v[11:0], 12'hC35);
         bus_rd(SR, v); check(!v[2], "8 МГц: ошибок кадра нет", v, 0);
         check(bad_frames == 0, "все кадры - по 16 тактов SCLK", bad_frames, 0);
+
+        //#14 Среднее за окно: закрытие стробом win_i - WMEAN = код * 16, число отсчётов, WRDY, wstb_o
+        bus_wr(CR, 0); tick(100);
+        code = 12'd1000;
+        bus_wr(CR, EN);
+        tick(200);
+        @(negedge clk); win = 1'b1; @(negedge clk); win = 1'b0;    //Начало окна (первое закрытие)
+        tick(40);
+        bus_wr(SR, WRDY);
+        n = nwstb;
+        tick(5000);                                                 //100 мкс: ~47 отсчётов
+        @(negedge clk); win = 1'b1; @(negedge clk); win = 1'b0;
+        tick(40);
+        check(nwstb == n + 1, "win_i: один строб wstb_o", nwstb - n, 1);
+        bus_rd(WMEAN, v);
+        check(v[15:0] == 16'd16000, "окно: WMEAN = 1000 * 16", v[15:0], 16000);
+        check(v[27:16] >= 45 && v[27:16] <= 49, "окно 100 мкс: 46-48 отсчётов", v[27:16], 47);
+        check(wmean_o == 16'd16000, "выход wmean_o", wmean_o, 16000);
+        bus_rd(SR, v); check(v[4], "SR.WRDY", v, WRDY);
+        //Дробное среднее: половина окна 1000, половина 1001 -> 1000.5 * 16 = 16008
+        code = 12'd1000;
+        bus_wr(CR, EN | WCLOSE);                                    //Закрыть процессором
+        tick(40);
+        bus_wr(SR, WRDY);
+        tick(2500); code = 12'd1001; tick(2500);
+        bus_wr(CR, EN | WIE | WCLOSE);
+        tick(40);
+        bus_rd(WMEAN, v);
+        check(v[15:0] >= 16'd16006 && v[15:0] <= 16'd16010, "окно 1000/1001: WMEAN = 16008 +- 2 (дробь 1/16 кода)", v[15:0], 16008);
+        check(irq == 1'b1, "WIE: irq по WRDY", irq, 1);
+        bus_wr(SR, WRDY); tick(3);
+        check(irq == 1'b0, "WRDY сброшен - irq снят", irq, 0);
+        //Пустое окно (преобразования остановлены) - среднего нет
+        bus_wr(CR, 0); tick(500);                                   //Кадр в работе - закончился
+        bus_wr(CR, WCLOSE); tick(100);
+        n = nwstb;
+        bus_wr(CR, WCLOSE); tick(40);
+        check(nwstb == n, "пустое окно: строба нет", nwstb - n, 0);
 
         finish_tests();
     end

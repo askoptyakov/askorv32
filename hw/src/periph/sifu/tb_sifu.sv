@@ -19,8 +19,9 @@ module tb_sifu;
 
     localparam logic [31:0] CR = 32'h00, ALPHA = 32'h04, WIDTH = 32'h08, DELAY = 32'h0C, DIV = 32'h10,
                             SR = 32'h14, HPER = 32'h18, CNT1 = 32'h1C, CNT2 = 32'h20, CNT3 = 32'h24,
-                            GATE = 32'h28, SIMCFG = 32'h2C;
-    localparam logic [31:0] EN = 1 << 0, DBL = 1 << 1, SIM = 1 << 2, FLT = 1 << 3, SIE = 1 << 4, LIE = 1 << 5;
+                            GATE = 32'h28, SIMCFG = 32'h2C, AMAX = 32'h30;
+    localparam logic [31:0] EN = 1 << 0, DBL = 1 << 1, SIM = 1 << 2, FLT = 1 << 3, SIE = 1 << 4, LIE = 1 << 5,
+                            UEXT = 1 << 6;
     localparam logic [31:0] SR_GRID = 1 << 8, SR_SYNCF = 1 << 9, SR_LOSSF = 1 << 10, SR_LOST = 1 << 11;
 
     //Модель сети: время в тактах clk
@@ -48,11 +49,16 @@ module tb_sifu;
     wire n_ca = (!grid_on |  opto_n(theta - 2 * P / 3)) & !stuck_ca;
     wire n_ac = !grid_on |  opto_n(theta - 2 * P / 3 - H);
 
-    wire vs1, vs2, vs3, vs4, vs5, vs6, grid_o, irq;
-    sifu_top #(.MEMORY_TYPE(1'b1), .DIV_INIT(16'd89), .DELAY_INIT(12'd400), .WIDTH_INIT(12'd150)) dut
+    wire vs1, vs2, vs3, vs4, vs5, vs6, grid_o, irq, tick_o, run_o;
+    logic [15:0] u = '0;                 //Управление по прямой связи (UEXT)
+    int ntick = 0;
+    always @(posedge clk) if (tick_o) ntick++;
+    sifu_top #(.MEMORY_TYPE(1'b1), .DIV_INIT(16'd89), .DELAY_INIT(12'd400), .WIDTH_INIT(12'd150),
+               .AMAX_INIT(12'd3333), .UEXT_EN(1'b1)) dut
         (.clk(clk), .rst(rst), .Write(Write), .Addr(Addr), .WData(WData), .RData(RData),
          .sync_ab(n_ab), .sync_ba(n_ba), .sync_bc(n_bc), .sync_cb(n_cb), .sync_ca(n_ca), .sync_ac(n_ac),
-         .vs1(vs1), .vs2(vs2), .vs3(vs3), .vs4(vs4), .vs5(vs5), .vs6(vs6), .grid_o(grid_o), .irq(irq));
+         .vs1(vs1), .vs2(vs2), .vs3(vs3), .vs4(vs4), .vs5(vs5), .vs6(vs6), .grid_o(grid_o),
+         .tick_o(tick_o), .run_o(run_o), .u_i(u), .irq(irq));
     wire [6:1] vs = {vs6, vs5, vs4, vs3, vs2, vs1};
 
     //Начало полуволны тиристора k на входах (фаза сети, такты): VS1 - U_AB, VS2 - U_AC, VS3 - U_BC,
@@ -118,10 +124,11 @@ module tb_sifu;
         //#2 Разрядность и байтовая запись
         bus_wr(ALPHA, 32'hFFFF_F123); check_rd(ALPHA, 32'h123, "ALPHA 12 бит");
         bus_wr(DIV,   32'h1234_5678); check_rd(DIV,   32'h5678, "DIV 16 бит");
-        bus_wr(CR,    32'hFFFF_FFC0); check_rd(CR,    0, "CR 6 бит");
+        bus_wr(CR,    32'hFFFF_FF80); check_rd(CR,    0, "CR 7 бит");
         bus_wrb(DELAY, 32'h0000_0F00, 4'b0010); check_rd(DELAY, 32'hF90, "DELAY: байт 1");
         bus_wr(SIMCFG, 32'hFFFF_FFFF); check_rd(SIMCFG, 32'h0FFF_FFFF, "SIMCFG 28 бит");
-        check_rd(32'h30, 0, "нет регистра 0x30 - читается 0");
+        bus_rd(AMAX, v); check(v[11:0] == 3333 && v[27:16] == 12'h123, "сброс: AMAX = AMAX_INIT, AEFF = ALPHA", v, {16'h0123, 16'd3333});
+        check_rd(32'h34, 0, "нет регистра 0x34 - читается 0");
 
         //#3 Сеть подана: полупериод, флаги, пилы. DIV = 1 (тик - 2 такта)
         bus_wr(CR, DBL | FLT);
@@ -329,6 +336,37 @@ module tb_sifu;
         clear_pulses();
         halfwaves(2);
         check(n_pulse[5] == 1 && n_pulse[2] == 1, "CA в порядке: VS5 и VS2 снова с импульсами", {n_pulse[5], n_pulse[2]}, 32'h0000_0101);
+
+        //#16 Прямые связи: tick_o - 6 стробов за период (начала полуволн), run_o - импульсы идут;
+        //UEXT: угол = AMAX - u (не меньше 0), регистр ALPHA не действует
+        bus_wr(DELAY, 400); bus_wr(WIDTH, 150); bus_wr(ALPHA, 0);
+        bus_wr(CR, FLT);
+        halfwaves(2);
+        check(run_o == 1'b0, "EN = 0: run_o = 0", run_o, 0);
+        ntick = 0;
+        halfwaves(4);
+        check(ntick == 12, "tick_o: 6 стробов за период", ntick, 12);
+        bus_wr(AMAX, 1000); u = 16'd400;
+        bus_wr(CR, FLT | EN | UEXT);
+        halfwaves(3);
+        check(run_o == 1'b1, "EN, сеть, синхронизация: run_o = 1", run_o, 1);
+        bus_rd(AMAX, v); check(v[27:16] == 600, "UEXT: AEFF = AMAX - u = 600", v[27:16], 600);
+        for (int k = 1; k <= 6; k++) begin
+            lag = lag_ticks(k); exp_lag = 600 + 400 + 3;
+            check(lag >= exp_lag - 1 && lag <= exp_lag + 2, $sformatf("UEXT: VS%0d - фронт через AMAX - u + DELAY", k), lag, exp_lag);
+        end
+        u = 16'd5000;                                          //u больше AMAX - угол 0
+        halfwaves(3);
+        bus_rd(AMAX, v); check(v[27:16] == 0, "UEXT: u > AMAX - AEFF = 0", v[27:16], 0);
+        lag = lag_ticks(1);
+        check(lag >= 402 && lag <= 405, "UEXT: u > AMAX - фронт через DELAY", lag, 403);
+        bus_wr(CR, FLT | EN);                                  //Снова от ALPHA
+        bus_wr(ALPHA, 1000);
+        halfwaves(3);
+        bus_rd(AMAX, v); check(v[27:16] == 1000, "UEXT = 0: AEFF = ALPHA", v[27:16], 1000);
+        grid_on = 1'b0;
+        halfwaves(1);
+        check(run_o == 1'b0, "сети нет: run_o = 0", run_o, 0);
 
         finish_tests();
     end

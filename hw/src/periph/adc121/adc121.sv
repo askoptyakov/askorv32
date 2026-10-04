@@ -37,7 +37,9 @@
 //               [3] AIE - прерывание по новому среднему (SR.ARDY); [4] EIE - по ошибке кадра (SR.ERR);
 //               [5] CSINV - вывод CS инвертирован (на плате CS через инвертирующий оптрон/изолятор);
 //               [6] CPOL - активный уровень входа cmp: 0 - низкий (LM311 с открытым коллектором), 1 - высокий;
-//               [7] CIE - прерывание по срабатыванию cmp (SR.CMPF)
+//               [7] CIE - прерывание по срабатыванию cmp (SR.CMPF);
+//               [8] WIE - прерывание по новому среднему за окно (SR.WRDY); [9] WCLOSE - закрыть
+//               окно (запись 1, сам сбрасывается)
 //<>0x04 DIV   - [7:0] делитель SCLK (после сброса - DIV_INIT); [11:8] QUIET - пауза между кадрами,
 //               полупериодов SCLK (1..15, после сброса QUIET_INIT); [15:12] CSS - от спада CS# до
 //               первого подъёма SCLK, полупериодов (1..15, после сброса CSS_INIT: запас на оптрон CS)
@@ -47,12 +49,20 @@
 //<<0x14 MEAN  - [11:0] последнее среднее (SUM >> AVGSH)
 //<<0x18 SUM   - [23:0] сумма 2^AVGSH отсчётов последнего усреднения (для разрешения лучше 1 кода)
 //<>0x1C SR    - [0] DRDY - новый отсчёт; [1] ARDY - новое среднее; [2] ERR - ошибка кадра (ведущие
-//               нули не нули); [3] CMPF - вход cmp перешёл в активный уровень; сброс записью 1;
+//               нули не нули); [3] CMPF - вход cmp перешёл в активный уровень; [4] WRDY - новое
+//               среднее за окно; сброс записью 1;
 //               [8] BUSY - идёт кадр; [9] CMP - вход cmp сейчас активен; [31:16] FRAME - сырой кадр
 //               последнего преобразования [15:0] (диагностика: в норме 0x0xxx)
 //<<0x20 CNT   - [31:0] число отсчётов без ошибок с начала работы
 //<<0x24 FCLK  - [31:0] частота adc_clk, Гц (параметр CLK_HZ; 0 - не задана, тогда такт шины)
-//Запрос прерывания irq = (DRDY & DIE) | (ARDY & AIE) | (ERR & EIE) | (CMPF & CIE), через регистр.
+//<<0x28 WMEAN - [15:0] среднее за последнее окно, код * 16 (12 бит целых, 4 дробных); [27:16]
+//               число отсчётов в нём. Окно (WIN_EN) - отсчёты без ошибок между двумя закрытиями:
+//               строб win_i (прямая связь, например начало полуволны блока SIFU - среднее за 60 эл.
+//               град.) или CR.WCLOSE; при закрытии - деление суммы на число (28 тактов), строб
+//               wstb_o и выход wmean_o (прямая связь, например обратная связь блока PIREG), флаг
+//               WRDY. Больше 4095 отсчётов окно не копит. Без WIN_EN регистр читается как 0
+//Запрос прерывания irq = (DRDY & DIE) | (ARDY & AIE) | (ERR & EIE) | (CMPF & CIE) | (WRDY & WIE),
+//через регистр.
 //Без входа cmp (CMP_EN = 0) CMP и CMPF всегда 0.
 module adc121_top
   #(parameter bit         MEMORY_TYPE = 0,
@@ -63,7 +73,8 @@ module adc121_top
     parameter bit         CSINV_INIT  = 1'b0,       //Вывод CS инвертирован
     parameter bit         CMP_EN      = 1'b0,       //Вход cmp подключён
     parameter bit         CPOL_INIT   = 1'b0,       //Активный уровень cmp: 0 - низкий
-    parameter logic [31:0] CLK_HZ     = 32'd0)      //Частота adc_clk, Гц (регистр FCLK)
+    parameter logic [31:0] CLK_HZ     = 32'd0,      //Частота adc_clk, Гц (регистр FCLK)
+    parameter bit         WIN_EN      = 1'b0)       //Среднее за окно (WMEAN, win_i, wmean_o)
    (input  logic        clk, rst,
     // Такт кадра АЦП (может совпадать с clk) и его готовность (LOCK rPLL)
     input  logic        adc_clk, adc_lock,
@@ -77,14 +88,18 @@ module adc121_top
     input  logic        adc_sdo,
     // Дискретный вход платы (ADC_C - компаратор защиты), не используется при CMP_EN = 0
     input  logic        adc_cmp,
+    // Прямые связи: закрытие окна (строб) и среднее за окно со стробом
+    input  logic        win_i,
+    output logic [15:0] wmean_o,
+    output logic        wstb_o,
     output logic        irq
 );
     //#1 Регистры
-    localparam int N = 10;
+    localparam int N = 11;
     logic [N-1:0][3:0] we;
     logic [31:0] wdata;
 
-    logic [ 7:0] cr;                     //{CIE, CPOL, CSINV, EIE, AIE, DIE, -, EN}; START - строб
+    logic [ 8:0] cr;                     //{WIE, CIE, CPOL, CSINV, EIE, AIE, DIE, -, EN}; START, WCLOSE - стробы
     logic [ 7:0] div;
     logic [ 3:0] quiet, css;
     logic [ 3:0] avgsh;
@@ -92,28 +107,33 @@ module adc121_top
     logic [11:0] data, mean;
     logic [23:0] sum_q;
     logic        drdy, ardy, err, busy, cmpf, cmp;
+    logic        wrdy;                   //Новое среднее за окно
+    logic [15:0] wmean;
+    logic [11:0] wcnt;
     logic [15:0] frame;
     logic [31:0] cnt;
 
     periph_regs #(.N(N), .MEMORY_TYPE(MEMORY_TYPE)) regs
         (.clk(clk), .Write(Write), .Read(1'b0), .Addr(Addr), .WData(WData), .RData(RData),
          .we(we), .re(), .wdata(wdata),
-         .rdata({CLK_HZ,                                                  //0x24 FCLK
+         .rdata({{4'd0, wcnt, wmean},                                     //0x28 WMEAN
+                 CLK_HZ,                                                  //0x24 FCLK
                  cnt,                                                     //0x20 CNT
-                 {frame, 6'd0, cmp, busy, 4'd0, cmpf, err, ardy, drdy},   //0x1C SR
+                 {frame, 6'd0, cmp, busy, 3'd0, wrdy, cmpf, err, ardy, drdy}, //0x1C SR
                  32'(sum_q),                                              //0x18 SUM
                  32'(mean),                                               //0x14 MEAN
                  {cnt[15:0], 4'd0, data},                                 //0x10 DATA
                  32'(per),                                                //0x0C PER
                  32'(avgsh),                                              //0x08 AVG
                  {16'd0, css, quiet, div},                                //0x04 DIV
-                 {24'd0, cr[7:2], 1'b0, cr[0]}}));                        //0x00 CR
+                 {23'd0, cr[8:2], 1'b0, cr[0]}}));                        //0x00 CR
 
-    logic [7:0] cr_q;
-    periph_reg #(.W(8), .INIT({1'b0, CPOL_INIT, CSINV_INIT, 5'd0})) r_cr
+    logic [9:0] cr_q;
+    periph_reg #(.W(10), .INIT({2'b00, 1'b0, CPOL_INIT, CSINV_INIT, 5'd0})) r_cr
         (.clk(clk), .rst(rst), .we(we[0]), .wdata(wdata), .q(cr_q));
-    assign cr = {cr_q[7:2], 1'b0, cr_q[0]};
-    wire start_cmd = we[0][0] & wdata[1];                   //CR.START - запуск одного кадра
+    assign cr = {cr_q[8] & WIN_EN, cr_q[7:2], 1'b0, cr_q[0]};
+    wire start_cmd  = we[0][0] & wdata[1];                  //CR.START - запуск одного кадра
+    wire wclose_cmd = we[0][1] & wdata[9];                  //CR.WCLOSE - закрыть окно
 
     periph_reg #(.W(16), .INIT({CSS_INIT, QUIET_INIT, DIV_INIT})) r_div
         (.clk(clk), .rst(rst), .we(we[1]), .wdata(wdata), .q({css, quiet, div}));
@@ -127,6 +147,7 @@ module adc121_top
     wire csinv = cr[5];
     wire cpol  = cr[6];
     wire cie   = cr[7];
+    wire wie   = cr[8];
 
     //#2a Вход cmp: синхронизатор, активный уровень по CPOL; CMPF - по переходу в активный уровень
     logic [2:0] cmp_s;
@@ -287,9 +308,63 @@ module adc121_top
             if (we[2][0]) begin acc <= '0; nacc <= '0; end
         end
 
+    //#5 Среднее за окно: отсчёты без ошибок между закрытиями (win_i или CR.WCLOSE); при закрытии -
+    //WMEAN = (сумма * 16) / число последовательным делением (28 тактов). Отсчёт, пришедший в такт
+    //закрытия, идёт в новое окно
+    logic wstb;
+    generate if (WIN_EN) begin : g_win
+        logic [23:0] wsum;               //Сумма отсчётов окна (4095 * 4095 < 2^24)
+        logic [11:0] wn;                 //Отсчётов в окне
+        logic [27:0] dq;                 //Делимое -> частное
+        logic [11:0] drem, dv;           //Остаток, делитель
+        logic [ 4:0] dcnt;
+        logic        dbusy;
+        wire         add   = done & ~fr_err;
+        wire         close = win_i | wclose_cmd;
+        wire  [12:0] rsh   = {drem, dq[27]};
+        wire         ge    = (rsh >= {1'b0, dv});
+        wire  [27:0] qn    = {dq[26:0], ge};
+        always_ff @(posedge clk)
+            if (rst) begin
+                wsum <= '0; wn <= '0; dq <= '0; drem <= '0; dv <= '0; dcnt <= '0; dbusy <= 1'b0;
+                wmean <= '0; wcnt <= '0; wstb <= 1'b0; wrdy <= 1'b0;
+            end else begin
+                wstb <= 1'b0;
+                if (close) begin
+                    if (wn != 0 && !dbusy) begin                    //Деление суммы на число
+                        dq <= {wsum, 4'd0}; dv <= wn; drem <= '0; dcnt <= 5'd27; dbusy <= 1'b1;
+                    end
+                    wsum <= add ? 24'(fr_data) : '0;
+                    wn   <= add ? 12'd1 : '0;
+                end else if (add && wn != 12'hFFF) begin
+                    wsum <= wsum + 24'(fr_data);
+                    wn   <= wn + 1'b1;
+                end
+                if (dbusy) begin                                    //Шаг деления с восстановлением
+                    drem <= ge ? 12'(rsh - {1'b0, dv}) : rsh[11:0];
+                    dq   <= qn;
+                    dcnt <= dcnt - 1'b1;
+                    if (dcnt == 0) begin
+                        dbusy <= 1'b0; wmean <= qn[15:0]; wcnt <= dv; wstb <= 1'b1;
+                    end
+                end
+                //WRDY: установка по новому среднему важнее сброса записью 1
+                if (dbusy && dcnt == 0)             wrdy <= 1'b1;
+                else if (we[7][0] && wdata[4])      wrdy <= 1'b0;
+            end
+    end else begin : g_no_win
+        assign wmean = '0;
+        assign wcnt  = '0;
+        assign wstb  = 1'b0;
+        assign wrdy  = 1'b0;
+    end
+    endgenerate
+    assign wmean_o = wmean;
+    assign wstb_o  = wstb;
+
     always_ff @(posedge clk)
         if (rst) irq <= 1'b0;
-        else     irq <= (drdy & die) | (ardy & aie) | (err & eie) | (cmpf & cie);
+        else     irq <= (drdy & die) | (ardy & aie) | (err & eie) | (cmpf & cie) | (wrdy & wie);
 endmodule
 
 //==============================================================================================

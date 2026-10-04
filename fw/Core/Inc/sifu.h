@@ -24,7 +24,7 @@
 /* Регистры СИФУ */
 typedef struct
 {
-  __IO uint32_t CR;					//0x00: управление: EN, DBL, SIM, FLT, SIE, LIE
+  __IO uint32_t CR;					//0x00: управление: EN, DBL, SIM, FLT, SIE, LIE, UEXT
   __IO uint32_t ALPHA;				//0x04: угол управления, тиков ГПН (12 бит); 4095 - импульсов нет
   __IO uint32_t WIDTH;				//0x08: длительность импульса, тиков ГПН (12 бит)
   __IO uint32_t DELAY;				//0x0C: DELAY_RC_COMPENSATION, тиков ГПН (12 бит)
@@ -34,6 +34,7 @@ typedef struct
   __I  uint32_t CNT[3];				//0x1C, 0x20, 0x24: пилы пар AB/BA, BC/CB, CA/AC (12 бит)
   __I  uint32_t GATE;				//0x28: [5:0] выходы VS1..VS6, [13:8] импульсы пар до сдваивания
   __IO uint32_t SIMCFG;				//0x2C: имитатор сети: [15:0] SECT, [27:16] DZ
+  __IO uint32_t AMAX;				//0x30: [11:0] наибольший угол при UEXT, тиков; [27:16] AEFF - действующий угол
 } SIFU_TypeDef;
 
 /* Биты CR */
@@ -43,6 +44,7 @@ typedef struct
 #define SIFU_CR_FLT					(1U << 3)	//Фильтр входов по тикам ГПН (иначе - по тактам)
 #define SIFU_CR_SIE					(1U << 4)	//Прерывание по началу полуволны (SYNCF)
 #define SIFU_CR_LIE					(1U << 5)	//Прерывание по потере синхронизации (LOSSF)
+#define SIFU_CR_UEXT				(1U << 6)	//Угол от прямой связи u: AMAX - u (вход подключён в конфигураторе)
 
 /* Биты SR */
 #define SIFU_SR_SYNC_MSK			0x3FU		//Входы после фильтра (1 - оптрон закрыт): AB, BA, BC, CB, CA, AC
@@ -59,6 +61,8 @@ typedef struct
 #define SIFU_SIM_SECT_MSK			0xFFFFU		//Тиков на 60 эл. град.
 #define SIFU_SIM_DZ_POS				16U			//Мёртвая зона, тиков
 #define SIFU_SIM_DZ_MSK				(0xFFFU << SIFU_SIM_DZ_POS)
+#define SIFU_AMAX_MSK				0xFFFU		//AMAX: наибольший угол при UEXT
+#define SIFU_AEFF_POS				16U			//AEFF: действующий угол (ALPHA или AMAX - u)
 
 #define SIFU_SAW_MAX				4095U		//Пила 12 бит: на 4095 останавливается, импульса там нет
 #define SIFU_ALPHA_OFF				4095U		//ALPHA «импульсов нет» (значение после сброса)
@@ -126,6 +130,15 @@ __SIFU_INLINE uint32_t SIFU_GetGates(void) { return SIFU->GATE & SIFU_GATE_VS_MS
    PLIC_SRC_SIFU, обработчик PLIC_SIFU_IRQHandler (soc.h); в обработчике сбросить флаг */
 __SIFU_INLINE void SIFU_IT_Enable(uint32_t it)  { SIFU->CR |=  (it & (SIFU_CR_SIE | SIFU_CR_LIE)); }
 __SIFU_INLINE void SIFU_IT_Disable(uint32_t it) { SIFU->CR &= ~(it & (SIFU_CR_SIE | SIFU_CR_LIE)); }
+
+/* Угол от прямой связи u (например, выход блока PIREG): ALPHA = AMAX - min(u, AMAX), регистр ALPHA
+   не действует. Есть, если вход u подключён в конфигураторе (SIFU_LINK_U) */
+__SIFU_INLINE void SIFU_ExtEnable(void)  { SIFU->CR |=  SIFU_CR_UEXT; }
+__SIFU_INLINE void SIFU_ExtDisable(void) { SIFU->CR &= ~SIFU_CR_UEXT; }
+__SIFU_INLINE void SIFU_SetAlphaMaxExt(uint32_t ticks) { SIFU->AMAX = ticks & SIFU_AMAX_MSK; }
+__SIFU_INLINE uint32_t SIFU_GetAlphaMaxExt(void) { return SIFU->AMAX & SIFU_AMAX_MSK; }
+/* Действующий угол, тиков: ALPHA или AMAX - u */
+__SIFU_INLINE uint32_t SIFU_GetAlphaEff(void) { return (SIFU->AMAX >> SIFU_AEFF_POS) & SIFU_AMAX_MSK; }
 
 /* Имитатор сети (проверка без силовой части): частота в сотых долях Гц, мёртвая зона в десятых
    долях градуса. Входы NSB не используются. Имитатор даёт сигналы оптронов так, как их выдаёт NSB:

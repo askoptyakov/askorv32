@@ -27,7 +27,9 @@
 //                [3] FLT  - фильтр входов считает по тикам ГПН (подавляет помехи до ~3 тиков),
 //                           0 - по каждому такту clk, как в test_nsb; после сброса 1;
 //                [4] SIE  - прерывание по началу полуволны (SR.SYNCF);
-//                [5] LIE  - прерывание по потере синхронизации (SR.LOSSF)
+//                [5] LIE  - прерывание по потере синхронизации (SR.LOSSF);
+//                [6] UEXT - угол от прямой связи (UEXT_EN): ALPHA = AMAX - min(u_i, AMAX), регистр
+//                           ALPHA не действует (например, u_i - выход блока PIREG)
 //<>0x04 ALPHA  - [11:0] угол управления, тиков ГПН от точки естественной коммутации; после сброса
 //                4095 - импульсов нет. Новое значение берётся каждой парой в начале её полуволны
 //<>0x08 WIDTH  - [11:0] длительность импульса, тиков ГПН (после сброса - WIDTH_INIT)
@@ -48,13 +50,20 @@
 //<>0x2C SIMCFG - имитатор: [15:0] SECT - тиков ГПН на 60 эл. град. (после сброса 1667: 50 Гц
 //                при 500 кГц); [27:16] DZ - мёртвая зона у нуля линейного напряжения, тиков (56).
 //                Без имитатора (SIM_EN = 0) регистр и бит CR.SIM читаются как 0
+//<>0x30 AMAX   - [11:0] наибольший угол при CR.UEXT, тиков (после сброса - AMAX_INIT: 120 эл.
+//                град.); [27:16] AEFF - действующий угол (ALPHA или AMAX - u_i), только чтение
+//Прямые связи: tick_o - строб начала полуволны любой пары (раз в 60 эл. град.: граница окна
+//усреднения блоков ADC121), run_o - импульсы идут (EN, сеть есть, синхронизация есть: регулятор
+//PIREG работает только при run_o = 1), u_i - управление (при UEXT_EN и CR.UEXT).
 //Запрос прерывания irq = (SYNCF & SIE) | (LOSSF & LIE), через регистр (на такт позже флага).
 module sifu_top
   #(parameter bit          MEMORY_TYPE = 0,
     parameter logic [15:0] DIV_INIT    = 16'd89,     //Тик ГПН: 45 МГц / (89 + 1) = 500 кГц
     parameter logic [11:0] DELAY_INIT  = 12'd400,    //DELAY_RC_COMPENSATION (настроено на стенде)
     parameter logic [11:0] WIDTH_INIT  = 12'd150,    //Длительность импульса: 150 тиков = 300 мкс
-    parameter bit          SIM_EN      = 1'b1)       //Имитатор сети (CR.SIM, SIMCFG): 0 - нет
+    parameter bit          SIM_EN      = 1'b1,       //Имитатор сети (CR.SIM, SIMCFG): 0 - нет
+    parameter logic [11:0] AMAX_INIT   = 12'd3333,   //Наибольший угол при CR.UEXT: 120 град. при 50 Гц
+    parameter bit          UEXT_EN     = 1'b0)       //Вход u_i подключён (CR.UEXT)
    (input  logic        clk, rst,
     // Интерфейс обмена
     input  logic [ 3:0] Write,
@@ -67,14 +76,19 @@ module sifu_top
     output logic        vs1, vs2, vs3, vs4, vs5, vs6,
     // «Сеть есть» (SR.GRID, через регистр): индикатор, как user_pin (ENABLE) в test_nsb
     output logic        grid_o,
+    // Прямые связи: начало полуволны (строб), импульсы идут, управление u (угол = AMAX - u)
+    output logic        tick_o,
+    output logic        run_o,
+    input  logic [15:0] u_i,
     output logic        irq
 );
     //#1 Регистры
-    localparam int N = 12;
+    localparam int N = 13;
     logic [N-1:0][3:0] we;
     logic      [31:0] wdata;
 
-    logic [ 5:0] cr;
+    logic [ 6:0] cr;
+    logic [11:0] amax, alpha_eff;
     logic [11:0] alpha, width, delay;
     logic [15:0] div;
     logic [15:0] sim_sect;
@@ -91,7 +105,8 @@ module sifu_top
     periph_regs #(.N(N), .MEMORY_TYPE(MEMORY_TYPE)) regs
         (.clk(clk), .Write(Write), .Read(1'b0), .Addr(Addr), .WData(WData), .RData(RData),
          .we(we), .re(), .wdata(wdata),
-         .rdata({{4'd0, sim_dz, sim_sect},                                        //0x2C SIMCFG
+         .rdata({{4'd0, alpha_eff, 4'd0, amax},                                   //0x30 AMAX, AEFF
+                 {4'd0, sim_dz, sim_sect},                                        //0x2C SIMCFG
                  32'({d, 2'b00, g}),                                              //0x28 GATE
                  32'(cnt3), 32'(cnt2), 32'(cnt1),                                 //0x24..0x1C CNT
                  32'(hper),                                                       //0x18 HPER
@@ -99,9 +114,10 @@ module sifu_top
                  32'(div), 32'(delay), 32'(width), 32'(alpha),                    //0x10..0x04
                  32'(cr)}));                                                      //0x00 CR
 
-    logic [ 5:0] cr_q;
-    periph_reg #(.W(6),  .INIT(6'b00_1010))  r_cr    (.clk(clk), .rst(rst), .we(we[0]), .wdata(wdata), .q(cr_q));
-    assign cr = {cr_q[5:3], cr_q[2] & SIM_EN, cr_q[1:0]};
+    logic [ 6:0] cr_q;
+    periph_reg #(.W(7),  .INIT(7'b000_1010)) r_cr    (.clk(clk), .rst(rst), .we(we[0]), .wdata(wdata), .q(cr_q));
+    assign cr = {cr_q[6] & UEXT_EN, cr_q[5:3], cr_q[2] & SIM_EN, cr_q[1:0]};
+    periph_reg #(.W(12), .INIT(AMAX_INIT))   r_amax  (.clk(clk), .rst(rst), .we(we[12]), .wdata(wdata), .q(amax));
     periph_reg #(.W(12), .INIT(12'hFFF))     r_alpha (.clk(clk), .rst(rst), .we(we[1]), .wdata(wdata), .q(alpha));
     periph_reg #(.W(12), .INIT(WIDTH_INIT))  r_width (.clk(clk), .rst(rst), .we(we[2]), .wdata(wdata), .q(width));
     periph_reg #(.W(12), .INIT(DELAY_INIT))  r_delay (.clk(clk), .rst(rst), .we(we[3]), .wdata(wdata), .q(delay));
@@ -120,6 +136,12 @@ module sifu_top
     wire flt = cr[3];
     wire sie = cr[4];
     wire lie = cr[5];
+    wire uext = cr[6];
+
+    //Действующий угол: от регистра ALPHA или от прямой связи u_i (AMAX - u, не меньше 0)
+    always_ff @(posedge clk)
+        if (rst) alpha_eff <= 12'hFFF;
+        else     alpha_eff <= !uext ? alpha : (u_i >= 16'(amax)) ? 12'd0 : amax - u_i[11:0];
 
     //#2 Тик ГПН (my_divider) и имитатор сети
     logic tick;
@@ -146,8 +168,8 @@ module sifu_top
     logic [12:0] t_on;
     logic [13:0] t_off;
     always_ff @(posedge clk) begin
-        t_on  <= 13'(alpha) + 13'(delay);
-        t_off <= 14'(alpha) + 14'(delay) + 14'(width);
+        t_on  <= 13'(alpha_eff) + 13'(delay);
+        t_off <= 14'(alpha_eff) + 14'(delay) + 14'(width);
     end
 
     //#5 Генераторы пилы и импульсов: пара фаз XY/YX - тиристор катодной группы фазы X (положительное
@@ -177,8 +199,8 @@ module sifu_top
         else     g <= {6{en & grid}} & (d | ({6{dbl}} & d_next));
     assign {vs6, vs5, vs4, vs3, vs2, vs1} = g;
     always_ff @(posedge clk)
-        if (rst) grid_o <= 1'b0;
-        else     grid_o <= grid;
+        if (rst) begin grid_o <= 1'b0; tick_o <= 1'b0; run_o <= 1'b0; end
+        else     begin grid_o <= grid; tick_o <= |st; run_o <= en & grid & ~lost; end
 
     //#7 Флаги и прерывание
     logic lost_q;

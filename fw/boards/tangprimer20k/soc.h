@@ -48,6 +48,8 @@
 #define SIFU_COUNT						1U
 #define ADC121_PRESENT					1
 #define ADC121_COUNT					2U
+#define PIREG_PRESENT					1
+#define PIREG_COUNT						2U
 
 /* GPIO */
 #define GPIO_BASE						(0x11000000U)
@@ -92,6 +94,8 @@
 #define SIFU_DELAY_DEFAULT				400U		//DELAY_RC_COMPENSATION после сброса, тиков
 #define SIFU_WIDTH_DEFAULT				150U		//Длительность импульса после сброса, тиков
 #define SIFU_SIM						1		//Есть имитатор сети (CR.SIM, SIMCFG)
+#define SIFU_AMAX_DEFAULT				3333U		//Наибольший угол при CR.UEXT после сброса, тиков (120 эл. град.)
+#define SIFU_LINK_U						1		//Вход u (управление: угол = AMAX - u): прямая связь от PI_U.out
 
 /* ADC_V (ADC121) */
 #define ADC_V_BASE						(0x17000000U)
@@ -110,6 +114,8 @@
 #define ADC_V_OFFSET_M					0		//Код при нулевом входе, тысячные доли кода
 #define ADC_V_UNIT						"V"		//Единица величины
 #define ADC_V_CMP						0		//Есть вход компаратора (SR.CMP, CMPF)
+#define ADC_V_WIN						1		//Есть среднее за окно (WMEAN, CR.WCLOSE)
+#define ADC_V_LINK_WIN					1		//Вход win (закрыть окно усреднения): прямая связь от SIFU.tick
 #define ADC121_BASE						ADC_V_BASE		//Драйверы: первый блок типа
 #define ADC121							ADC_V
 #define ADC121_CLK_HZ					ADC_V_CLK_HZ
@@ -126,6 +132,8 @@
 #define ADC121_OFFSET_M					ADC_V_OFFSET_M
 #define ADC121_UNIT						ADC_V_UNIT
 #define ADC121_CMP						ADC_V_CMP
+#define ADC121_WIN						ADC_V_WIN
+#define ADC121_LINK_WIN					ADC_V_LINK_WIN
 
 /* ADC_C (ADC121) */
 #define ADC_C_BASE						(0x18000000U)
@@ -144,6 +152,36 @@
 #define ADC_C_OFFSET_M					2049300		//Код при нулевом входе, тысячные доли кода
 #define ADC_C_UNIT						"A"		//Единица величины
 #define ADC_C_CMP						1		//Есть вход компаратора (SR.CMP, CMPF)
+#define ADC_C_WIN						1		//Есть среднее за окно (WMEAN, CR.WCLOSE)
+#define ADC_C_LINK_WIN					1		//Вход win (закрыть окно усреднения): прямая связь от SIFU.tick
+
+/* PI_U (PIREG) */
+#define PI_U_BASE						(0x19000000U)
+#define PI_U							((PIREG_TypeDef*) PI_U_BASE)
+#define PI_U_FRAC						12U		//Дробных бит KP, KI: коэффициент = K / 2^FRAC
+#define PI_U_OMAX_DEFAULT				3333U		//Верхний предел выхода после сброса
+#define PI_U_LINK_FB					1		//Вход fb (обратная связь: шаг по её стробу): прямая связь от ADC_V.wmean
+#define PI_U_LINK_LIM					1		//Вход lim (внешний верхний предел выхода и интегратора): прямая связь от PI_I.out
+#define PI_U_LINK_TRK					0		//Вход trk (верхний предел интегратора): не подключён
+#define PI_U_LINK_RUN					1		//Вход run (1 - работа, 0 - стоп и сброс интегратора): прямая связь от SIFU.run
+#define PIREG_BASE						PI_U_BASE		//Драйверы: первый блок типа
+#define PIREG							PI_U
+#define PIREG_FRAC						PI_U_FRAC
+#define PIREG_OMAX_DEFAULT				PI_U_OMAX_DEFAULT
+#define PIREG_LINK_FB					PI_U_LINK_FB
+#define PIREG_LINK_LIM					PI_U_LINK_LIM
+#define PIREG_LINK_TRK					PI_U_LINK_TRK
+#define PIREG_LINK_RUN					PI_U_LINK_RUN
+
+/* PI_I (PIREG) */
+#define PI_I_BASE						(0x1A000000U)
+#define PI_I							((PIREG_TypeDef*) PI_I_BASE)
+#define PI_I_FRAC						12U		//Дробных бит KP, KI: коэффициент = K / 2^FRAC
+#define PI_I_OMAX_DEFAULT				3333U		//Верхний предел выхода после сброса
+#define PI_I_LINK_FB					1		//Вход fb (обратная связь: шаг по её стробу): прямая связь от ADC_C.wmean
+#define PI_I_LINK_LIM					0		//Вход lim (внешний верхний предел выхода и интегратора): не подключён
+#define PI_I_LINK_TRK					1		//Вход trk (верхний предел интегратора): прямая связь от PI_U.out
+#define PI_I_LINK_RUN					1		//Вход run (1 - работа, 0 - стоп и сброс интегратора): прямая связь от SIFU.run
 
 /* Прерывания периферии. Источники PLIC (векторный режим, start.S): обработчик источника S -
    PLIC_SRCS_IRQHandler; ниже - понятные имена. Локальные линии: LIn_IRQHandler, номер LIn_IRQn */
@@ -154,13 +192,17 @@ typedef enum
   PLIC_SRC_UART = 2,		//UART
   PLIC_SRC_SIFU = 3,		//SIFU
   PLIC_SRC_ADC_V = 4,		//ADC_V
-  PLIC_SRC_ADC_C = 5		//ADC_C
+  PLIC_SRC_ADC_C = 5,		//ADC_C
+  PLIC_SRC_PI_U = 6,		//PI_U
+  PLIC_SRC_PI_I = 7		//PI_I
 } PLIC_SRC_Type;
 #define PLIC_STIM_IRQHandler			PLIC_SRC1_IRQHandler
 #define PLIC_UART_IRQHandler			PLIC_SRC2_IRQHandler
 #define PLIC_SIFU_IRQHandler			PLIC_SRC3_IRQHandler
 #define PLIC_ADC_V_IRQHandler			PLIC_SRC4_IRQHandler
 #define PLIC_ADC_C_IRQHandler			PLIC_SRC5_IRQHandler
+#define PLIC_PI_U_IRQHandler			PLIC_SRC6_IRQHandler
+#define PLIC_PI_I_IRQHandler			PLIC_SRC7_IRQHandler
 
 /* Выводы GPIO: имя цепи из конфигуратора -> <ИМЯ>_PIN (номер линии) и <ИМЯ>_PORT (блок GPIO);
    цепь LED[3] даёт имя LED3. Шина (LED[0], LED[1]...) на одном блоке: <ИМЯ>_MSK, <ИМЯ>_POS, <ИМЯ>_PORT.

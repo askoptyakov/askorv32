@@ -76,6 +76,7 @@
       "delayTicks": 400,
       "pulseTicks": 150,
       "sim": true,
+      "links": { "u": "PI_U.out" },
       "irq": "plic"
     },
     {
@@ -95,6 +96,8 @@
       "avgShift": 8,
       "scaleUv": 222181,
       "offset": 0,
+      "wavg": true,
+      "links": { "win": "SIFU.tick" },
       "irq": "plic"
     },
     {
@@ -117,6 +120,26 @@
       "shuntMohm": 0.16667,
       "scaleUv": 45662,
       "offset": 2049.3,
+      "wavg": true,
+      "links": { "win": "SIFU.tick" },
+      "irq": "plic"
+    },
+    {
+      "type": "pireg",
+      "name": "PI_U",
+      "base": "auto",
+      "frac": 12,
+      "omax": 3333,
+      "links": { "fb": "ADC_V.wmean", "lim": "PI_I.out", "run": "SIFU.run" },
+      "irq": "plic"
+    },
+    {
+      "type": "pireg",
+      "name": "PI_I",
+      "base": "auto",
+      "frac": 12,
+      "omax": 3333,
+      "links": { "fb": "ADC_C.wmean", "trk": "PI_U.out", "run": "SIFU.run" },
       "irq": "plic"
     }
   ],

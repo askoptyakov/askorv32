@@ -79,8 +79,39 @@ const TYPES = {
   adc121: { title: 'ADC121', ru: 'АЦП ADC121S051', cat: 'custom', slot: 0x17, irq: true,
     about: 'Аналоговые измерения: АЦП ADC121S051 (12 бит, до ~470 тыс. отсчётов/с на своём такте 96 МГц) на плате ADC_V (напряжение ±600 В) или ADC_C (ток) через цифровые изоляторы. Блок сам опрашивает АЦП, проверяет кадр, усредняет 2^N отсчётов; период отсчётов, прерывания, пересчёт кода в вольты/амперы - коэффициент и смещение в настройках.',
     defaults: () => ({ cs: null, sclk: null, sdo: null, cmp: null, cmpPol: 'low', board: 'adc_v', mode: 'dc', clkMHz: 96, sclkHz: 8000000, css: 1, quiet: 1, csInv: false,
-                       avgShift: 8, scaleUv: 323242, offset: 0, irq: 'plic' }) },
+                       avgShift: 8, scaleUv: 323242, offset: 0, wavg: true, links: {}, irq: 'plic' }) },
+  pireg: { title: 'PIREG', ru: 'ПИ-регулятор', cat: 'custom', slot: 0x19, irq: true,
+    about: 'ПИ-регулятор (один контур) в фиксированной точке: задание SP, коэффициенты KP, KI (K / 2^FRAC), предел выхода, антинасыщение интегратора. Работает от процессора (обратная связь в регистр, шаг командой) или по прямым связям: обратная связь - среднее за окно блока ADC121, выход - на угол SIFU, внешний предел lim (выход регулятора тока для регулятора напряжения), предел интегратора trk, стоп run (импульсы СИФУ сняты).',
+    defaults: () => ({ frac: 12, omax: 65535, links: {}, irq: 'plic' }) },
 };
+//Прямые связи между блоками в ПЛИС ("links": {"вход": "БЛОК.выход"}, как LINK_OUTS, LINK_INS в socgen.py).
+//Вид: val - 16 бит со стробом, stb - строб, lvl - уровень. Вход stb берёт и строб выхода val
+const LINK_OUTS = {
+  sifu:   { tick: ['stb', 'начало полуволны (раз в 60 эл. град.)'], run: ['lvl', 'импульсы идут'] },
+  adc121: { wmean: ['val', 'среднее за окно, код · 16'] },
+  pireg:  { out: ['val', 'выход регулятора'] },
+};
+const LINK_INS = {
+  sifu:   { u: ['val', 'управление: угол = AMAX - u'] },
+  adc121: { win: ['stb', 'закрыть окно усреднения'] },
+  pireg:  { fb: ['val', 'обратная связь (шаг по её стробу)'], lim: ['val', 'внешний предел выхода'],
+            trk: ['val', 'предел интегратора'], run: ['lvl', 'работа / стоп'] },
+};
+const linkOk = (kin, kout) => kin === kout || (kin === 'stb' && kout === 'val');
+//Источник входа key: { src, out, kind } или null
+function linkSrc(m, inst, key) {
+  const s = (inst.links || {})[key];
+  if (!s || !s.includes('.')) return null;
+  const [sn, out] = s.split('.');
+  const src = m.periph.find(i => i.name === sn);
+  if (!src || !(LINK_OUTS[src.type] || {})[out]) return null;
+  return { src, out, kind: LINK_OUTS[src.type][out][0] };
+}
+//Переименование блока - в связях других блоков
+function renameLinks(m, from, to) {
+  for (const i of m.periph) for (const [k, s] of Object.entries(i.links || {}))
+    if (s && s.split('.')[0] === from) i.links[k] = to + '.' + s.split('.')[1];
+}
 //АЦП ADC121S051: платы и пересчёт кода (как ADC121_BOARDS в socgen.py). ADC_V, DC: 323242 мкВ на код - issue Artel-Inc/temporary#3
 const ADC121_BOARDS = {
   adc_v: { title: 'ADC_V - напряжение', unit: 'В', scale: 323242, offset: { dc: 0, ac: 2045 } },
@@ -285,6 +316,7 @@ function unnumberSingles(m) {
     if (same.length === 1 && new RegExp(`^${t.title}\\d+$`, 'i').test(same[0].name) &&
         !m.periph.some(i => i.name.toLowerCase() === t.title.toLowerCase())) {
       done.push(`${same[0].name} → ${t.title}`);
+      renameLinks(m, same[0].name, t.title);
       same[0].name = t.title;
     }
   }
@@ -588,6 +620,18 @@ function validate(m) {
         out.push({ lvl: 'warn', text: `${inst.name}: SCLK ${(ai.sclk / 1e6).toFixed(2)} МГц вне 3.2..8 МГц ADC121S051 (DIV ${ai.div})`, inst: inst.name });
       if (ai.budget < ADC121_DELAY_NS)
         out.push({ lvl: 'err', text: `${inst.name}: при SCLK ${(ai.sclk / 1e6).toFixed(2)} МГц на задержку DOUT остаётся ${Math.round(ai.budget)} нс (нужно не меньше ${ADC121_DELAY_NS}) - уменьшите частоту SCLK`, inst: inst.name });
+    }
+    for (const [k, s] of Object.entries(inst.links || {})) {
+      if (!s) continue;
+      const r = linkSrc(m, inst, k), kin = ((LINK_INS[inst.type] || {})[k] || [])[0];
+      if (!kin) out.push({ lvl: 'err', text: `${inst.name}: нет входа прямой связи «${k}»`, inst: inst.name });
+      else if (!r) out.push({ lvl: 'err', text: `${inst.name}.${k}: нет выхода «${s}»`, inst: inst.name });
+      else if (r.src === inst) out.push({ lvl: 'err', text: `${inst.name}.${k}: связь блока с самим собой`, inst: inst.name });
+      else if (!linkOk(kin, r.kind)) out.push({ lvl: 'err', text: `${inst.name}.${k}: вид входа ${kin} не подходит к ${s} (${r.kind})`, inst: inst.name });
+    }
+    if (inst.type === 'pireg') {
+      if (!(Number(inst.omax) >= 0 && Number(inst.omax) <= 65535)) out.push({ lvl: 'err', text: `${inst.name}: предел выхода - 0..65535`, inst: inst.name });
+      if (!(Number(inst.frac) >= 4 && Number(inst.frac) <= 16)) out.push({ lvl: 'err', text: `${inst.name}: дробных бит - 4..16`, inst: inst.name });
     }
     if (inst.type === 'sifu' && !pll.errs.length) {
       const si = sifuInfo(m, inst);
@@ -1525,6 +1569,34 @@ function instForm(inst, v) {
       <div class="full readout">${pe ? '<span class="bad">нет частоты rPLL</span>' :
         `DIV = <b>${u.div}</b> · фактически <b class="${bad ? 'bad' : 'good'}">${Math.round(u.real)} бит/с</b> (ошибка ${u.err.toFixed(2)} %)`}</div>`;
   }
+  if (inst.type === 'pireg') {
+    const frac = Number(inst.frac);
+    h += `<label>Дробных бит KP, KI</label><input type="number" name="frac" min="4" max="16" value="${inst.frac}" style="width:90px"
+        title="Коэффициент = K / 2^FRAC: при 12 значение 4096 - это 1,0, наименьший шаг 1/4096">
+      <label>Предел выхода после сброса</label><input type="number" name="omax" min="0" max="65535" value="${inst.omax}" style="width:110px"
+        title="Нижний предел - 0. Для угла СИФУ - AMAX (120 эл. град.: 3333 тика при 500 кГц и 50 Гц)">
+      <div class="full readout">K = 1,0 - это ${Math.pow(2, frac)}; шаг ${fmt(1 / Math.pow(2, frac))}; задание и коэффициенты пишет программа</div>`;
+  }
+  if (inst.type === 'adc121')
+    h += `<label>Среднее за окно</label><select name="wavg" title="Отсчёты между закрытиями окна (связь win или CR.WCLOSE), WMEAN = код · 16: обратная связь регулятора, около 120 ячеек">${opts([['1', 'есть (WMEAN)'], ['0', 'нет']], inst.wavg || linkSrc(model, inst, 'win') ? '1' : '0')}</select>`;
+  if (LINK_INS[inst.type]) {
+    h += `</div><h3 class="pane-sub">Прямые связи</h3><div class="form">`;
+    for (const [k, [kin, txt]] of Object.entries(LINK_INS[inst.type])) {
+      const cur = (inst.links || {})[k] || '';
+      const choices = [['', '— нет (через процессор) —']];
+      for (const i of model.periph) if (i !== inst)
+        for (const [o, [kout, otxt]] of Object.entries(LINK_OUTS[i.type] || {}))
+          if (linkOk(kin, kout)) choices.push([`${i.name}.${o}`, `${i.name}.${o} - ${otxt}`]);
+      if (cur && !choices.some(c => c[0] === cur)) choices.push([cur, `${cur} (нет такого выхода)`]);
+      h += `<label title="${esc(txt)}">${esc(k)}</label><select name="link_${esc(k)}" title="${esc(txt)}">${opts(choices, cur)}</select>`;
+    }
+    const outs = Object.entries(LINK_OUTS[inst.type] || {}).map(([o, [, otxt]]) => {
+      const users = model.periph.flatMap(i => Object.entries(i.links || {}).filter(([, s]) => s === `${inst.name}.${o}`).map(([k]) => `${i.name}.${k}`));
+      return `<b>${esc(o)}</b> (${esc(otxt)})` + (users.length ? ' → ' + esc(users.join(', ')) : '');
+    });
+    if (outs.length) h += `<div class="full readout">Выходы: ${outs.join('; ')}</div>`;
+    h += `<p class="note full">Связь работает в ПЛИС без процессора: блоки обмениваются значениями и стробами каждый такт. Не подключённый вход - работа через регистры.</p>`;
+  }
   h += `</div><h3 class="pane-sub">Выводы</h3>`;
   const rows = instSignals(inst).map(g => ({ key: g.key, label: g.label }));
   if (inst.type === 'gpio') {
@@ -1581,6 +1653,7 @@ function wireInstForm(box, inst) {
   q('name').addEventListener('change', e => {
     const nv = e.target.value.trim();
     if (!nv || nv === inst.name) return;
+    renameLinks(model, inst.name, nv);
     inst.name = nv; sel = { kind: 'inst', name: nv };
     changed();
   });
@@ -1616,6 +1689,14 @@ function wireInstForm(box, inst) {
   if (q('csInv')) q('csInv').addEventListener('change', e => { inst.csInv = e.target.value === '1'; changed(); });
   for (const k of ['avgShift', 'css', 'quiet', 'clkMHz', 'scaleUv', 'offset']) if (q(k)) q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
   if (q('sim')) q('sim').addEventListener('change', e => { inst.sim = e.target.value === '1'; changed(); });
+  if (q('wavg')) q('wavg').addEventListener('change', e => { inst.wavg = e.target.value === '1'; changed(); });
+  for (const k of ['frac', 'omax']) if (q(k) && inst.type === 'pireg') q(k).addEventListener('change', e => { inst[k] = Number(e.target.value); changed(); });
+  box.querySelectorAll('select[name^=link_]').forEach(s => s.addEventListener('change', () => {
+    inst.links = Object.assign({}, inst.links || {});
+    const k = s.name.slice(5);
+    if (s.value) inst.links[k] = s.value; else delete inst.links[k];
+    changed();
+  }));
   if (q('sawKHz')) q('sawKHz').addEventListener('change', e => { inst.sawHz = Math.round(Number(e.target.value) * 1000); changed(); });
   if (q('fpgaConfig')) q('fpgaConfig').addEventListener('change', e => {
     inst.fpgaConfig = e.target.value === '1';
@@ -1773,6 +1854,7 @@ function defaultCfgPins(m, inst) {
 function addInstance(type) {
   const same = insts(model, type), t = TYPES[type].title;
   if (same.length === 1 && same[0].name === t && !model.periph.some(i => i.name.toLowerCase() === (t + '0').toLowerCase())) {
+    renameLinks(model, same[0].name, t + '0');
     same[0].name = t + '0';
     if (sel && sel.kind === 'inst' && sel.name === t) sel.name = t + '0';
   }

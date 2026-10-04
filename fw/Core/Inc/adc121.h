@@ -36,6 +36,7 @@ typedef struct
   __IO uint32_t SR;					//0x1C: DRDY, ARDY, ERR, CMPF (сброс записью 1), BUSY, CMP, [31:16] сырой кадр
   __I  uint32_t CNT;				//0x20: отсчётов без ошибок
   __I  uint32_t FCLK;				//0x24: частота такта блока, Гц (свой rPLL или такт шины; 0 - не задана)
+  __I  uint32_t WMEAN;				//0x28: [15:0] среднее за окно, код * 16; [27:16] отсчётов в окне
 } ADC121_TypeDef;
 
 /* Биты CR */
@@ -47,6 +48,8 @@ typedef struct
 #define ADC121_CR_CSINV				(1U << 5)	//Вывод CS инвертирован
 #define ADC121_CR_CPOL				(1U << 6)	//Активный уровень входа CMP: 0 - низкий, 1 - высокий
 #define ADC121_CR_CIE				(1U << 7)	//Прерывание по срабатыванию CMP
+#define ADC121_CR_WIE				(1U << 8)	//Прерывание по новому среднему за окно
+#define ADC121_CR_WCLOSE			(1U << 9)	//Закрыть окно усреднения (запись 1)
 
 /* Поля DIV */
 #define ADC121_DIV_MSK				0xFFU
@@ -58,6 +61,7 @@ typedef struct
 #define ADC121_SR_ARDY				(1U << 1)	//Новое среднее
 #define ADC121_SR_ERR				(1U << 2)	//Ошибка кадра: ведущие нули не нули (платы нет, обрыв)
 #define ADC121_SR_CMPF				(1U << 3)	//Вход CMP (ADC_C: компаратор защиты) перешёл в активный уровень
+#define ADC121_SR_WRDY				(1U << 4)	//Новое среднее за окно
 #define ADC121_SR_BUSY				(1U << 8)	//Идёт кадр
 #define ADC121_SR_CMP				(1U << 9)	//Вход CMP сейчас активен
 #define ADC121_SR_FRAME_POS			16U			//Сырой кадр последнего преобразования
@@ -106,7 +110,7 @@ __ADC121_INLINE uint32_t ADC121_GetMean(ADC121_TypeDef *adc) { return adc->MEAN 
 __ADC121_INLINE uint32_t ADC121_GetSum(ADC121_TypeDef *adc)  { return adc->SUM; }
 __ADC121_INLINE uint32_t ADC121_GetCount(ADC121_TypeDef *adc) { return adc->CNT; }
 /* Флаги DRDY, ARDY, ERR и их сброс записью 1 */
-#define ADC121_SR_FLAGS				(ADC121_SR_DRDY | ADC121_SR_ARDY | ADC121_SR_ERR | ADC121_SR_CMPF)
+#define ADC121_SR_FLAGS				(ADC121_SR_DRDY | ADC121_SR_ARDY | ADC121_SR_ERR | ADC121_SR_CMPF | ADC121_SR_WRDY)
 __ADC121_INLINE uint32_t ADC121_GetFlags(ADC121_TypeDef *adc) { return adc->SR & ADC121_SR_FLAGS; }
 __ADC121_INLINE void ADC121_ClearFlags(ADC121_TypeDef *adc, uint32_t f) { adc->SR = f & ADC121_SR_FLAGS; }
 /* Вход CMP (плата ADC_C - компаратор защиты по мгновенному току): активен сейчас */
@@ -116,9 +120,18 @@ __ADC121_INLINE uint32_t ADC121_GetFrame(ADC121_TypeDef *adc) { return adc->SR >
 
 /* Прерывания: ADC121_CR_DIE, ADC121_CR_AIE, ADC121_CR_EIE, ADC121_CR_CIE. Источник PLIC - PLIC_SRC_<ИМЯ>,
    обработчик PLIC_<ИМЯ>_IRQHandler (soc.h); в обработчике сбросить флаги */
-#define ADC121_CR_IT				(ADC121_CR_DIE | ADC121_CR_AIE | ADC121_CR_EIE | ADC121_CR_CIE)
+#define ADC121_CR_IT				(ADC121_CR_DIE | ADC121_CR_AIE | ADC121_CR_EIE | ADC121_CR_CIE | ADC121_CR_WIE)
 __ADC121_INLINE void ADC121_IT_Enable(ADC121_TypeDef *adc, uint32_t it)  { adc->CR |=  (it & ADC121_CR_IT); }
 __ADC121_INLINE void ADC121_IT_Disable(ADC121_TypeDef *adc, uint32_t it) { adc->CR &= ~(it & ADC121_CR_IT); }
+
+/* Среднее за окно (блок с <ИМЯ>_WIN): отсчёты между закрытиями окна - стробом прямой связи (например,
+   начало полуволны СИФУ, SIFU.tick) или ADC121_WindowClose. Значение - код * 16 (4 дробных бита) */
+__ADC121_INLINE void ADC121_WindowClose(ADC121_TypeDef *adc) { adc->CR |= ADC121_CR_WCLOSE; }
+__ADC121_INLINE uint32_t ADC121_GetWMean(ADC121_TypeDef *adc)  { return adc->WMEAN & 0xFFFFU; }
+__ADC121_INLINE uint32_t ADC121_GetWCount(ADC121_TypeDef *adc) { return (adc->WMEAN >> 16) & 0xFFFU; }
+/* Код * 16 (среднее за окно, задание регулятора PIREG) <-> тысячные доли единицы (мВ, мА) */
+int32_t  ADC121_Code16ToMilli(ADC121_Cal cal, uint32_t code16);
+uint32_t ADC121_MilliToCode16(ADC121_Cal cal, int32_t milli);
 
 /* Пересчёт в тысячные доли единицы (мВ, мА): код -> (код - смещение) * scale_u / 1000 */
 int32_t ADC121_ToMilli(ADC121_Cal cal, uint32_t code);

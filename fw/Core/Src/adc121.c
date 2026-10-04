@@ -53,6 +53,17 @@ int32_t ADC121_ToMilli(ADC121_Cal cal, uint32_t code) {
 	return (int32_t)((((int64_t)code * 1000 - cal.offset_m) * cal.scale_u) / 1000000);
 }
 
+int32_t ADC121_Code16ToMilli(ADC121_Cal cal, uint32_t code16) {
+	/* (код16 / 16 - смещение) * мк-единиц на код / 1000: в тыс€чных дол€х кода * 16 */
+	return (int32_t)((((int64_t)code16 * 1000 - (int64_t)cal.offset_m * 16) * cal.scale_u) / 16000000);
+}
+
+uint32_t ADC121_MilliToCode16(ADC121_Cal cal, int32_t milli) {
+	/* код16 = (milli * 1e6 / scale_u + смещение_m) * 16 / 1000, в пределах 0..4095 * 16 */
+	int64_t c = (((int64_t)milli * 16000000) / cal.scale_u + (int64_t)cal.offset_m * 16 + 500) / 1000;
+	return (uint32_t)(c < 0 ? 0 : c > 65535 ? 65535 : c);
+}
+
 int32_t ADC121_MeanMilli(ADC121_TypeDef *adc, ADC121_Cal cal) {
 	uint32_t sh = adc->AVG & 0xFU;
 	/* —умма 2^sh отсчЄтов в тыс€чных дол€х кода за вычетом смещени€ */

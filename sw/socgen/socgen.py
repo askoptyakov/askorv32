@@ -53,7 +53,24 @@ TYPES = {
     "spiflash": dict(title="SPIFLASH", slot=0x15, cat="iface", irq=False, module="spiflash_top"),
     "sifu":   dict(title="SIFU",   slot=0x16, cat="custom", irq=True,  module="sifu_top"),
     "adc121": dict(title="ADC121", slot=0x17, cat="custom", irq=True,  module="adc121_top"),
+    "pireg":  dict(title="PIREG",  slot=0x19, cat="custom", irq=True,  module="pireg_top"),
 }
+#Прямые связи между блоками в ПЛИС, без процессора ("links" экземпляра в .gwsoc: {"вход": "БЛОК.выход"}).
+#Вид: val - 16 бит со стробом нового значения, stb - строб, lvl - уровень. Вход val берёт значение (и строб,
+#если блоку он нужен), вход stb - выход stb или строб выхода val, вход lvl - только выход lvl.
+#Как в web/app.js (LINK_OUTS, LINK_INS)
+LINK_OUTS = {"sifu":   {"tick":  ("stb", "начало полуволны любой пары (раз в 60 эл. град.)"),
+                        "run":   ("lvl", "импульсы идут (EN, сеть, синхронизация)")},
+             "adc121": {"wmean": ("val", "среднее за окно, код * 16")},
+             "pireg":  {"out":   ("val", "выход регулятора")}}
+LINK_INS = {"sifu":   {"u":   ("val", "управление: угол = AMAX - u")},
+            "adc121": {"win": ("stb", "закрыть окно усреднения")},
+            "pireg":  {"fb":  ("val", "обратная связь: шаг по её стробу"),
+                       "lim": ("val", "внешний верхний предел выхода и интегратора"),
+                       "trk": ("val", "верхний предел интегратора"),
+                       "run": ("lvl", "1 - работа, 0 - стоп и сброс интегратора")}}
+PIREG_FRAC = 12                 #Дробных бит KP, KI по умолчанию: 4096 = 1.0
+SV_B0, SV_B1, SV_D0 = "1'b0", "1'b1", "16'd0"   #Значения не подключённых входов прямых связей
 UART_BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600]
 UART_PARITY = {"none": 0, "even": 1, "odd": 2}
 FIFO_DEPTHS = [8, 16, 32]
@@ -200,11 +217,75 @@ def inst_signals(inst):
     if t == "adc121":
         return ([("cs", "CS", "output", True), ("sclk", "SCLK", "output", True), ("sdo", "SDO", "input", True)] +
                 ([("cmp", "CMP", "input", False)] if inst.get("cmp") is not None else []))
+    if t == "pireg":
+        return []
     if t == "sifu":
         return ([(k, k.upper(), "input", True) for k in SIFU_SYNC] +
                 [(k, k.upper(), "output", True) for k in SIFU_GATES] +
                 ([("grid", "GRID", "output", False)] if inst.get("grid") is not None else []))
     return []
+
+
+def link_ok(kin, kout):
+    """Вход вида kin можно подключить к выходу вида kout."""
+    return kin == kout or (kin == "stb" and kout == "val")
+
+
+def link_src(m, inst, key):
+    """Источник входа key экземпляра: (экземпляр-источник, выход, вид выхода) или None."""
+    s = (inst.get("links") or {}).get(key)
+    if not s or "." not in s:
+        return None
+    src_name, out = s.split(".", 1)
+    src = next((i for i in insts(m) if i["name"] == src_name), None)
+    if not src or out not in LINK_OUTS.get(src["type"], {}):
+        return None
+    return src, out, LINK_OUTS[src["type"]][out][0]
+
+
+def link_net(src, out, strobe=False):
+    """Цепь выхода прямой связи в top.sv: lnk_<экземпляр>_<выход>[_stb]."""
+    kind = LINK_OUTS[src["type"]][out][0]
+    return f"lnk_{hdl(src)}_{out}" + ("_stb" if strobe and kind == "val" else "")
+
+
+def link_in(m, inst, key, default, strobe=False):
+    """Цепь для входа key (значение или строб) или значение по умолчанию, если вход не подключён."""
+    r = link_src(m, inst, key)
+    if not r:
+        return default
+    src, out, kind = r
+    if LINK_INS[inst["type"]][key][0] == "stb":
+        return link_net(src, out, strobe=(kind == "val"))
+    return link_net(src, out, strobe)
+
+
+def link_check(m, inst):
+    """Ошибки прямых связей экземпляра."""
+    errs = []
+    n = inst["name"]
+    for key, s in (inst.get("links") or {}).items():
+        if not s:
+            continue
+        if key not in LINK_INS.get(inst["type"], {}):
+            errs.append(f"{n}: у блока {TYPES[inst['type']]['title']} нет входа прямой связи «{key}»")
+            continue
+        r = link_src(m, inst, key)
+        if not r:
+            errs.append(f"{n}.{key}: нет выхода «{s}» (нужно БЛОК.выход: " +
+                        ", ".join(f"{i['name']}.{o}" for i in insts(m) for o in LINK_OUTS.get(i["type"], {})) + ")")
+            continue
+        src, out, kind = r
+        if src is inst:
+            errs.append(f"{n}.{key}: связь блока с самим собой")
+        elif not link_ok(LINK_INS[inst["type"]][key][0], kind):
+            errs.append(f"{n}.{key}: вид входа {LINK_INS[inst['type']][key][0]} не подходит к выходу {s} ({kind})")
+    return errs
+
+
+def sifu_amax(si):
+    """Наибольший угол при управлении по прямой связи: 120 эл. град. при 50 Гц, но не больше alphaMax."""
+    return max(0, min(round(si["half"] * 120 / 180), si["alphaMax"]))
 
 
 def inst_pin(inst, key):
@@ -718,6 +799,14 @@ def validate(m, dev):
             if ai["budget"] < ADC121_DELAY_NS:
                 errors.append(f"{n}: при SCLK {ai['sclk'] / 1e6:.2f} МГц на задержку DOUT остаётся {ai['budget']:.0f} нс "
                               f"(изоляторы и АЦП ~60 нс, нужно не меньше {ADC121_DELAY_NS}) - уменьшите частоту SCLK")
+        errors += link_check(m, inst)
+        if inst["type"] == "pireg":
+            if not 0 <= int(inst.get("omax", 65535)) <= 0xFFFF:
+                errors.append(f"{n}: предел выхода OMAX - 0..65535")
+            if not 4 <= int(inst.get("frac", PIREG_FRAC)) <= 16:
+                errors.append(f"{n}: дробных бит коэффициентов - 4..16")
+            if link_src(m, inst, "lim") and not link_src(m, inst, "fb"):
+                warns.append(f"{n}: вход lim подключён, а обратная связь fb - нет (шаги только процессором)")
         if inst["type"] == "sifu":
             si = sifu_info(m, inst)
             if not 0 <= si["div"] <= 0xFFFF:
@@ -976,6 +1065,22 @@ def gen_top(m, bases, cfg_rel):
         w("    assign bus_per_RData = 32'd0;")
     w("")
 
+    lnk = [(i, o, LINK_OUTS[i["type"]][o]) for i in order for o in LINK_OUTS.get(i["type"], {})]
+    if lnk:
+        w("    //#4 Прямые связи между блоками (\"links\" в .gwsoc): выходы блоков, которые можно подать на входы других")
+        w("    //    без процессора; не подключённые никуда синтезатор убирает")
+        for i, o, (kind, txt) in lnk:
+            if kind == "val":
+                w(f"    logic [15:0] {link_net(i, o)};   logic {link_net(i, o, True)};   //{i['name']}.{o}: {txt}")
+            else:
+                w(f"    logic        {link_net(i, o)};   //{i['name']}.{o}: {txt}")
+        used = [(i, k, s) for i in order for k, s in (i.get("links") or {}).items() if s and link_src(m, i, k)]
+        for i, k, s in used:
+            w(f"    //    {i['name']}.{k} <- {s}")
+        if not used:
+            w("    //    связей нет: все блоки работают через процессор")
+        w("")
+
     num = 1
     for idx, inst in enumerate(order):
         h, name, t = hdl(inst), inst["name"], inst["type"]
@@ -1046,7 +1151,8 @@ def gen_top(m, bases, cfg_rel):
             cpol = 1 if inst.get("cmpPol", "low") == "high" else 0
             w(f"    adc121_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(8'd{ai['div']}), .AVGSH_INIT(4'd{ai['avgsh']}), "
               f".CSS_INIT(4'd{ai['css']}), .QUIET_INIT(4'd{ai['quiet']}), .CSINV_INIT(1'b{1 if ai['csInv'] else 0}),")
-            w(f"                 .CMP_EN(1'b{1 if cmp else 0}), .CPOL_INIT(1'b{cpol}), .CLK_HZ(32'd{round(ai['f'])})) {h}")
+            win = 1 if (inst.get("wavg", False) or link_src(m, inst, "win")) else 0
+            w(f"                 .CMP_EN(1'b{1 if cmp else 0}), .CPOL_INIT(1'b{cpol}), .CLK_HZ(32'd{round(ai['f'])}), .WIN_EN(1'b{win})) {h}")
             if ai["own"]:
                 w(f"                (.clk(clk_per), .rst(rst_per), .adc_clk({ADC121_CLK_NET}), .adc_lock(adc_lock),")
             else:
@@ -1054,7 +1160,10 @@ def gen_top(m, bases, cfg_rel):
             w(f"                 {bus},")
             w(f"                 .adc_cs_n({net[name + '.cs']}), .adc_sclk({net[name + '.sclk']}), .adc_sdo({net[name + '.sdo']}),")
             cmp_net = cmp if cmp else "1'b1"
-            w(f"                 .adc_cmp({cmp_net}), .irq(irq_{h}));" + ("" if cmp else "   //вход компаратора не выведен"))
+            w(f"                 .adc_cmp({cmp_net}),")
+            w(f"                 .win_i({link_in(m, inst, 'win', SV_B0)}), .wmean_o({link_net(inst, 'wmean')}), "
+              f".wstb_o({link_net(inst, 'wmean', True)}),")
+            w(f"                 .irq(irq_{h}));" + ("" if cmp else "   //вход компаратора не выведен"))
         elif t == "sifu":
             si = sifu_info(m, inst)
             w(f"    //-{num}- {inst_title(inst)}: СИФУ трёхфазного мостового выпрямителя, тик ГПН {fmt_mhz(round(si['saw']) / 1e3)} кГц "
@@ -1062,14 +1171,34 @@ def gen_top(m, bases, cfg_rel):
             w(f"    //    регистры с {base}; входы - плата синхронизации NSB (0 - оптрон открыт), выходы - тиристоры VS1..VS6; "
               + ("есть имитатор сети" if inst.get("sim", True) else "без имитатора сети"))
             w(f"    logic irq_{h};")
+            uext = 1 if link_src(m, inst, "u") else 0
             w(f"    sifu_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(16'd{si['div']}), .DELAY_INIT(12'd{si['delay']}), "
-              f".WIDTH_INIT(12'd{si['pulse']}), .SIM_EN({1 if inst.get('sim', True) else 0})) {h}")
+              f".WIDTH_INIT(12'd{si['pulse']}), .SIM_EN({1 if inst.get('sim', True) else 0}),")
+            w(f"               .AMAX_INIT(12'd{sifu_amax(si)}), .UEXT_EN(1'b{uext})) {h}")
             w("                (.clk(clk_per), .rst(rst_per),")
             w(f"                 {bus},")
             w("                 " + ", ".join(f".sync_{k}({net[name + '.' + k]})" for k in SIFU_SYNC) + ",")
             w("                 " + ", ".join(f".{k}({net[name + '.' + k]})" for k in SIFU_GATES) + ",")
             grid = net.get(f"{name}.grid", "")
-            w(f"                 .grid_o({grid}), .irq(irq_{h}));" + ("" if grid else "   //выход «сеть есть» не выведен"))
+            w(f"                 .grid_o({grid}),")
+            w(f"                 .tick_o({link_net(inst, 'tick')}), .run_o({link_net(inst, 'run')}), "
+              f".u_i({link_in(m, inst, 'u', SV_D0)}),")
+            w(f"                 .irq(irq_{h}));" + ("" if grid else "   //выход «сеть есть» не выведен"))
+        elif t == "pireg":
+            frac, omax = int(inst.get("frac", PIREG_FRAC)), int(inst.get("omax", 65535))
+            lim, trk, run = (1 if link_src(m, inst, k) else 0 for k in ("lim", "trk", "run"))
+            w(f"    //-{num}- {inst_title(inst)}: ПИ-регулятор, коэффициенты K / 2^{frac}, выход 0..{omax}; регистры с {base}")
+            w(f"    logic irq_{h};")
+            w(f"    pireg_top #(.MEMORY_TYPE(DMEM_TYPE), .FRAC({frac}), .OMAX_INIT(16'd{omax}), "
+              f".LIM_EN(1'b{lim}), .TRK_EN(1'b{trk}), .RUN_EN(1'b{run})) {h}")
+            w("                (.clk(clk_per), .rst(rst_per),")
+            w(f"                 {bus},")
+            w(f"                 .fb_i({link_in(m, inst, 'fb', SV_D0)}), "
+              f".fb_stb({link_in(m, inst, 'fb', SV_B0, True)}),")
+            w(f"                 .lim_i({link_in(m, inst, 'lim', SV_D0)}), "
+              f".trk_i({link_in(m, inst, 'trk', SV_D0)}), "
+              f".run_i({link_in(m, inst, 'run', SV_B1)}),")
+            w(f"                 .out_o({link_net(inst, 'out')}), .out_stb({link_net(inst, 'out', True)}), .irq(irq_{h}));")
         w("")
         num += 1
 
@@ -1227,7 +1356,18 @@ def gen_soc_h(m, bases, cfg_rel):
                        ("SAW_HZ", f"{round(si['saw'])}U", "Частота тиков ГПН при DIV_DEFAULT, Гц"),
                        ("DELAY_DEFAULT", f"{si['delay']}U", "DELAY_RC_COMPENSATION после сброса, тиков"),
                        ("WIDTH_DEFAULT", f"{si['pulse']}U", "Длительность импульса после сброса, тиков"),
-                       ("SIM", "1" if inst.get("sim", True) else "0", "Есть имитатор сети (CR.SIM, SIMCFG)")]
+                       ("SIM", "1" if inst.get("sim", True) else "0", "Есть имитатор сети (CR.SIM, SIMCFG)"),
+                       ("AMAX_DEFAULT", f"{sifu_amax(si)}U", "Наибольший угол при CR.UEXT после сброса, тиков (120 эл. град.)")]
+        if t == "pireg":
+            params += [("FRAC", f"{int(inst.get('frac', PIREG_FRAC))}U", "Дробных бит KP, KI: коэффициент = K / 2^FRAC"),
+                       ("OMAX_DEFAULT", f"{int(inst.get('omax', 65535))}U", "Верхний предел выхода после сброса")]
+        if t == "adc121":
+            params += [("WIN", "1" if (inst.get("wavg", False) or link_src(m, inst, "win")) else "0",
+                        "Есть среднее за окно (WMEAN, CR.WCLOSE)")]
+        for key, (kind, txt) in LINK_INS.get(t, {}).items():
+            r = link_src(m, inst, key)
+            params.append((f"LINK_{key.upper()}", "1" if r else "0",
+                           f"Вход {key} ({txt}): " + (f"прямая связь от {r[0]['name']}.{r[1]}" if r else "не подключён")))
         for suf, val, com in params:
             w(cdef(f"{N}_{suf}", val, com))
         #Первый блок типа под другим именем: имена типа для драйверов - его синонимы
@@ -1634,6 +1774,22 @@ def dev_vcc_note(vcc):
     return {"1.2": "GW1NR-9", "1.0": "GW2A-18"}.get(vcc, "кристалла")
 
 
+def check_gprj_modules(m, gprj):
+    """Модули блоков конфигурации есть в исходниках проекта Gowin (riscv.gprj): новый тип периферии - новый файл,
+    его вписывают в проект вручную (элемент File)."""
+    if not gprj.exists():
+        return
+    text = ""
+    for f in gprj_sources(gprj):
+        if f.exists():
+            text += f.read_text(encoding="utf-8", errors="replace")
+    for t in sorted({i["type"] for i in insts(m)}):
+        mod = TYPES[t]["module"]
+        if not re.search(r"\bmodule\s+" + mod + r"\b", text):
+            print(f"Предупреждение: модуля {mod} (блок {TYPES[t]['title']}) нет в исходниках {os.path.relpath(gprj, ROOT)} - "
+                  f"добавьте его файл (hw/src/periph/...) в проект, иначе Gowin не соберёт top.sv")
+
+
 def sync_gprj_device(gprj, dev):
     """Кристалл проекта Gowin (элемент Device в riscv.gprj) - по "device" в .gwsoc: смена ПЛИС в конфигураторе
     переносится в проект сама. Остальное содержимое файла не меняется."""
@@ -1802,6 +1958,7 @@ def main():
         changed = write_if_changed(path, text, enc)
         print(f"  {os.path.relpath(path, ROOT)}: {'обновлён' if changed else 'без изменений'}")
     gprj = hw / "riscv.gprj"
+    check_gprj_modules(m, gprj)
     if sync_gprj_device(gprj, dev):
         print(f"  {os.path.relpath(gprj, ROOT)}: кристалл {dev['part']}")
     elif not gprj.exists():

@@ -187,7 +187,9 @@ class Loader:
     def run(self, args):
         env = dict(os.environ)
         env["PATH"] = os.pathsep.join([str(p) for p in self.path] + [env.get("PATH", "")])
-        cmd = [str(self.exe), "-b", self.board.loader] + self.sel + args
+        #Частота JTAG, Гц: FPGALOAD_FREQ=1000000 - если программатор платы сбоит на частоте по умолчанию (6 МГц)
+        freq = ["--freq", os.environ["FPGALOAD_FREQ"]] if os.environ.get("FPGALOAD_FREQ") else []
+        cmd = [str(self.exe), "-b", self.board.loader] + self.sel + freq + args
         sys.stdout.flush()
         proc = subprocess.Popen(cmd, cwd=self.board.build, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         conprogress.filter_stream(proc.stdout, sys.stdout.buffer)

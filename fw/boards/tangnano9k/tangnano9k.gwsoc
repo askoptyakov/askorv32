@@ -29,7 +29,6 @@
   "periph": [
     { "type": "gpio", "name": "GPIO", "base": "auto", "lines": [75, 77, 36, 74, 76, 39] },
     { "type": "tm1638", "name": "TM1638", "base": "auto", "dio": 25, "clk": 26, "stb": 27 },
-    { "type": "stim", "name": "STIM", "base": "auto", "width": 16, "out": null, "irq": "plic" },
     {
       "type": "uart",
       "name": "UART",
@@ -41,19 +40,6 @@
       "stop": 1,
       "fifo": 16,
       "irq": "plic"
-    },
-    {
-      "type": "spiflash",
-      "name": "SPIFLASH",
-      "base": "auto",
-      "sck": 59,
-      "cs": 60,
-      "mosi": 61,
-      "miso": 62,
-      "sizeMB": 4,
-      "div": 1,
-      "fpgaConfig": false,
-      "bootAddr": "0x100000"
     },
     {
       "type": "sifu",
@@ -76,6 +62,7 @@
       "delayTicks": 400,
       "pulseTicks": 150,
       "sim": true,
+      "links": { "u": "PI_U.out" },
       "irq": "plic"
     },
     {
@@ -97,6 +84,8 @@
       "avgShift": 8,
       "scaleUv": 222181,
       "offset": 0,
+      "wavg": true,
+      "links": { "win": "SIFU.tick" },
       "irq": "plic"
     },
     {
@@ -119,6 +108,26 @@
       "shuntMohm": 0.16667,
       "scaleUv": 45662,
       "offset": 2049.3,
+      "wavg": true,
+      "links": { "win": "SIFU.tick" },
+      "irq": "plic"
+    },
+    {
+      "type": "pireg",
+      "name": "PI_U",
+      "base": "auto",
+      "frac": 12,
+      "omax": 3333,
+      "links": { "fb": "ADC_V.wmean", "lim": "PI_I.out", "run": "SIFU.run" },
+      "irq": "plic"
+    },
+    {
+      "type": "pireg",
+      "name": "PI_I",
+      "base": "auto",
+      "frac": 12,
+      "omax": 3333,
+      "links": { "fb": "ADC_C.wmean", "trk": "PI_U.out", "run": "SIFU.run" },
       "irq": "plic"
     }
   ],
@@ -152,10 +161,6 @@
     "52": { "net": "CLOCK" },
     "56": { "net": "VS6" },
     "57": { "net": "VS3" },
-    "59": { "net": "FLASH_SCK" },
-    "60": { "net": "FLASH_CS" },
-    "61": { "net": "FLASH_MOSI" },
-    "62": { "net": "FLASH_MISO" },
     "68": { "net": "VS4" },
     "69": { "net": "VS1" },
     "70": { "net": "ADC_V_SCLK" },
