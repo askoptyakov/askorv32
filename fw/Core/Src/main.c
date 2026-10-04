@@ -4,12 +4,13 @@
  * @author		Alexander Koptyakov
  * @device		AskoRV32
  * @brief       Управляемый выпрямитель: стабилизация напряжения с ограничением тока (CV/CC),
- *              РЕГУЛЯТОР - ПРОГРАММОЙ (ветка fw_rect). Блоки ПЛИС: SIFU (синхронизация от сети,
- *              импульсы на тиристоры) и ADC (каналы V - плата напряжения ADC_V, C - плата тока
- *              ADC_C). Прямых связей между блоками нет: программа в начале каждой полуволны
- *              (SIFU SR.SYNCF, раз в 60 эл. град.) закрывает окна усреднения обоих каналов, берёт
- *              средние, считает два ПИ-контура и пишет угол в SIFU (ALPHA). Описание -
- *              hw/info/rectifier.md.
+ *              РЕГУЛЯТОР - В ПЛИС (ветка hw_rect). Блоки ПЛИС: RECT - выпрямитель (СИФУ и регулятор
+ *              CC/CV: PI_U - напряжение, PI_I - ток) и ADC (каналы V - плата напряжения ADC_V,
+ *              C - плата тока ADC_C). Связь RECT - ADC задана в конфигураторе: выпрямитель закрывает
+ *              окна усреднения АЦП в начале каждой полуволны и берёт средние напряжения и тока как
+ *              обратные связи; выход PI_U - угол СИФУ. Программа пишет только задание (напряжение,
+ *              ограничение тока - в кодах АЦП по калибровке каналов), коэффициенты, предел угла и
+ *              режим, и показывает результат. Описание - hw/info/rectifier.md.
  *
  *              Режимы (стенд Tang Nano 9K - дискретные входы; без них - команда терминала m):
  *                DI1 - синхронизация от имитатора сети, угол вручную;
@@ -40,9 +41,14 @@
 #include "uart.h"
 #include "sifu.h"
 #include "adc121.h"
+#include "pireg.h"
+#include "rect.h"
 
-#if !defined(SIFU) || !defined(ADC_V) || !defined(ADC_C)
-#error "Выпрямитель: в конфигурации ПЛИС нужны блоки SIFU и ADC с каналами V (напряжение) и C (ток)"
+#if !defined(RECT) || !defined(ADC_V) || !defined(ADC_C)
+#error "Выпрямитель: в конфигурации ПЛИС нужны блоки RECT и ADC с каналами V (напряжение) и C (ток)"
+#endif
+#if !RECT_LINKED
+#error "Выпрямитель: у блока RECT не задана связь с блоком АЦП (настройки «АЦП», «Канал U», «Канал I»)"
 #endif
 #if !ADC_WIN
 #error "Выпрямитель: у блока ADC нужно среднее за окно (настройка «Среднее за окно»)"
@@ -207,48 +213,43 @@ static void adc_detail(AdcBoard *b) {
 }
 
 /* ---------------------------------------------------------------------------------------------
- * Регулятор CV/CC программой. Шаг - на каждое окно (начало полуволны):
- *   регулятор напряжения: e = Uзад - U, выход u - тики угла (угол = AMAX - u);
- *   регулятор тока: e = Iогр - I; его выход - верхний предел регулятора напряжения, выход
- *   регулятора напряжения - предел интегратора регулятора тока.
- * ПИ: INT = clamp(INT + KI * e, 0, IHI << 12); OUT = clamp((KP * e + INT) >> 12, 0, HI).
- * Задание и обратная связь - в кодах АЦП * 16 (пересчёт из вольт и ампер по калибровке каналов).
+ * Регулятор CV/CC в ПЛИС (блок RECT): PI_U - напряжение (выход - угол СИФУ: AMAX - u, предел -
+ * выход PI_I), PI_I - ток (предел интегратора - выход PI_U). Шаг - по каждому среднему за окно,
+ * без программы. Программа пишет задание в кодах АЦП * 16 (пересчёт по калибровке каналов),
+ * коэффициенты (K * 4096) и предел угла AMAX
  * --------------------------------------------------------------------------------------------- */
-#define RG_FRAC				12U
-
-typedef struct { int64_t intg; uint32_t out; uint32_t lim; } SoftPi;
-static SoftPi pi_u, pi_i;
 static int32_t  u_set_mv = 50000, i_lim_ma = 1000;		//Задание напряжения, ограничение тока
 static uint32_t kp_u = 82U, ki_u = 51U, kp_i = 820U, ki_i = 500U;	//K * 4096
 static uint32_t amax;									//Наибольший угол, тиков (120 эл. град.)
 static uint32_t u16 = 0U, i16 = 0U;						//Средние последнего окна, код * 16
 static uint32_t cc = 0U, steps = 0U, steps_s = 0U;
 
-static void pi_step(SoftPi *p, uint32_t sp, uint32_t fb, uint32_t kp, uint32_t ki, uint32_t hi, uint32_t ihi) {
-	int32_t e = (int32_t)sp - (int32_t)fb;
-	int64_t i = p->intg + (int64_t)ki * e, imax = (int64_t)ihi << RG_FRAC;
-	p->intg = (i < 0) ? 0 : (i > imax) ? imax : i;
-	int64_t s = ((int64_t)kp * e + p->intg) / (1 << RG_FRAC);
-	p->lim = (s >= (int64_t)hi);
-	p->out = (s <= 0) ? 0U : p->lim ? hi : (uint32_t)s;
+/* Коэффициент K * 4096 - в единицах блока K * 2^FRAC */
+static uint32_t gain(uint32_t k) { return (PI_U_FRAC >= 12U) ? k << (PI_U_FRAC - 12U) : k >> (12U - PI_U_FRAC); }
+
+/* Задание, коэффициенты, пределы - в регуляторы */
+static void reg_apply(void) {
+	PIREG_SetPoint(PI_U, ADC121_MilliToCode16(ADC121_CAL(ADC_V), u_set_mv));
+	PIREG_SetPoint(PI_I, ADC121_MilliToCode16(ADC121_CAL(ADC_C), i_lim_ma));
+	PIREG_SetGains(PI_U, gain(kp_u), gain(ki_u));
+	PIREG_SetGains(PI_I, gain(kp_i), gain(ki_i));
+	PIREG_SetMax(PI_U, amax);
+	PIREG_SetMax(PI_I, amax);
+	SIFU_SetAlphaMaxExt(amax);
 }
 
-static void reg_reset(void) {
-	pi_u.intg = pi_i.intg = 0;
-	pi_u.out = pi_i.out = 0U;
+static void reg_stop(void) {
+	SIFU_ExtDisable();
+	PIREG_Disable(PI_U); PIREG_Clear(PI_U);
+	PIREG_Disable(PI_I); PIREG_Clear(PI_I);
 	cc = 0U;
 }
 
-/* Шаг регуляторов по средним окна: возвращает новый угол, тиков */
-static uint32_t reg_step(void) {
-	uint32_t u_prev = pi_u.out, c_prev = pi_i.out;
-	uint32_t sp_u = ADC121_MilliToCode16(ADC121_CAL(ADC_V), u_set_mv);
-	uint32_t sp_i = ADC121_MilliToCode16(ADC121_CAL(ADC_C), i_lim_ma);
-	pi_step(&pi_i, sp_i, i16, kp_i, ki_i, amax, u_prev < amax ? u_prev : amax);
-	uint32_t hi = c_prev < amax ? c_prev : amax;
-	pi_step(&pi_u, sp_u, u16, kp_u, ki_u, hi, hi);
-	cc = pi_u.lim && hi < amax;
-	return amax - pi_u.out;
+static void reg_start(void) {
+	reg_apply();
+	PIREG_Clear(PI_U); PIREG_Clear(PI_I);
+	PIREG_Enable(PI_U); PIREG_Enable(PI_I);
+	SIFU_ExtEnable();										//Угол = AMAX - выход PI_U
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -262,7 +263,7 @@ static uint32_t reg_step(void) {
 enum { MODE_OFF = 0, MODE_SIM, MODE_GRID, MODE_REG, MODE_MANY };
 static const char *const mode_txt[] = {
 	"импульсы сняты", "DI1: имитатор сети, угол вручную", "DI2: сеть, угол вручную",
-	"DI3: сеть, регулирование напряжения и тока (программа)", "включено несколько DI - импульсы сняты" };
+	"DI3: сеть, регулирование напряжения и тока (PI_U, PI_I в ПЛИС)", "включено несколько DI - импульсы сняты" };
 static uint32_t mode = MODE_OFF, alpha10 = 1200U;		//Режим, угол вручную (десятые доли град.)
 static uint32_t pending = 0U;
 static uint32_t cmd_mode __attribute__((unused)) = MODE_OFF;	//Режим командой m (без DI)
@@ -310,12 +311,11 @@ static void apply_alpha(void) {
 
 static void set_mode(uint32_t m) {
 	SIFU_Disable();
-	reg_reset();
+	reg_stop();
 	if (m == MODE_SIM) SIFU_SimStart(SIM_FREQ100, SIM_DZ10);
 	else               SIFU_SimStop();
 	mode = m;
-	if (m == MODE_REG) SIFU_SetAlpha(amax);				//Пуск регулятора - с 120 град.
-	else               apply_alpha();
+	apply_alpha();
 	hold_end = CORE_GetCycles() + ms_ticks(HOLD_MS);
 	pending = (m == MODE_SIM || m == MODE_GRID || m == MODE_REG);
 	UART_PutText("\r\nРежим: ");
@@ -326,6 +326,7 @@ static void set_mode(uint32_t m) {
 static void enable_after_hold(void) {
 	if (!pending || CORE_GetCycles() < hold_end) return;
 	pending = 0U;
+	if (mode == MODE_REG) reg_start();						//Регуляторы с нуля: пуск с угла 120 град.
 	SIFU_Enable();
 }
 
@@ -335,8 +336,8 @@ static uint32_t running(void) {
 }
 
 /* ---------------------------------------------------------------------------------------------
- * Окна усреднения: закрывает программа в начале полуволны (SR.SYNCF); полуволн нет (сеть
- * отключена) - раз в 10 мс, чтобы показания не застывали. Шаг регулятора - в режиме DI3
+ * Средние за окно: окна закрывает выпрямитель (tick, начало полуволны) - программа только читает
+ * их для показа; полуволн нет (сеть отключена) - закрывает сама раз в 10 мс
  * --------------------------------------------------------------------------------------------- */
 #define SHOW_AVG_MS			500U		//Показ: среднее окон за 0.5 с
 static uint32_t sum_u = 0U, n_u = 0U, sum_i = 0U, n_i = 0U;
@@ -345,21 +346,26 @@ static uint32_t show_u16 = 0U, show_i16 = 0U;
 static void windows(void) {
 	static uint64_t last = 0U, show_next = 0U;
 	uint64_t now = CORE_GetCycles();
-	int sync = (SIFU_GetFlags() & SIFU_SR_SYNCF) != 0U;
-	if (!sync && now - last < ms_ticks(10U)) return;
-	if (sync) SIFU_ClearFlags(SIFU_SR_SYNCF);
-	last = now;
-	ADC121_WindowClose(ADC_V);
-	ADC121_WindowClose(ADC_C);
-	for (uint32_t n = 0; n < 200U && !((ADC_V->SR & ADC_C->SR) & ADC121_SR_WRDY); n++) ;	//Деление - 28 тактов
-	uint32_t new_u = (ADC_V->SR & ADC121_SR_WRDY) != 0U, new_i = (ADC_C->SR & ADC121_SR_WRDY) != 0U;
-	if (new_u) { ADC121_ClearFlags(ADC_V, ADC121_SR_WRDY); u16 = ADC121_GetWMean(ADC_V); sum_u += u16; n_u++; }
-	if (new_i) { ADC121_ClearFlags(ADC_C, ADC121_SR_WRDY); i16 = ADC121_GetWMean(ADC_C); sum_i += i16; n_i++; }
-	if (mode == MODE_REG && sync) {
-		if (running() && new_u && new_i) { SIFU_SetAlpha(reg_step()); steps++; }
-		else if (!running())             { reg_reset(); SIFU_SetAlpha(amax); }
-		/* Нет среднего тока (плата не отвечает) - шага нет: угол остаётся прежним */
+	if (ADC_V->SR & ADC121_SR_WRDY) {
+		ADC121_ClearFlags(ADC_V, ADC121_SR_WRDY);
+		u16 = ADC121_GetWMean(ADC_V); sum_u += u16; n_u++;
+		last = now;
 	}
+	if (ADC_C->SR & ADC121_SR_WRDY) {
+		ADC121_ClearFlags(ADC_C, ADC121_SR_WRDY);
+		i16 = ADC121_GetWMean(ADC_C); sum_i += i16; n_i++;
+	}
+	if (now - last >= ms_ticks(10U)) {						//Нет полуволн - окна закрывает программа
+		last = now;
+		ADC121_WindowClose(ADC_V);
+		ADC121_WindowClose(ADC_C);
+	}
+	if (PIREG_Ready(PI_U)) {								//Шаг регулятора прошёл
+		PIREG_ClearReady(PI_U);
+		steps++;
+		cc = PIREG_AtLimit(PI_U) && PIREG_GetOut(PI_I) < amax;
+	}
+	if (mode != MODE_REG || !running()) cc = 0U;
 	if (now >= show_next) {
 		show_next = now + ms_ticks(SHOW_AVG_MS);
 		if (n_u) { show_u16 = (sum_u + n_u / 2U) / n_u; sum_u = n_u = 0U; }
@@ -399,7 +405,7 @@ static void param_text(uint32_t p, char *t) {
 	case P_ILIM: t[0] = 'З'; t[1] = 'I'; t[2] = ' '; fmt_milli(&t[3], i_lim_ma, 3); break;
 	case P_USET: t[0] = 'З'; t[1] = 'U'; t[2] = ' '; fmt_milli(&t[3], u_set_mv, u_set_mv < 100000 ? 2 : 1); break;
 	case P_ALPHA: {
-		uint32_t a10 = (mode == MODE_REG) ? SIFU_TicksToDeg10(SIFU_GetAlpha()) : alpha10;
+		uint32_t a10 = (mode == MODE_REG) ? SIFU_TicksToDeg10(SIFU_GetAlphaEff()) : alpha10;
 		int n = 4;
 		t[0] = 'У'; t[1] = 'Г'; t[2] = 'О'; t[3] = 'Л';
 		if (a10 < 1000U) t[n++] = ' ';						//От 100 град. - без пробела: «УГОЛ110.0»
@@ -433,6 +439,7 @@ static void param_change(uint32_t p, int dir) {
 		else alpha10 = alpha10 > STEP_ALPHA10 ? alpha10 - STEP_ALPHA10 : 0U;
 		apply_alpha();
 	}
+	reg_apply();												//Задание и коэффициенты - в регуляторы
 }
 
 static void keys(void) {
@@ -504,13 +511,20 @@ static void status(void) {
 	UART_PutText(" А (ограничение ");
 	put_milli(i_lim_ma, 3);
 	UART_PutText("), угол ");
-	uint32_t a10 = SIFU_TicksToDeg10(SIFU_GetAlpha());
+	uint32_t a10 = SIFU_TicksToDeg10(SIFU_GetAlphaEff());
 	UART_PutDec((int32_t)(a10 / 10U)); UART_PutChar('.'); UART_PutChar((char)('0' + a10 % 10U));
 	if (mode == MODE_REG) {
 		UART_PutText(!running() ? ", стоп (нет импульсов или синхронизации)" : cc ? ", ОГРАНИЧЕНИЕ ТОКА" : ", стабилизация напряжения");
 		UART_PutText(", шагов ");
 		UART_PutDec((int32_t)steps_s);
-		UART_PutText("/с");
+		UART_PutText("/с; PI_U: выход ");
+		UART_PutDec((int32_t)PIREG_GetOut(PI_U));
+		UART_PutText(", ошибка ");
+		UART_PutDec(PIREG_GetError(PI_U));
+		UART_PutText("; PI_I: выход ");
+		UART_PutDec((int32_t)PIREG_GetOut(PI_I));
+		UART_PutText(", ошибка ");
+		UART_PutDec(PIREG_GetError(PI_I));
 	}
 	UART_PutText(", f = ");
 	uint32_t f = SIFU_GridFreq100();
@@ -532,11 +546,12 @@ static void command(const char *line) {
 #if !STAND_IO
 	else if (line[0] == 'm' && line[1] == ' ' && line[2] >= '0' && line[2] <= '3') cmd_mode = (uint32_t)(line[2] - '0');
 #endif
-	else UART_PutText("Не понял: u <В>, i <А>, a <град.>, ku <KP> <KI>, ki <KP> <KI>, d"
+	else { UART_PutText("Не понял: u <В>, i <А>, a <град.>, ku <KP> <KI>, ki <KP> <KI>, d"
 #if !STAND_IO
 	                  ", m <0..3>"
 #endif
-	                  "\r\n");
+	                  "\r\n"); return; }
+	reg_apply();
 }
 
 int main(void) {
@@ -554,7 +569,10 @@ int main(void) {
 	delay_ms(100);
 	amax = SIFU_Deg10ToTicks(1200U);
 	if (amax > SIFU_AlphaMax()) amax = SIFU_AlphaMax();
-	UART_PutText("\r\n== askoRV32: выпрямитель, стабилизация напряжения и ограничение тока ПРОГРАММОЙ (fw_rect) ==\r\n"
+	PIREG_Init(PI_U, 0U, 0U, amax);
+	PIREG_Init(PI_I, 0U, 0U, amax);
+	reg_apply();
+	UART_PutText("\r\n== askoRV32: выпрямитель, стабилизация напряжения и ограничение тока В ПЛИС (hw_rect) ==\r\n"
 #if STAND_IO
 	             "DI1 - имитатор, угол вручную; DI2 - сеть, угол вручную; DI3 - сеть, регулирование U и I\r\n"
 #else

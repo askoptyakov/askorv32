@@ -29,6 +29,8 @@
         <File path="../../src/periph/sifu/sifu.sv" type="file.verilog" enable="1"/>
         <File path="../../src/periph/adc121/adc121.sv" type="file.verilog" enable="1"/>
         <File path="../../src/periph/adc121/adc.sv" type="file.verilog" enable="1"/>
+        <File path="../../src/periph/pireg/pireg.sv" type="file.verilog" enable="1"/>
+        <File path="../../src/periph/rect/rect.sv" type="file.verilog" enable="1"/>
         <File path="top.sv" type="file.verilog" enable="1"/>
         <File path="riscv.cst" type="file.cst" enable="1"/>
         <File path="riscv.sdc" type="file.sdc" enable="1"/>

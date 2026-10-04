@@ -48,6 +48,8 @@
 #define SIFU_COUNT						1U
 #define ADC_PRESENT						1
 #define ADC_COUNT						1U
+#define RECT_PRESENT					1
+#define RECT_COUNT						1U
 
 /* GPIO */
 #define GPIO_BASE						(0x11000000U)
@@ -79,8 +81,16 @@
 #define TM1638_BASE						(0x12000000U)
 #define TM1638							((TM1638_TypeDef*) TM1638_BASE)
 
-/* SIFU */
-#define SIFU_BASE						(0x16000000U)
+/* RECT */
+#define RECT_BASE						(0x18000000U)
+#define RECT							((RECT_TypeDef*) RECT_BASE)
+#define RECT_ADC						ADC		//Блок АЦП обратных связей
+#define RECT_FB_U						ADC_V		//Канал напряжения (указатель ADC121_TypeDef)
+#define RECT_FB_I						ADC_C		//Канал тока
+#define RECT_LINKED						1		//Связь с блоком АЦП задана
+
+/* RECT: СИФУ (+0x00) - драйвер sifu.h, регуляторы PI_U (+0x40), PI_I (+0x80) - драйвер pireg.h */
+#define SIFU_BASE						(RECT_BASE + 0x00U)
 #define SIFU							((SIFU_TypeDef*) SIFU_BASE)
 #define SIFU_DIV_DEFAULT				89U		//Делитель тика ГПН после сброса: SYSCLK_HZ / (DIV + 1)
 #define SIFU_SAW_HZ						500000U		//Частота тиков ГПН при DIV_DEFAULT, Гц
@@ -88,6 +98,16 @@
 #define SIFU_WIDTH_DEFAULT				150U		//Длительность импульса после сброса, тиков
 #define SIFU_SIM						1		//Есть имитатор сети (CR.SIM, SIMCFG)
 #define SIFU_AMAX_DEFAULT				3333U		//Наибольший угол при CR.UEXT после сброса, тиков (120 эл. град.)
+#define SIFU_LINK_U						1		//Вход u - выход регулятора напряжения PI_U (CR.UEXT)
+#define PIREG_PRESENT					1		//Регуляторы - в блоке выпрямителя
+#define PI_U_BASE						(RECT_BASE + 0x40U)
+#define PI_U							((PIREG_TypeDef*) PI_U_BASE)
+#define PI_U_FRAC						12U		//Дробных бит KP, KI: коэффициент = K / 2^FRAC
+#define PI_U_OMAX_DEFAULT				3333U		//Предел выхода после сброса = AMAX
+#define PI_I_BASE						(RECT_BASE + 0x80U)
+#define PI_I							((PIREG_TypeDef*) PI_I_BASE)
+#define PI_I_FRAC						12U		//Дробных бит KP, KI: коэффициент = K / 2^FRAC
+#define PI_I_OMAX_DEFAULT				3333U		//Предел выхода после сброса = AMAX
 
 /* ADC */
 #define ADC_BASE						(0x17000000U)
@@ -132,11 +152,11 @@
 typedef enum
 {
   PLIC_SRC_UART = 1,		//UART
-  PLIC_SRC_SIFU = 2,		//SIFU
+  PLIC_SRC_RECT = 2,		//RECT
   PLIC_SRC_ADC = 3		//ADC
 } PLIC_SRC_Type;
 #define PLIC_UART_IRQHandler			PLIC_SRC1_IRQHandler
-#define PLIC_SIFU_IRQHandler			PLIC_SRC2_IRQHandler
+#define PLIC_RECT_IRQHandler			PLIC_SRC2_IRQHandler
 #define PLIC_ADC_IRQHandler				PLIC_SRC3_IRQHandler
 
 /* Выводы GPIO: имя цепи из конфигуратора -> <ИМЯ>_PIN (номер линии) и <ИМЯ>_PORT (блок GPIO);

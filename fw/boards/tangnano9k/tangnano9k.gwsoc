@@ -42,8 +42,12 @@
       "irq": "plic"
     },
     {
-      "type": "sifu",
-      "name": "SIFU",
+      "type": "rect",
+      "name": "RECT",
+      "adc": "ADC",
+      "chU": "V",
+      "chI": "C",
+      "frac": 12,
       "base": "auto",
       "ab": 11,
       "ba": 10,

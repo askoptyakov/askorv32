@@ -36,6 +36,11 @@ def run_device(name, d, vcd):
     tbs = sorted(d.glob("tb_*.sv"))
     #Модели для тестов (например, микросхема флеш) - в подпапке sim/ устройства, в проект ПЛИС не входят
     srcs = [f for f in sorted(d.glob("*.sv")) if not f.name.startswith("tb_")] + sorted((d / "sim").glob("*.sv"))
+    #Составное устройство (например, rect из sifu и pireg): в deps.txt - папки устройств, чьи модули ему нужны
+    deps = d / "deps.txt"
+    if deps.exists():
+        for name in deps.read_text(encoding="utf-8").split():
+            srcs += [f for f in sorted((PERIPH_DIR / name).glob("*.sv")) if not f.name.startswith("tb_")]
     BUILD_DIR.mkdir(exist_ok=True)
     results = []
     for tb in tbs:

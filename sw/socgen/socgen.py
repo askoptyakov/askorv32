@@ -53,7 +53,12 @@ TYPES = {
     "spiflash": dict(title="SPIFLASH", slot=0x15, cat="iface", irq=False, module="spiflash_top"),
     "sifu":   dict(title="SIFU",   slot=0x16, cat="custom", irq=True,  module="sifu_top"),
     "adc":    dict(title="ADC",    slot=0x17, cat="custom", irq=True,  module="adc_top"),
+    "rect":   dict(title="RECT",   slot=0x18, cat="custom", irq=True,  module="rect_top"),
 }
+#Выпрямитель (rect): СИФУ и регулятор CC/CV в одном блоке (hw/src/periph/rect/rect.sv); регистры: SIFU - +0x00,
+#регулятор напряжения PI_U - +0x40, тока PI_I - +0x80. Связь с блоком АЦП - одна настройка: "adc" (имя блока ADC),
+#"chU", "chI" (имена его каналов напряжения и тока); окна АЦП закрывает выход tick выпрямителя
+RECT_PI_OFFS = (("PI_U", 0x40), ("PI_I", 0x80))
 SV_B0, SV_B1, SV_D0 = "1'b0", "1'b1", "16'd0"   #Значения не подключённых входов
 #Блок АЦП (adc): каналы - платы измерения (ADC_V - напряжение, ADC_C - ток), у каждого свои выводы и пересчёт,
 #регистры канала i - со смещения i * 0x40 (adc_top в hw/src/periph/adc121/adc.sv)
@@ -104,7 +109,7 @@ SV_KEYWORDS = {"input", "output", "inout", "wire", "logic", "reg", "module", "en
 RESERVED_NETS = {"tck_pad_i", "tms_pad_i", "tdi_pad_i", "tdo_pad_o", "clk_per", "rst_per", "bus_per_Write",
                  "bus_per_Read", "bus_per_Addr", "bus_per_WData", "bus_per_RData", "irq_local", "irq_src",
                  "sRead", "top", "cpu", "permux", "memmux", "gpio_top", "stim_top", "tm1638_top", "uart_top",
-                 "spiflash_top", "sifu_top", "adc_top", "boot_hold", "boot_Write", "boot_Addr", "boot_WData",
+                 "spiflash_top", "sifu_top", "adc_top", "rect_top", "boot_hold", "boot_Write", "boot_Addr", "boot_WData",
                  "CORE_TYPE", "M_EXT", "DIV_BPC", "RF_TYPE", "IMEM_TYPE", "BSRAM_IMEM_SIZE", "SYNTH_IMEM_SIZE", "IMEM_INIT_FILE",
                  "DMEM_TYPE", "BSRAM_DMEM_SIZE", "SYNTH_DMEM_SIZE", "DMEM_INIT_FILE", "DEBUG_EN", "PLIC_SOURCES",
                  "FCLKIN", "PLL_DEVICE", "XTAL_KHZ", "PLL_IDIV_SEL", "PLL_FBDIV_SEL", "PLL_ODIV_SEL", "WIN_MASK", "CLK_BASE_MHZ",
@@ -210,15 +215,31 @@ def inst_signals(inst):
             if inst.get(f"cmp{i}") is not None:
                 sig.append((f"cmp{i}", f"{c} CMP", "input", False))
         return sig
-    if t == "sifu":
+    if t in ("sifu", "rect"):
         return ([(k, k.upper(), "input", True) for k in SIFU_SYNC] +
                 [(k, k.upper(), "output", True) for k in SIFU_GATES] +
                 ([("grid", "GRID", "output", False)] if inst.get("grid") is not None else []))
     return []
 
 
+def rect_adc(m, rect):
+    """Блок АЦП выпрямителя и номера каналов напряжения и тока: (блок, iU, iI) или None."""
+    adc = next((i for i in insts(m, "adc") if i["name"] == rect.get("adc")), None)
+    if not adc:
+        return None
+    names = [c.get("name") for c in adc_channels(adc)]
+    if rect.get("chU") not in names or rect.get("chI") not in names:
+        return None
+    return adc, names.index(rect["chU"]), names.index(rect["chI"])
+
+
 def adc_win_net(m, inst):
-    """Вход закрытия окна усреднения блока АЦП: в этой версии окно закрывает процессор (CR.WCLOSE)."""
+    """Вход закрытия окна усреднения блока АЦП: выход tick выпрямителя, который берёт с него обратные связи (окна -
+    между началами полуволн), иначе 0 - окна закрывает процессор (CR.WCLOSE)."""
+    for r in insts(m, "rect"):
+        ra = rect_adc(m, r)
+        if ra and ra[0] is inst:
+            return f"{hdl(r)}_tick"
     return SV_B0
 
 
@@ -763,7 +784,17 @@ def validate(m, dev):
                 if ai["budget"] < ADC121_DELAY_NS:
                     errors.append(f"{n}: при SCLK {ai['sclk'] / 1e6:.2f} МГц на задержку DOUT остаётся {ai['budget']:.0f} нс "
                                   f"(изоляторы и АЦП ~60 нс, нужно не меньше {ADC121_DELAY_NS}) - уменьшите частоту SCLK")
-        if inst["type"] == "sifu":
+        if inst["type"] == "rect":
+            adcs = [i["name"] for i in insts(m, "adc")]
+            if inst.get("adc") not in adcs:
+                errors.append(f"{n}: блок АЦП «{inst.get('adc')}» не найден (есть: {', '.join(adcs) or 'нет'})")
+            elif not rect_adc(m, inst):
+                errors.append(f"{n}: у блока {inst['adc']} нет каналов «{inst.get('chU')}» (напряжение) и «{inst.get('chI')}» (ток)")
+            elif inst.get("chU") == inst.get("chI"):
+                errors.append(f"{n}: каналы напряжения и тока должны быть разными")
+            if not 4 <= int(inst.get("frac", 12)) <= 16:
+                errors.append(f"{n}: дробных бит коэффициентов - 4..16")
+        if inst["type"] in ("sifu", "rect"):
             si = sifu_info(m, inst)
             if not 0 <= si["div"] <= 0xFFFF:
                 errors.append(f"{n}: частоту пилы {inst.get('sawHz')} Гц при частоте {sysclk_hz(m)} Гц не получить (DIV 0..65535)")
@@ -1021,6 +1052,17 @@ def gen_top(m, bases, cfg_rel):
         w("    assign bus_per_RData = 32'd0;")
     w("")
 
+    rects = [i for i in order if i["type"] == "rect"]
+    if rects:
+        w("    //#4 Связь выпрямителя и блока АЦП: tick выпрямителя закрывает окна усреднения АЦП, средние каналов")
+        w("    //    напряжения и тока - обратные связи его регуляторов")
+        for r in rects:
+            w(f"    logic {hdl(r)}_tick;   //{r['name']}: началась полуволна (раз в 60 эл. град.)")
+        for a_ in [i for i in order if i["type"] == "adc"]:
+            n_ = len(adc_channels(a_))
+            w(f"    logic [{n_ - 1}:0][15:0] {hdl(a_)}_wmean;   logic [{n_ - 1}:0] {hdl(a_)}_wstb;   //{a_['name']}: средние за окно каналов (код * 16)")
+        w("")
+
     num = 1
     for idx, inst in enumerate(order):
         h, name, t = hdl(inst), inst["name"], inst["type"]
@@ -1090,7 +1132,8 @@ def gen_top(m, bases, cfg_rel):
               f"до {ai['rate'] / 1e3:.0f} тыс. отсчётов/с на канал, среднее по {1 << ai['avgsh']}")
             w(f"    //    регистры канала i - с {base} + i * 0x40")
             w(f"    logic irq_{h};")
-            w(f"    logic [{nch - 1}:0][15:0] {h}_wmean;   logic [{nch - 1}:0] {h}_wstb;   //Средние за окно каналов (код * 16)")
+            if not rects:
+                w(f"    logic [{nch - 1}:0][15:0] {h}_wmean;   logic [{nch - 1}:0] {h}_wstb;   //Средние за окно каналов (код * 16)")
             vec = lambda f: "".join(f(k) for k in reversed(range(nch)))
             csinv = vec(lambda k: "1" if chs[k].get("csInv") else "0")
             cmpen = vec(lambda k: "1" if net.get(f"{name}.cmp{k}") else "0")
@@ -1128,6 +1171,30 @@ def gen_top(m, bases, cfg_rel):
             w(f"                 .grid_o({grid}),")
             w("                 .tick_o(), .run_o(), .u_i(16'd0),   //Угол - регистр ALPHA (регулятор - программа)")
             w(f"                 .irq(irq_{h}));" + ("" if grid else "   //выход «сеть есть» не выведен"))
+        elif t == "rect":
+            si = sifu_info(m, inst)
+            ra = rect_adc(m, inst)
+            ah = hdl(ra[0]) if ra else ""
+            w(f"    //-{num}- {inst_title(inst)}: выпрямитель - СИФУ и регулятор CC/CV (PI_U - напряжение, PI_I - ток), тик ГПН "
+              f"{fmt_mhz(round(si['saw']) / 1e3)} кГц (DIV {si['div']}), DELAY {si['delay']}, импульс {si['pulse']} тиков")
+            w(f"    //    регистры с {base}: SIFU +0x00, PI_U +0x40, PI_I +0x80; обратные связи - блок {inst.get('adc')}, "
+              f"каналы {inst.get('chU')} (U) и {inst.get('chI')} (I); " + ("есть имитатор сети" if inst.get("sim", True) else "без имитатора сети"))
+            w(f"    logic irq_{h};")
+            w(f"    rect_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(16'd{si['div']}), .DELAY_INIT(12'd{si['delay']}), "
+              f".WIDTH_INIT(12'd{si['pulse']}), .SIM_EN({1 if inst.get('sim', True) else 0}),")
+            w(f"               .AMAX_INIT(12'd{sifu_amax(si)}), .FRAC({int(inst.get('frac', 12))})) {h}")
+            w("                (.clk(clk_per), .rst(rst_per),")
+            w(f"                 {bus},")
+            w("                 " + ", ".join(f".sync_{k}({net[name + '.' + k]})" for k in SIFU_SYNC) + ",")
+            w("                 " + ", ".join(f".{k}({net[name + '.' + k]})" for k in SIFU_GATES) + ",")
+            grid = net.get(f"{name}.grid", "")
+            w(f"                 .grid_o({grid}),")
+            if ra:
+                w(f"                 .fb_u({ah}_wmean[{ra[1]}]), .fb_u_stb({ah}_wstb[{ra[1]}]), "
+                  f".fb_i({ah}_wmean[{ra[2]}]), .fb_i_stb({ah}_wstb[{ra[2]}]),")
+            else:
+                w("                 .fb_u(16'd0), .fb_u_stb(1'b0), .fb_i(16'd0), .fb_i_stb(1'b0),   //блок АЦП не задан")
+            w(f"                 .tick_o({h}_tick), .irq(irq_{h}));")
         w("")
         num += 1
 
@@ -1230,7 +1297,7 @@ def gen_soc_h(m, bases, cfg_rel):
     w("   Для каждого блока: <ИМЯ>_BASE - адрес регистров, <ИМЯ> - указатель на регистры, настройки <ИМЯ>_xxx.")
     w("   Драйверы (gpio.c, uart.c...) работают с первым блоком типа под именем типа (GPIO, UART...) */")
     for t, meta in TYPES.items():
-        cnt = len(insts(m, t))
+        cnt = len(insts(m, t)) + (len(insts(m, "rect")) if t == "sifu" else 0)
         w(cdef(f"{meta['title']}_PRESENT", "1" if cnt else "0"))
         w(cdef(f"{meta['title']}_COUNT", f"{cnt}U"))
     for inst in insts(m):
@@ -1292,6 +1359,29 @@ def gen_soc_h(m, bases, cfg_rel):
                         ("CMP", "1" if inst.get(f"cmp{k}") is not None else "0", "Есть вход компаратора (SR.CMP, CMPF)"),
                         ("INDEX", f"{k}U", "Номер канала в блоке")]:
                     chan_lines.append(cdef(f"{C}_{suf}", val, com))
+        if t == "rect":
+            si = sifu_info(m, inst)
+            ra = rect_adc(m, inst)
+            frac = int(inst.get("frac", 12))
+            chan_lines += ["", f"/* {N}: СИФУ (+0x00) - драйвер sifu.h, регуляторы PI_U (+0x40), PI_I (+0x80) - драйвер pireg.h */",
+                           cdef("SIFU_BASE", f"({N}_BASE + 0x00U)"), cdef("SIFU", "((SIFU_TypeDef*) SIFU_BASE)")]
+            for suf, val, com in [("DIV_DEFAULT", f"{si['div']}U", "Делитель тика ГПН после сброса: SYSCLK_HZ / (DIV + 1)"),
+                                  ("SAW_HZ", f"{round(si['saw'])}U", "Частота тиков ГПН при DIV_DEFAULT, Гц"),
+                                  ("DELAY_DEFAULT", f"{si['delay']}U", "DELAY_RC_COMPENSATION после сброса, тиков"),
+                                  ("WIDTH_DEFAULT", f"{si['pulse']}U", "Длительность импульса после сброса, тиков"),
+                                  ("SIM", "1" if inst.get("sim", True) else "0", "Есть имитатор сети (CR.SIM, SIMCFG)"),
+                                  ("AMAX_DEFAULT", f"{sifu_amax(si)}U", "Наибольший угол при CR.UEXT после сброса, тиков (120 эл. град.)"),
+                                  ("LINK_U", "1", "Вход u - выход регулятора напряжения PI_U (CR.UEXT)")]:
+                chan_lines.append(cdef(f"SIFU_{suf}", val, com))
+            chan_lines.append(cdef("PIREG_PRESENT", "1", "Регуляторы - в блоке выпрямителя"))
+            for pn, off in RECT_PI_OFFS:
+                chan_lines += [cdef(f"{pn}_BASE", f"({N}_BASE + 0x{off:02X}U)"), cdef(pn, f"((PIREG_TypeDef*) {pn}_BASE)"),
+                               cdef(f"{pn}_FRAC", f"{frac}U", "Дробных бит KP, KI: коэффициент = K / 2^FRAC"),
+                               cdef(f"{pn}_OMAX_DEFAULT", f"{sifu_amax(si)}U", "Предел выхода после сброса = AMAX")]
+            params += [("ADC", f"{inst.get('adc')}", "Блок АЦП обратных связей"),
+                       ("FB_U", f"{inst.get('adc')}_{inst.get('chU')}", "Канал напряжения (указатель ADC121_TypeDef)"),
+                       ("FB_I", f"{inst.get('adc')}_{inst.get('chI')}", "Канал тока"),
+                       ("LINKED", "1" if ra else "0", "Связь с блоком АЦП задана")]
         if t == "sifu":
             si = sifu_info(m, inst)
             params += [("DIV_DEFAULT", f"{si['div']}U", "Делитель тика ГПН после сброса: SYSCLK_HZ / (DIV + 1)"),
