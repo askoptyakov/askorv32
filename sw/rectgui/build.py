@@ -26,6 +26,7 @@ BUILD = HERE / "build"
 BUNDLE = "ru.askorv32.rectgui"
 FEATURE = "ru.askorv32.rectgui.feature"
 NAME = "askoRV32 - пульт выпрямителя"
+CATEGORY = "askoRV32 - пульт выпрямителя"     #Своя категория: в общем списке сайтов пульт не попадает в выбор вместе с конфигуратором ПЛИС
 DESC = ("Управление выпрямителем askoRV32 по UART: режим (имитатор, сеть и угол, сеть и ПИ-регулятор), импульсы, "
         "задание и коэффициенты регуляторов, биты ошибок, осциллограмма напряжения и тока с запуском по фронту.")
 
@@ -113,7 +114,7 @@ def main():
     out = BUILD / "askorv32-rectgui-repo.zip"
     gb.zip_dir(repo, out, manifest_first=False)
     print(f"Готово: {out.relative_to(HERE.parent.parent)}  (версия {version})")
-    print("Установка: Help > Install New Software > Add > Archive… > этот zip > askoRV32 > Next > Finish, перезапуск Eclipse")
+    print(f"Установка: Help > Install New Software > Add > Archive… > этот zip > {CATEGORY} > Next > Finish, перезапуск Eclipse; обновление установленного - Help > Check for Updates")
     print("Открыть: кнопка на панели инструментов или Window > Show View > Other > askoRV32 > Пульт выпрямителя")
 
 
@@ -198,7 +199,7 @@ def write_p2(repo, v, manifest, bundle_jar, feature_jar):
 """,
         f"""    <unit id='askorv32.rectgui.category.{v}' version='{v}'>
       <properties size='2'>
-        <property name='org.eclipse.equinox.p2.name' value='askoRV32'/>
+        <property name='org.eclipse.equinox.p2.name' value={quoteattr(CATEGORY)}/>
         <property name='org.eclipse.equinox.p2.type.category' value='true'/>
       </properties>
       <provides size='1'>
