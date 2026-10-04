@@ -28,6 +28,8 @@ __pycache__/
 # sw
 sw/socgen/eclipse/build/*
 !sw/socgen/eclipse/build/askorv32-gwsoc-repo.zip
+sw/rectgui/build/*
+!sw/rectgui/build/askorv32-rectgui-repo.zip
 
 # sdk (установщики в репозитории не храним)
 sdk/*.exe
