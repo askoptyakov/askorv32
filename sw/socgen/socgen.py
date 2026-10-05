@@ -1602,18 +1602,40 @@ def save_resources(hw, toolchain, items, fmax):
         ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-def find_gowin(arg):
-    """Каталог IDE Gowin (в нём bin/gw_sh.exe): ключ --gowin, GOWIN_HOME, типовые места установки."""
-    cands = [arg, os.environ.get("GOWIN_HOME")]
-    for root in ("C:/Program Files/Gowin", "C:/Gowin", "D:/Gowin"):
-        cands += sorted((str(p) for p in Path(root).glob("*")), reverse=True) if Path(root).is_dir() else []
-    for c in cands:
-        if not c:
-            continue
-        for ide in (Path(c), Path(c) / "IDE"):
-            if (ide / "bin" / "gw_sh.exe").exists():
-                return ide
+def gowin_version(ide):
+    """Версия Gowin EDA по имени каталога установки (Gowin_V1.9.11.03_Education_x64) - кортеж чисел или None:
+    в самих программах IDE номера версии нет."""
+    mm = re.search(r"Gowin_V(\d+(?:\.\d+)*)", str(ide))
+    return tuple(int(x) for x in mm.group(1).split(".")) if mm else None
+
+
+def gowin_ide(c):
+    """Каталог IDE (с bin/gw_sh.exe) - сам c или c/IDE; None, если Gowin там нет."""
+    for ide in (Path(c), Path(c) / "IDE"):
+        if (ide / "bin" / "gw_sh.exe").exists():
+            return ide
     return None
+
+
+def find_gowin(arg):
+    """Каталог IDE Gowin (в нём bin/gw_sh.exe). Ключ --gowin - как указан. Иначе из GOWIN_HOME, каталога
+    общего установщика (ASKORV32_SDK/Gowin) и типовых мест берётся самая новая версия: в gw_sh 1.9.9.03 нет
+    open_project, и старый Gowin в GOWIN_HOME не должен заслонять новый. Версия - по имени каталога
+    (строкой 1.9.9 оказалась бы новее 1.9.11); GOWIN_HOME без номера версии в пути - как указан."""
+    if arg:
+        return gowin_ide(arg)
+    home = os.environ.get("GOWIN_HOME")
+    if home and gowin_ide(home) and not gowin_version(gowin_ide(home)):
+        return gowin_ide(home)
+    roots = [Path(os.environ["ASKORV32_SDK"]) / "Gowin"] if os.environ.get("ASKORV32_SDK") else []
+    roots += [Path("C:/Program Files/Gowin"), Path("C:/Gowin"), Path("D:/Gowin")]
+    cands = [home] if home else []
+    for root in roots:
+        if root.is_dir():
+            #Установщик Gowin добавляет к выбранному каталогу свою папку Gowin_V<версия>_Education_x64
+            cands += [str(p) for p in root.glob("*")] + [str(p) for p in root.glob("*/*")]
+    ides = [ide for ide in (gowin_ide(c) for c in cands) if ide]
+    return max(ides, key=lambda ide: gowin_version(ide) or (), default=None)
 
 
 def html_text(path):
@@ -1787,6 +1809,11 @@ def build_gowin(m, hw, gowin_arg, fout):
     except ConfigError:
         pass   #Код возврата gw_sh ненадёжен - итог определяется по ошибкам в журнале и файлу .fs
     log = (impl / "socgen_gw_sh.log").read_text(encoding="utf-8", errors="replace")
+    if 'invalid command name "open_project"' in log:
+        #В gw_sh старых версий (1.9.9.03) нет команд проекта - сборка из командной строки невозможна
+        raise ConfigError(f"Gowin EDA {ide.parent.name} ({ide}) слишком старый: в его gw_sh нет команды open_project. "
+                          f"Нужна версия 1.9.11.03 (sdk/SETUP.md, п. 4 или общий установщик sdk/installer); "
+                          f"другой каталог IDE - переменная GOWIN_HOME или ключ --gowin")
     errs = [l for l in log.splitlines() if l.startswith("ERROR")]
     if errs or not fs.exists() or fs.stat().st_mtime < t0:
         raise ConfigError(f"Gowin EDA: ошибок {len(errs)}, битовый поток не создан (журнал {os.path.relpath(impl / 'socgen_gw_sh.log', ROOT)})")

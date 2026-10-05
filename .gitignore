@@ -35,6 +35,10 @@ sw/rectgui/build/*
 sdk/*.exe
 sdk/*.msix
 sdk/*.zip
+sdk/*.tgz
+sdk/installer/stage/
+sdk/installer/stage-ws/
+sdk/installer/out/
 
 # General
 *.bck
