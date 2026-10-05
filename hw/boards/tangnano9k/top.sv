@@ -178,11 +178,11 @@ module top #(
                  .tick_o(), .run_o(), .u_i(16'd0),   //Угол - регистр ALPHA (регулятор - программа)
                  .irq(irq_sifu));
 
-    //-5- ADC: АЦП ADC121S051, каналов 2 (V - плата ADC_V, C - плата ADC_C), такт clk_adc 54 МГц, SCLK 6.75 МГц (DIV 3), до 394 тыс. отсчётов/с на канал, среднее по 256
+    //-5- ADC: АЦП ADC121S051, каналов 2 (V - плата ADC_V, C - плата ADC_C), такт clk_adc 54 МГц, SCLK 6.75 МГц (DIV 3), до 327 тыс. отсчётов/с на канал, среднее по 1
     //    регистры канала i - с 32'h1700_0000 + i * 0x40
     logic irq_adc;
     logic [1:0][15:0] adc_wmean;   logic [1:0] adc_wstb;   //Средние за окно каналов (код * 16)
-    adc_top #(.MEMORY_TYPE(DMEM_TYPE), .NCH(2), .DIV_INIT(8'd3), .AVGSH_INIT(4'd8), .CSS_INIT(4'd1), .QUIET_INIT(4'd1),
+    adc_top #(.MEMORY_TYPE(DMEM_TYPE), .NCH(2), .DIV_INIT(8'd3), .AVGSH_INIT(4'd0), .CSS_INIT(4'd1), .QUIET_INIT(4'd8),
               .CSINV_INIT(4'b0000), .CMP_EN(4'b0011), .CPOL_INIT(4'b0000), .CLK_HZ(32'd54000000), .WIN_EN(1'b1)) adc
              (.clk(clk_per), .rst(rst_per), .adc_clk(clk_adc), .adc_lock(adc_lock),
               .Write(adc_Write), .Addr(adc_Addr), .WData(adc_WriteData), .RData(adc_ReadData),

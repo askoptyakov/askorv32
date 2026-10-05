@@ -48,3 +48,4 @@ _autosave-*
 */#auto_saved_files#
 */*-backups/*
 sw/mergetool/fsprobe/work/
+sw/rectgui/dist/

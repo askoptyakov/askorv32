@@ -11,10 +11,14 @@ import org.eclipse.swt.widgets.Canvas;
 import org.eclipse.swt.widgets.Composite;
 
 /**
- * Осциллограмма напряжения и тока: кадр 20 мс (400 точек на канал). Шкала U - слева, I - справа,
- * время - от точки запуска. Вертикальная линия - положение запуска (сколько кадра до него), пунктир
- * поперёк - уровень запуска на шкале канала-источника. Обе линии перетаскиваются мышью; новое значение
- * уходит слушателю, когда кнопку отпустили.
+ * Осциллограмма напряжения и тока: 400 точек на канал (через 50 мкс - 20 мс, или все отсчёты АЦП подряд -
+ * около 1,2 мс). Шкала U - слева, I - справа, время - от точки запуска (мс или мкс - по длине кадра).
+ * Вертикальная линия - положение запуска (сколько кадра до него), пунктир поперёк - уровень запуска на шкале
+ * канала-источника. Обе линии перетаскиваются мышью; новое значение уходит слушателю, когда кнопку отпустили.
+ * Щелчок по графику выбирает точку: рядом - время и значения U и I (в единицах канала и код АЦП); правая
+ * кнопка снимает выбор. Масштаб - как у осциллографа: по U и I - авто или единиц на деление и значение в
+ * центре экрана; по времени - весь кадр или времени на деление, окно - вокруг точки запуска со сдвигом
+ * на целое число делений.
  */
 final class ScopeCanvas extends Canvas {
     interface TriggerListener {
@@ -25,14 +29,20 @@ final class ScopeCanvas extends Canvas {
     static final int DIV_X = 10, DIV_Y = 8;
     private static final int ML = 64, MR = 64, MT = 22, MB = 24;   //Поля: подписи шкал
 
-    private final Color bg, grid, axis, cU, cI, cTrig, text;
+    private final Color bg, grid, axis, cU, cI, cTrig, text, box;
     private RectLink.Frame frame;
     private Cal calU = Cal.RAW, calI = Cal.RAW;
-    private int src, edge, pre = 100, n = 400, dt = 50;
+    private int src, edge, pre = 100, n = 400;
+    private double stepNs = 50000;  //Шаг точек, нс
+    private int sel = -1;           //Выбранная точка (-1 - нет)
     private double level;
     private boolean zero = true, frozen;
     private final double[] rangeU = { 0, 1 }, rangeI = { 0, 1 };
     private int drag;               //0 - нет, 1 - уровень, 2 - положение
+    private double divU, divI, cenU, cenI;  //Ручной масштаб: единиц на деление (0 - авто), значение в центре
+    private double divT;            //Время на деление, нс (0 - весь кадр)
+    private int shiftT;             //Сдвиг окна по времени, делений
+    private double anchorT = Double.NaN;    //Начало окна, пока тащат линию запуска (окно стоит)
     private TriggerListener listener;
 
     /** Пересчёт кода АЦП в единицы: (код - смещение) * масштаб */
@@ -66,13 +76,21 @@ final class ScopeCanvas extends Canvas {
         cI = new Color(56, 189, 248);
         cTrig = new Color(251, 146, 60);
         text = new Color(200, 204, 210);
+        box = new Color(34, 38, 46);
         addPaintListener(e -> paint(e.gc));
         addDisposeListener(e -> {
-            for (Color c : new Color[] { bg, grid, axis, cU, cI, cTrig, text }) c.dispose();
+            for (Color c : new Color[] { bg, grid, axis, cU, cI, cTrig, text, box }) c.dispose();
         });
         addListener(SWT.MouseDown, e -> {
+            if (e.button == 3) { sel = -1; redraw(); return; }
             if (e.button != 1) return;
             drag = hit(e.x, e.y);
+            Rectangle p = plot();
+            if (drag == 2) anchorT = t0Ns();
+            if (drag == 0 && frame != null && e.x >= p.x && e.x <= p.x + p.width && e.y >= p.y && e.y <= p.y + p.height) {
+                sel = (int) Math.max(0, Math.min(n - 1, Math.round(kOf(e.x, p))));
+                redraw();
+            }
         });
         addListener(SWT.MouseMove, e -> {
             if (drag == 0) {
@@ -87,14 +105,14 @@ final class ScopeCanvas extends Canvas {
                 level = r[1] - (double) (y - p.y) / p.height * (r[1] - r[0]);
             } else {
                 int x = Math.max(p.x, Math.min(p.x + p.width, e.x));
-                pre = (int) Math.round((double) (x - p.x) / p.width * (n - 1));
-                pre = Math.max(0, Math.min(n - 1, pre));
+                pre = (int) Math.max(0, Math.min(n - 1, Math.round(kOf(x, p))));
             }
             redraw();
         });
         addListener(SWT.MouseUp, e -> {
             if (drag != 0 && listener != null) listener.moved(level, pre);
             drag = 0;
+            anchorT = Double.NaN;
         });
     }
 
@@ -105,6 +123,7 @@ final class ScopeCanvas extends Canvas {
     void setCal(Cal u, Cal i) {
         calU = u;
         calI = i;
+        rescale(true);                  //Шкалы - в новых единицах
         redraw();
     }
 
@@ -122,6 +141,36 @@ final class ScopeCanvas extends Canvas {
         redraw();
     }
 
+    /** Масштаб канала (0 - U, 1 - I): единиц на деление (0 - авто) и значение в центре экрана */
+    void setScale(int ch, double div, double center) {
+        if (ch == 0) { divU = div; cenU = center; } else { divI = div; cenI = center; }
+        rescale(true);
+        redraw();
+    }
+
+    /** Значение в центре экрана канала сейчас (для перехода с авто на ручной масштаб) */
+    double center(int ch) {
+        double[] r = ch == 0 ? rangeU : rangeI;
+        return (r[0] + r[1]) / 2;
+    }
+
+    /** Среднее канала за кадр (центр при переходе на ручной масштаб); кадра нет - середина шкалы */
+    double dataCenter(int ch) {
+        if (frame == null) return center(ch);
+        int[] c = ch == 0 ? frame.u : frame.c;
+        Cal cal = ch == 0 ? calU : calI;
+        double s = 0;
+        for (int v : c) s += cal.phys(v);
+        return s / Math.max(1, c.length);
+    }
+
+    /** Время на деление, нс (0 - весь кадр), и сдвиг окна от точки запуска, делений */
+    void setTime(double divNs, int shift) {
+        divT = divNs;
+        shiftT = shift;
+        redraw();
+    }
+
     void setFrozen(boolean f) {
         frozen = f;
     }
@@ -130,7 +179,8 @@ final class ScopeCanvas extends Canvas {
         if (frozen) return;
         frame = f;
         n = f.n;
-        dt = f.dt;
+        stepNs = f.dtn > 0 ? f.dtn : f.dt * 1000.0;
+        if (sel >= n) sel = -1;
         rescale(false);
         redraw();
     }
@@ -152,8 +202,23 @@ final class ScopeCanvas extends Canvas {
         return 0;
     }
 
+    /** Окно по времени: длина и начало от первой точки кадра, нс */
+    private double winNs() {
+        return divT > 0 ? divT * DIV_X : Math.max(1, n - 1) * stepNs;
+    }
+
+    private double t0Ns() {
+        if (!Double.isNaN(anchorT)) return anchorT;
+        return divT > 0 ? pre * stepNs + shiftT * divT - winNs() / 2 : 0;
+    }
+
     private int xOf(double k, Rectangle p) {
-        return p.x + (int) Math.round(k / Math.max(1, n - 1) * p.width);
+        return p.x + (int) Math.round((k * stepNs - t0Ns()) / winNs() * p.width);
+    }
+
+    /** Номер точки (дробный) под координатой x */
+    private double kOf(int x, Rectangle p) {
+        return (t0Ns() + (double) (x - p.x) / p.width * winNs()) / stepNs;
     }
 
     private static int yOf(double v, double[] r, Rectangle p) {
@@ -163,9 +228,11 @@ final class ScopeCanvas extends Canvas {
 
     /** Шкала: шаг 1-2-5 на DIV_Y клеток. Расширяется сразу, сжимается, если данные заняли меньше трети */
     private void rescale(boolean force) {
+        if (divU > 0) { rangeU[0] = cenU - divU * DIV_Y / 2; rangeU[1] = cenU + divU * DIV_Y / 2; }
+        if (divI > 0) { rangeI[0] = cenI - divI * DIV_Y / 2; rangeI[1] = cenI + divI * DIV_Y / 2; }
         if (frame == null) return;
-        fit(rangeU, frame.u, calU, src == 0 && edge != 2 ? level : Double.NaN, force);
-        fit(rangeI, frame.c, calI, src == 1 && edge != 2 ? level : Double.NaN, force);
+        if (divU <= 0) fit(rangeU, frame.u, calU, src == 0 && edge != 2 ? level : Double.NaN, force);
+        if (divI <= 0) fit(rangeI, frame.c, calI, src == 1 && edge != 2 ? level : Double.NaN, force);
     }
 
     private void fit(double[] r, int[] codes, Cal cal, double lvl, boolean force) {
@@ -237,14 +304,15 @@ final class ScopeCanvas extends Canvas {
         String iu = "I, " + calI.unit;
         gc.drawString(iu, s.x - 4 - gc.textExtent(iu).x, 3, true);
         gc.setForeground(text);
-        double tdiv = (double) (n - 1) * dt / DIV_X / 1000.0;   //мс на клетку
+        double tu = timeUnit(), tdiv = winNs() / DIV_X / tu;            //мс или мкс на клетку
+        String tun = tu == 1e6 ? "мс" : "мкс";
         for (int k = 0; k <= DIV_X; k += 2) {
-            double t = (k * (double) (n - 1) / DIV_X - pre) * dt / 1000.0;
-            String a = fmt(t, 0.1) + " мс";
+            double t = (t0Ns() + k * winNs() / DIV_X - pre * stepNs) / tu;
+            String a = fmt(t, tdiv / 10) + " " + tun;
             int x = p.x + k * p.width / DIV_X - gc.textExtent(a).x / 2;
             gc.drawString(a, Math.max(0, Math.min(s.x - gc.textExtent(a).x, x)), p.y + p.height + 4, true);
         }
-        String hdr = fmt(tdiv, 0.1) + " мс/дел.   U " + fmt(su, su) + " " + calU.unit + "/дел.   I " + fmt(si, si) + " " + calI.unit + "/дел.";
+        String hdr = fmt(tdiv, tdiv / 10) + " " + tun + "/дел.   U " + fmt(su, su) + " " + calU.unit + "/дел.   I " + fmt(si, si) + " " + calI.unit + "/дел.";
         gc.drawString(hdr, p.x + (p.width - gc.textExtent(hdr).x) / 2, 3, true);
 
         if (frame == null) {
@@ -253,18 +321,24 @@ final class ScopeCanvas extends Canvas {
         } else {
             gc.setAdvanced(true);
             gc.setAntialias(SWT.ON);
+            gc.setClipping(p.x, p.y - 3, p.width + 1, p.height + 7);
             trace(gc, p, frame.c, calI, rangeI, cI);
             trace(gc, p, frame.u, calU, rangeU, cU);
+            gc.setClipping((Rectangle) null);
             gc.setAntialias(SWT.OFF);
+            if (sel >= 0 && sel < frame.n && inside(xOf(sel, p), p)) selection(gc, p, fh);
         }
 
         //Запуск: положение (вертикаль) и уровень (пунктир на шкале источника)
         gc.setForeground(cTrig);
         gc.setLineStyle(SWT.LINE_DASH);
         int xt = xOf(pre, p);
-        gc.drawLine(xt, p.y, xt, p.y + p.height);
-        gc.setBackground(cTrig);
-        gc.fillPolygon(new int[] { xt - 5, p.y - 7, xt + 5, p.y - 7, xt, p.y - 1 });
+        if (inside(xt, p)) {
+            gc.drawLine(xt, p.y, xt, p.y + p.height);
+            gc.setBackground(cTrig);
+            gc.fillPolygon(new int[] { xt - 5, p.y - 7, xt + 5, p.y - 7, xt, p.y - 1 });
+        }
+        xt = Math.max(p.x, Math.min(p.x + p.width, xt));
         if (edge != 2) {
             double[] r = src == 0 ? rangeU : rangeI;
             int yt = Math.max(p.y, Math.min(p.y + p.height, yOf(level, r, p)));
@@ -290,11 +364,62 @@ final class ScopeCanvas extends Canvas {
         }
     }
 
+    /** Единица времени по длине окна: мс (1e6 нс) или мкс (1e3 нс), если окно короче 2 мс */
+    private double timeUnit() {
+        return winNs() < 2e6 ? 1e3 : 1e6;
+    }
+
+    private static boolean inside(int x, Rectangle p) {
+        return x >= p.x && x <= p.x + p.width;
+    }
+
+    /** Выбранная точка: вертикаль, метки на кривых, рядом - время и значения каналов */
+    private void selection(GC gc, Rectangle p, int fh) {
+        int x = xOf(sel, p), cu = frame.u[sel], ci = frame.c[sel];
+        int yu = Math.max(p.y, Math.min(p.y + p.height, yOf(calU.phys(cu), rangeU, p)));
+        int yi = Math.max(p.y, Math.min(p.y + p.height, yOf(calI.phys(ci), rangeI, p)));
+        gc.setForeground(text);
+        gc.setLineStyle(SWT.LINE_DOT);
+        gc.drawLine(x, p.y, x, p.y + p.height);
+        gc.setLineStyle(SWT.LINE_SOLID);
+        gc.setBackground(cU);
+        gc.fillOval(x - 4, yu - 4, 9, 9);
+        gc.setBackground(cI);
+        gc.fillOval(x - 4, yi - 4, 9, 9);
+        double tu = timeUnit();
+        String[] ln = {
+            "t = " + fmt((sel - pre) * stepNs / tu, Math.min(winNs() / DIV_X, stepNs) / tu / 10) + (tu == 1e6 ? " мс" : " мкс") + "  (точка " + sel + ")",
+            "U = " + value(cu, calU, rangeU),
+            "I = " + value(ci, calI, rangeI) };
+        int w = 0;
+        for (String s : ln) w = Math.max(w, gc.textExtent(s).x);
+        int bw = w + 12, bh = ln.length * fh + 8;
+        int bx = x + 10 + bw <= p.x + p.width ? x + 10 : x - 10 - bw;
+        int by = Math.max(p.y + 4, Math.min(p.y + p.height - bh - 4, Math.min(yu, yi) - bh / 2));
+        gc.setBackground(box);
+        gc.fillRoundRectangle(bx, by, bw, bh, 6, 6);
+        gc.setForeground(axis);
+        gc.drawRoundRectangle(bx, by, bw, bh, 6, 6);
+        Color[] col = { text, cU, cI };
+        for (int k = 0; k < ln.length; k++) {
+            gc.setForeground(col[k]);
+            gc.drawString(ln[k], bx + 6, by + 4 + k * fh, true);
+        }
+    }
+
+    /** Значение точки: в единицах канала и код АЦП (в кодах - только код) */
+    private static String value(int code, Cal cal, double[] r) {
+        if (cal == Cal.RAW) return code + " код";
+        return fmt(cal.phys(code), (r[1] - r[0]) / DIV_Y / 100) + " " + cal.unit + "  (код " + code + ")";
+    }
+
     private void trace(GC gc, Rectangle p, int[] codes, Cal cal, double[] r, Color c) {
-        int[] pts = new int[codes.length * 2];
-        for (int k = 0; k < codes.length; k++) {
-            pts[2 * k] = xOf(k, p);
-            pts[2 * k + 1] = Math.max(p.y - 2, Math.min(p.y + p.height + 2, yOf(cal.phys(codes[k]), r, p)));
+        int a = (int) Math.max(0, Math.floor(kOf(p.x, p)) - 1), b = (int) Math.min(codes.length - 1, Math.ceil(kOf(p.x + p.width, p)) + 1);
+        if (b <= a) return;
+        int[] pts = new int[(b - a + 1) * 2];
+        for (int k = a; k <= b; k++) {
+            pts[2 * (k - a)] = xOf(k, p);
+            pts[2 * (k - a) + 1] = Math.max(p.y - 2, Math.min(p.y + p.height + 2, yOf(cal.phys(codes[k]), r, p)));
         }
         gc.setForeground(c);
         gc.setLineWidth(1);

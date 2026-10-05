@@ -35,9 +35,10 @@ final class RectLink {
         void closed(String why);
     }
 
-    /** Кадр осциллограммы: коды АЦП (0..4095) каналов U и I, точка запуска - pre */
+    /** Кадр осциллограммы: коды АЦП (0..4095) каналов U и I, точка запуска - pre; шаг точек - dtn, нс
+     *  (cont = 1 - все отсчёты АЦП подряд, gap - пропущено внутри кадра) */
     static final class Frame {
-        int seq, n, dt, pre, trig, src, edge, lvl, late;
+        int seq, n, dt, pre, trig, src, edge, lvl, late, dtn, cont, gap;
         int[] u, c;
     }
 
@@ -56,14 +57,32 @@ final class RectLink {
     }
 
     static String[] ports() {
+        String[] p;
         try {
-            String[] p = SerialPort.list();
-            Arrays.sort(p, (a, b) -> {
-                String da = a.replaceAll("\\D", ""), db = b.replaceAll("\\D", "");
-                return da.isEmpty() || db.isEmpty() ? a.compareTo(b) : Integer.compare(Integer.parseInt(da), Integer.parseInt(db));
-            });
-            return p;
+            p = SerialPort.list();
         } catch (IOException e) {
+            p = new String[0];
+        } catch (LinkageError e) {
+            p = registryPorts();        //Без Eclipse (RectApp): SerialPort.list() нужен реестр через платформу Eclipse
+        }
+        Arrays.sort(p, (a, b) -> {
+            String da = a.replaceAll("\\D", ""), db = b.replaceAll("\\D", "");
+            return da.isEmpty() || db.isEmpty() ? a.compareTo(b) : Integer.compare(Integer.parseInt(da), Integer.parseInt(db));
+        });
+        return p;
+    }
+
+    /** COM-порты из реестра Windows (HKLM\HARDWARE\DEVICEMAP\SERIALCOMM) командой reg query */
+    private static String[] registryPorts() {
+        try {
+            Process pr = new ProcessBuilder("reg", "query", "HKLM\\HARDWARE\\DEVICEMAP\\SERIALCOMM").redirectErrorStream(true).start();
+            String txt = new String(pr.getInputStream().readAllBytes(), Charset.defaultCharset());
+            pr.waitFor(3, TimeUnit.SECONDS);
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("REG_SZ\\s+(\\S+)").matcher(txt);
+            java.util.List<String> l = new java.util.ArrayList<>();
+            while (m.find()) l.add(m.group(1));
+            return l.toArray(new String[0]);
+        } catch (Exception e) {
             return new String[0];
         }
     }
@@ -217,6 +236,9 @@ final class RectLink {
             f.edge = m.getOrDefault("edge", 0);
             f.lvl = m.getOrDefault("lvl", 0);
             f.late = m.getOrDefault("late", 0);
+            f.dtn = m.getOrDefault("dtn", f.dt * 1000);         //Прежняя прошивка - только dt, мкс
+            f.cont = m.getOrDefault("cont", 0);
+            f.gap = m.getOrDefault("gap", 0);
             if (f.n <= 0 || f.n > 10000) return;
             f.u = new int[f.n];
             f.c = new int[f.n];

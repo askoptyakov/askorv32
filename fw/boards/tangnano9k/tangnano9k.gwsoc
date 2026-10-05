@@ -73,8 +73,8 @@
       "clkMHz": 54,
       "sclkHz": 6750000,
       "css": 1,
-      "quiet": 1,
-      "avgShift": 8,
+      "quiet": 8,
+      "avgShift": 0,
       "wavg": true,
       "channels": [
         {"name": "V", "board": "adc_v", "mode": "dc", "csInv": false, "cmpPol": "low", "scaleUv": 222181, "offset": 0},

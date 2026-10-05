@@ -131,7 +131,7 @@ static int parse_two(const char *s, uint32_t *a, uint32_t *b) {
  * --------------------------------------------------------------------------------------------- */
 #define ADC_PAUSE_MS		20U			//Пауза с поднятым CS перед пуском
 #define ADC_CHECK_MS		100U		//Нет годных отсчётов столько при ошибках кадра - перезапуск
-#define ADC_AVGSH			4U			//Среднее MEAN по 2^4 = 16 отсчётам (около 40 мкс) - точки осциллограммы
+#define ADC_AVGSH			0U			//Без усреднения MEAN: точки осциллограммы - мгновенные отсчёты (поиск шума ADC_C)
 
 typedef struct
 {
@@ -588,6 +588,7 @@ static void command(const char *line) {
 static uint16_t sc_u[SCOPE_N], sc_i[SCOPE_N];				//Кольцо отсчётов U и I
 static uint32_t sc_on = 0U, sc_src = 0U, sc_edge = 0U, sc_level = 2048U, sc_pre = SCOPE_N / 4U;
 static uint32_t sc_start = 0U, sc_trig = 0U, sc_seq = 0U, sc_lines = 0U;
+static uint32_t sc_cont = 0U;			//Точки: 0 - через SCOPE_US, 1 - все отсчёты АЦП подряд (@P)
 static uint64_t sc_next = 0U, pc_last = 0U;
 
 /* Приём: FIFO UART (16 байт) - в кольцо; вызывается и во время передачи и захвата */
@@ -670,7 +671,7 @@ static void pc_status(void) {
 	tx_kv("kpu", (int32_t)kp_u); tx_kv("kiu", (int32_t)ki_u); tx_kv("kpi", (int32_t)kp_i); tx_kv("kii", (int32_t)ki_i);
 	tx_kv("f", (int32_t)SIFU_GridFreq100()); tx_kv("st", (int32_t)steps_s);
 	tx_kv("ou", (int32_t)pi_u.out); tx_kv("oi", (int32_t)pi_i.out);
-	tx_kv("sc", (int32_t)sc_on);
+	tx_kv("sc", (int32_t)sc_on); tx_kv("sp", (int32_t)sc_cont);
 	tx_str("\r\n");
 }
 
@@ -683,40 +684,62 @@ static void pc_info(void) {
 	tx_str("\r\n");
 }
 
-/* Захват кадра: точки U и I через SCOPE_US в кольцо - аппаратное среднее канала MEAN по 16 отсчётам (около
-   40 мкс): фильтр перед прореживанием, шум отсчётов платы тока - быстрый, мгновенный отсчёт DATA даёт СКО
-   около 10 кодов, среднее - около 2 (hw/info/rectifier_gui.md, «Шум сигнала тока»); запуск - переход уровня sc_level по фронту
-   sc_edge (0 - передний, 1 - задний) канала sc_src (0 - U, 1 - I) с гистерезисом; до запуска - не меньше
-   sc_pre точек. Запуска нет за два периода - кадр без запуска (sc_trig = 0). Занимает 20..60 мс */
-static void scope_capture(void) {
-	uint64_t dt = (uint64_t)MTIME_HZ / (1000000U / SCOPE_US), t = CORE_GetCycles();
-	uint32_t k = 0U, n = 0U, post = 0U, armed = 0U, trig = 0U;
+/* Захват кадра: точки U и I в кольцо - мгновенный отсчёт канала DATA, без усреднения: видно каждое
+   измерение, в том числе шум платы тока (hw/info/rectifier_gui.md, «Шум сигнала тока»). Точки (sc_cont):
+   0 - через SCOPE_US, кадр 20 мс; 1 - все отсчёты подряд (новый номер отсчёта канала U в DATA[31:16], отсчёт
+   канала I того же кадра), кадр около 1,2 мс. Подряд приём UART и окна регулятора (на них отсчёт пропускается) -
+   только до запуска и не чаще раза в SCOPE_N отсчётов; запуск - не раньше sc_pre отсчётов подряд после такого
+   перерыва, после запуска перерывов нет: кадр без пропусков (gap - пропуски внутри кадра, в норме 0). Запуск - переход уровня sc_level по
+   фронту sc_edge (0 - передний, 1 - задний) канала sc_src (0 - U, 1 - I) с гистерезисом; до запуска - не меньше
+   sc_pre точек. Запуска нет за два периода (подряд - за 10 кадров) - кадр без запуска (sc_trig = 0) */
+/* Оптимизация -O2 и при сборке -O0: подряд на отсчёт (около 3 мкс) есть около 120 тактов ядра */
+__attribute__((optimize("O2"))) static void scope_capture(void) {
+	uint64_t dt = (uint64_t)MTIME_HZ / (1000000U / SCOPE_US), t = CORE_GetCycles(), t_end = t + ms_ticks(50U);
+	uint32_t k = 0U, n = 0U, post = 0U, armed = 0U, trig = 0U, gap = 0U, run = 0U, last = ADC_V->DATA >> 16;
 	uint64_t late = 0U, now;
-	uint32_t limit = (sc_edge == SCOPE_EDGE_FREE) ? SCOPE_N : sc_pre + 2U * SCOPE_N;
+	uint32_t limit = (sc_edge == SCOPE_EDGE_FREE) ? SCOPE_N : sc_pre + (sc_cont ? 10U : 2U) * SCOPE_N;
 	for (;;) {
-		while ((now = CORE_GetCycles()) < t) ;
-		if (now - t > late) late = now - t;						//Опоздание отсчёта: цикл не успел
-		t += dt;
-		uint32_t u = ADC121_GetMean(ADC_V), i = ADC121_GetMean(ADC_C);
+		uint32_t u, i;
+		if (sc_cont) {
+			uint32_t d, num;
+			do {
+				d = ADC_V->DATA; num = d >> 16;
+				if (num == last && CORE_GetCycles() > t_end) break;	//АЦП стоит
+			} while (num == last);
+			if (num == last) break;
+			uint32_t miss = (num - last - 1U) & 0xFFFFU;		//Пропущено отсчётов
+			if (miss) { run = 0U; if (trig || sc_edge == SCOPE_EDGE_FREE) gap += miss; }
+			last = num;
+			u = d & ADC121_CODE_MAX; i = ADC121_GetRaw(ADC_C);
+		} else {
+			while ((now = CORE_GetCycles()) < t) ;
+			if (now - t > late) late = now - t;					//Опоздание отсчёта: цикл не успел
+			t += dt;
+			u = ADC121_GetRaw(ADC_V); i = ADC121_GetRaw(ADC_C);
+		}
 		sc_u[k] = (uint16_t)u; sc_i[k] = (uint16_t)i;
 		k = (k + 1U == SCOPE_N) ? 0U : k + 1U;
-		n++;
-		rx_poll();
-		windows();												//Шаг регулятора - по началу полуволны
+		n++; run++;
+		if (!sc_cont || (!trig && run >= SCOPE_N)) {
+			rx_poll();
+			windows();											//Шаг регулятора - по началу полуволны
+		}
 		if (trig) { if (--post == 0U) break; continue; }
 		if (n >= limit) break;
 		if (sc_edge == SCOPE_EDGE_FREE) continue;
-		uint32_t s = sc_src ? i : u;
-		if (sc_edge == 0U) { if (s + SCOPE_HYST <= sc_level) armed = 1U; else if (armed && s >= sc_level && n > sc_pre) trig = 1U; }
-		else               { if (s >= sc_level + SCOPE_HYST) armed = 1U; else if (armed && s <= sc_level && n > sc_pre) trig = 1U; }
+		uint32_t s = sc_src ? i : u, have = sc_cont ? run : n;	//Точек до запуска (подряд - без перерыва)
+		if (sc_edge == 0U) { if (s + SCOPE_HYST <= sc_level) armed = 1U; else if (armed && s >= sc_level && have > sc_pre) trig = 1U; }
+		else               { if (s >= sc_level + SCOPE_HYST) armed = 1U; else if (armed && s <= sc_level && have > sc_pre) trig = 1U; }
 		if (trig) { post = SCOPE_N - 1U - sc_pre; if (post == 0U) break; }
 	}
 	sc_start = k;												//Самая старая точка
 	sc_trig = trig;
 	tx_str("#W");
-	tx_kv("seq", (int32_t)sc_seq++); tx_kv("n", SCOPE_N); tx_kv("dt", SCOPE_US); tx_kv("pre", (int32_t)sc_pre);
+	uint32_t dtn = sc_cont ? 1000000000U / ADC121_GetRate(ADC_V) : SCOPE_US * 1000U;	//Шаг точек, нс
+	tx_kv("seq", (int32_t)sc_seq++); tx_kv("n", SCOPE_N); tx_kv("dt", (int32_t)((dtn + 500U) / 1000U)); tx_kv("pre", (int32_t)sc_pre);
 	tx_kv("trig", (int32_t)trig); tx_kv("src", (int32_t)sc_src); tx_kv("edge", (int32_t)sc_edge); tx_kv("lvl", (int32_t)sc_level);
 	tx_kv("late", (int32_t)(late * 1000000U / MTIME_HZ));
+	tx_kv("cont", (int32_t)sc_cont); tx_kv("dtn", (int32_t)dtn); tx_kv("gap", (int32_t)gap);
 	tx_str("\r\n");
 	sc_lines = SCOPE_LINES;
 }
@@ -784,6 +807,7 @@ static void pc_command(const char *s) {
 		if (ok) { sc_src = v[0]; sc_edge = v[1]; sc_level = v[2]; sc_pre = v[3]; }
 		break;
 	case 'O': ok = ok && n == 1 && v[0] <= 1U; if (ok) { sc_on = v[0]; sc_next = 0U; if (!sc_on) sc_lines = 0U; } break;
+	case 'P': ok = ok && n == 1 && v[0] <= 1U; if (ok) sc_cont = v[0]; break;
 	case 'X': ok = ok && n == 0; if (ok) { err_latch = 0U; SIFU_ClearFlags(SIFU_SR_LOSSF); } break;
 	default: ok = 0; break;
 	}
