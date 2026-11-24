@@ -61,7 +61,7 @@
 
 | Плата | Блоки | Ресурсы |
 |---|---|---|
-| Tang Nano 9K, стенд | GPIO (DI/RO), TM1638, UART, SIFU, ADC (каналы V: CS 48, SCLK 70, SDO 71, CMP 82; C: CS 32, SCLK 72, SDO 73, CMP 79 — CS и SIG у J6/J7 переставлены), такт АЦП 54 МГц, SCLK 6,75 МГц, IMEM 32 кБайт, DMEM 8 кБайт | логика 7222 из 8640, ядро 46,7 МГц (нужно 40,5), `clk_adc` 56,8 (54) |
+| Tang Nano 9K, стенд | GPIO (DI/RO), TM1638, UART, SIFU, ADC (каналы V на J6: CS 32, SCLK 72, SDO 73, CMP 79; C на J7: CS 48, SCLK 70, SDO 71, CMP 82. В шлейфах J6/J7 переставлены CS и SIG), такт АЦП 54 МГц, SCLK 6,75 МГц, IMEM 32 кБайт, DMEM 8 кБайт | логика 7222 из 8640, ядро 46,7 МГц (нужно 40,5), `clk_adc` 56,8 (54) |
 | Tang Primer 20K | GPIO, UART, SPIFLASH (загрузчик), TM1638, SIFU, ADC (V: N8/N7/D11; C: C12/A14/E15, CMP A15), такт АЦП 96 МГц, IMEM 32 кБайт | логика 7561 из 20736, ядро 52,7 МГц (45), `clk_adc` 135 (96) |
 
 ## Проверка
