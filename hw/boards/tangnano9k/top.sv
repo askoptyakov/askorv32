@@ -48,12 +48,12 @@ module top #(
     output wire         UART_TX,              //вывод 17
     input wire          UART_RX,              //вывод 18
     //SIFU
-    input wire          NSB_AB,               //вывод 11
-    input wire          NSB_BA,               //вывод 10
-    input wire          NSB_BC,               //вывод 15
-    input wire          NSB_CB,               //вывод 14
-    input wire          NSB_CA,               //вывод 13
-    input wire          NSB_AC,               //вывод 16
+    input wire          NSB_AB,               //вывод 10
+    input wire          NSB_BA,               //вывод 16
+    input wire          NSB_BC,               //вывод 14
+    input wire          NSB_CB,               //вывод 13
+    input wire          NSB_CA,               //вывод 15
+    input wire          NSB_AC,               //вывод 11
     output wire         VS1,                  //вывод 69
     output wire         VS2,                  //вывод 29
     output wire         VS3,                  //вывод 57
