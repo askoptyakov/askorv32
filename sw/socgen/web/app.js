@@ -101,6 +101,9 @@ const ADC121_SCLK_MIN = 3.2e6, ADC121_SCLK_MAX = 8e6, ADC121_DELAY_NS = 80;
 const SIFU_SYNC = ['ab', 'ba', 'bc', 'cb', 'ca', 'ac'];
 const SIFU_GATES = ['vs1', 'vs2', 'vs3', 'vs4', 'vs5', 'vs6'];
 const SIFU_SAW_MAX = 4095;
+const SIFU_GENERATORS = [['legacy', 'Штатный RTL'], ['SIFU_MATLAB', 'SIFU_MATLAB']];
+const sifuGenerator = inst => inst.generator === 'SIFU_MATLAB' ? 'SIFU_MATLAB' : 'legacy';
+const sifuGeneratorLabel = inst => SIFU_GENERATORS.find(([id]) => id === sifuGenerator(inst))[1];
 const UART_BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
 const UART_PARITY = { none: 'нет', even: 'чётность (even)', odd: 'нечётность (odd)' };
 const FIFO_DEPTHS = [8, 16, 32];
@@ -1036,7 +1039,7 @@ function drawPeriph(svg, p, irqs, badPins, bad) {
   const { inst, rows, box } = p;
   const g = blockBox(svg, box, inst.name, instColor(inst), isSel({ kind: 'inst', name: inst.name }), bad,
                      () => select({ kind: 'inst', name: inst.name }), inst.name);
-  el('text', { class: 'blk-ru', x: box.x + 9, y: box.y + 38 }, g, TYPES[inst.type].ru);
+  el('text', { class: 'blk-ru', x: box.x + 9, y: box.y + 38 }, g, inst.type === 'sifu' ? sifuGeneratorLabel(inst) : TYPES[inst.type].ru);
   if (irqs[inst.name]) el('text', { class: 'blk-irq', x: box.x + box.w - 9, y: box.y + 38, 'text-anchor': 'end' }, g, 'IRQ ' + irqText(irqs[inst.name]));
   if (inst.type === 'spiflash' && inst.fpgaConfig) el('text', { class: 'blk-irq', x: box.x + box.w - 9, y: box.y + 38, 'text-anchor': 'end' }, g, 'BOOT');
   const y0 = box.y + 44;
@@ -1540,6 +1543,8 @@ function instForm(inst, v) {
   if (inst.type === 'sifu') {
     const si = sifuInfo(model, inst), pe = pllOf(model).errs.length;
     const bad = si.alphaMax < 0 || si.alphaMaxDeg < 120 || si.half >= 8192;
+    if (model.board.id === 'tangnano9k')
+      h += `<label>Генератор импульсов</label><select name="sifuGenerator">${opts(SIFU_GENERATORS, sifuGenerator(inst))}</select>`;
     h += `<label>Частота пилы, кГц</label><div><input type="number" name="sawKHz" min="50" max="2000" step="any" value="${inst.sawHz / 1000}" style="width:90px"></div>
       <label>Сдвиг DELAY, тиков</label><input type="number" name="delayTicks" min="0" max="4095" value="${inst.delayTicks}" style="width:90px"
         title="DELAY_RC_COMPENSATION: при ALPHA = 0 импульс - в точке естественной коммутации (на стенде - 400 при 500 кГц)">
@@ -1663,6 +1668,11 @@ function wireInstForm(box, inst) {
     }));
     box.querySelectorAll('[data-act=delcmp]').forEach(b => b.addEventListener('click', () => { inst['cmp' + b.dataset.ch] = null; changed(); }));
   }
+  if (q('sifuGenerator')) q('sifuGenerator').addEventListener('change', e => {
+    if (e.target.value === 'SIFU_MATLAB') inst.generator = e.target.value;
+    else delete inst.generator;
+    changed();
+  });
   if (q('sawKHz')) q('sawKHz').addEventListener('change', e => { inst.sawHz = Math.round(Number(e.target.value) * 1000); changed(); });
   if (q('fpgaConfig')) q('fpgaConfig').addEventListener('change', e => {
     inst.fpgaConfig = e.target.value === '1';
