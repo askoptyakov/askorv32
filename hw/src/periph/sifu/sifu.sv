@@ -63,7 +63,8 @@ module sifu_top
     parameter logic [11:0] WIDTH_INIT  = 12'd150,    //Длительность импульса: 150 тиков = 300 мкс
     parameter bit          SIM_EN      = 1'b1,       //Имитатор сети (CR.SIM, SIMCFG): 0 - нет
     parameter logic [11:0] AMAX_INIT   = 12'd3333,   //Наибольший угол при CR.UEXT: 120 град. при 50 Гц
-    parameter bit          UEXT_EN     = 1'b0)       //Вход u_i подключён (CR.UEXT)
+    parameter bit          UEXT_EN     = 1'b0,        //Вход u_i подключён (CR.UEXT)
+    parameter bit          MATLAB_EN   = 1'b0)       //Генератор импульсов из Simulink
    (input  logic        clk, rst,
     // Интерфейс обмена
     input  logic [ 3:0] Write,
@@ -194,9 +195,22 @@ module sifu_top
     //#6 Выходы: импульс тиристора VSk и подтверждающий - вместе с импульсом VSk+1 (через 60 эл. град.),
     //чтобы в режиме прерывистого тока при включении VSk+1 была открыта и пара для него (VS6 - с VS1)
     wire [6:1] d_next = {d[1], d[6:2]};
+    wire [6:1] legacy_gates = d | ({6{dbl}} & d_next);
+    wire [6:1] selected_gates;
+    if (MATLAB_EN) begin : matlab_backend
+        wire [6:1] matlab_gates;
+        sifu_matlab sifu_matlab_inst (
+            .clk(clk), .rst(rst), .tick(tick), .sync_n(sync_in),
+            .t_on(t_on), .t_off(t_off), .gates(matlab_gates)
+        );
+        // The model uses its own filter and fixed double-pulse matrix.
+        assign selected_gates = (flt && dbl) ? (matlab_gates & {6{~lost}}) : legacy_gates;
+    end else begin : legacy_backend
+        assign selected_gates = legacy_gates;
+    end
     always_ff @(posedge clk)
         if (rst) g <= '0;
-        else     g <= {6{en & grid}} & (d | ({6{dbl}} & d_next));
+        else     g <= {6{en & grid}} & selected_gates;
     assign {vs6, vs5, vs4, vs3, vs2, vs1} = g;
     always_ff @(posedge clk)
         if (rst) begin grid_o <= 1'b0; tick_o <= 1'b0; run_o <= 1'b0; end

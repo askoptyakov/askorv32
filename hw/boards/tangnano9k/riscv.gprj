@@ -1,4 +1,4 @@
-<?xml version="1" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE gowin-fpga-project>
 <Project>
     <Template>FPGA</Template>
@@ -27,6 +27,11 @@
         <File path="../../src/periph/uart/uart.sv" type="file.verilog" enable="1"/>
         <File path="../../src/periph/spiflash/spiflash.sv" type="file.verilog" enable="1"/>
         <File path="../../src/periph/sifu/sifu.sv" type="file.verilog" enable="1"/>
+        <File path="../../src/periph/sifu/matlab/Filter_Neg.sv" type="file.verilog" enable="1"/>
+        <File path="../../src/periph/sifu/matlab/Phase_window.sv" type="file.verilog" enable="1"/>
+        <File path="../../src/periph/sifu/matlab/Phase_AB.sv" type="file.verilog" enable="1"/>
+        <File path="../../src/periph/sifu/matlab/HDL_DUT.sv" type="file.verilog" enable="1"/>
+        <File path="../../src/periph/sifu/matlab/sifu_matlab.sv" type="file.verilog" enable="1"/>
         <File path="../../src/periph/adc121/adc121.sv" type="file.verilog" enable="1"/>
         <File path="../../src/periph/adc121/adc.sv" type="file.verilog" enable="1"/>
         <File path="top.sv" type="file.verilog" enable="1"/>

@@ -1117,9 +1117,11 @@ def gen_top(m, bases, cfg_rel):
               + ("есть имитатор сети" if inst.get("sim", True) else "без имитатора сети"))
             w(f"    logic irq_{h};")
             uext = 0
+            matlab = inst.get("generator") == "SIFU_MATLAB"
+            generator = ", .MATLAB_EN(1'b1)" if matlab else ""
             w(f"    sifu_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(16'd{si['div']}), .DELAY_INIT(12'd{si['delay']}), "
               f".WIDTH_INIT(12'd{si['pulse']}), .SIM_EN({1 if inst.get('sim', True) else 0}),")
-            w(f"               .AMAX_INIT(12'd{sifu_amax(si)}), .UEXT_EN(1'b{uext})) {h}")
+            w(f"               .AMAX_INIT(12'd{sifu_amax(si)}), .UEXT_EN(1'b{uext}){generator}) {h}")
             w("                (.clk(clk_per), .rst(rst_per),")
             w(f"                 {bus},")
             w("                 " + ", ".join(f".sync_{k}({net[name + '.' + k]})" for k in SIFU_SYNC) + ",")

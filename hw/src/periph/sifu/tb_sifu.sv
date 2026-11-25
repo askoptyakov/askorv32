@@ -13,7 +13,7 @@
 //импульсов нет; ALPHA меняется только с новой полуволны; EN; пропадание сети - флаг LOSSF и
 //прерывание; SYNCF, номер CH и прерывание; имитатор сети (SIM); фильтр помех (FLT).
 //Запуск: py hw/sim/run_periph_tests.py sifu
-module tb_sifu;
+module tb_sifu #(parameter bit MATLAB_EN = 1'b0);
     localparam string DEV = "sifu";
     `include "periph_tb.svh"
 
@@ -54,7 +54,7 @@ module tb_sifu;
     int ntick = 0;
     always @(posedge clk) if (tick_o) ntick++;
     sifu_top #(.MEMORY_TYPE(1'b1), .DIV_INIT(16'd89), .DELAY_INIT(12'd400), .WIDTH_INIT(12'd150),
-               .AMAX_INIT(12'd3333), .UEXT_EN(1'b1)) dut
+               .AMAX_INIT(12'd3333), .UEXT_EN(1'b1), .MATLAB_EN(MATLAB_EN)) dut
         (.clk(clk), .rst(rst), .Write(Write), .Addr(Addr), .WData(WData), .RData(RData),
          .sync_ab(n_ab), .sync_ba(n_ba), .sync_bc(n_bc), .sync_cb(n_cb), .sync_ca(n_ca), .sync_ac(n_ac),
          .vs1(vs1), .vs2(vs2), .vs3(vs3), .vs4(vs4), .vs5(vs5), .vs6(vs6), .grid_o(grid_o),
@@ -183,6 +183,15 @@ module tb_sifu;
         halfwaves(2);
         for (int k = 1; k <= 6; k++)
             check(n_pulse[k] == 2, $sformatf("DBL: VS%0d - два импульса за период", k), n_pulse[k], 2);
+        if (MATLAB_EN)
+            for (int k = 1; k <= 6; k++) begin
+                w = width_cy[k] / TICK;
+                check(w == 150, $sformatf("MATLAB VS%0d: WIDTH = 150", k), w, 150);
+                lag = lag_ticks(k);
+                check((lag >= 1402 && lag <= 1406) ||
+                      (lag >= 1402 + P/(6*TICK) && lag <= 1406 + P/(6*TICK)),
+                      $sformatf("MATLAB VS%0d: ALPHA + DELAY or confirming pulse", k), lag, 1404);
+            end
         bus_rd(GATE, v);
         check(v[5:0] == 6'(vs) , "GATE[5:0] = выходы", v, 32'(vs));
 
@@ -329,6 +338,15 @@ module tb_sifu;
         check(n_pulse[1] == 2 && n_pulse[3] == 2 && n_pulse[4] == 2 && n_pulse[6] == 2, "CA залип: VS1, VS3, VS4, VS6 работают", n_pulse[1], 2);
         bus_rd(SR, v);
         check(v[11], "CA залип: LOST", v, SR_LOST);
+        if (MATLAB_EN) begin
+            bus_wr(CR, EN | DBL | FLT);
+            tick(3);
+            clear_pulses();
+            halfwaves(2);
+            for (int k = 1; k <= 6; k++)
+                check(n_pulse[k] == 0, $sformatf("MATLAB VS%0d blocked on LOST", k), n_pulse[k], 0);
+            bus_wr(CR, EN | FLT);
+        end
         stuck_ca = 1'b0;
         halfwaves(4);
         bus_rd(SR, v);
