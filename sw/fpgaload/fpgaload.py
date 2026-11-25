@@ -42,7 +42,7 @@ Tang Nano 9K и Tang Primer 20K для ПК одинаковые), openFPGALoade
    доступ сбивает USB-соединение OpenOCD (LIBUSB_ERROR_IO) и загрузку. Программатор один - занят, если запущен
    любой openocd.exe; плат несколько - если запущен OpenOCD именно этой платы (номер процесса - в
    %TEMP%/askorv32_openocd_<порт>.pid, его пишет fw/boards/<плата>/openocd.cfg), с другой платой работать можно.
-2. sram, flash: mergetool вливает программу <каталог сборки>/riscv.bin в последний битовый поток Gowin
+2. sram, flash: mergetool вливает программу, заново извлечённую из riscv.elf, в последний битовый поток Gowin
    -> <каталог сборки>/riscv.fs; spiflash: образ программы <каталог сборки>/riscv_flash.bin.
 3. openFPGALoader -b <плата> ...; полоса прогресса - через conprogress.
 
@@ -61,6 +61,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 sys.stdout.reconfigure(encoding="utf-8")    #Вывод в UTF-8: консоль Eclipse настроена на UTF-8
 sys.stderr.reconfigure(encoding="utf-8")
@@ -196,16 +197,14 @@ class Loader:
         return proc.wait()
 
 
-def flat_bin(elf):
+def flat_bin(elf, out):
     """Программа для mergetool из ELF: память по адресам загрузки (LMA) с 0 - как riscv.bin сборки Eclipse."""
     segs = bootimage.segments_from_elf(elf, lma=True)
     end = max(a + len(b) for a, b in segs)
     img = bytearray(end)
     for a, b in segs:
         img[a:a + len(b)] = b
-    out = Path(elf).with_suffix(".bin")
-    out.write_bytes(bytes(img))
-    return out
+    out.write_bytes(img)
 
 
 def load_by_debugger(board, elf):
@@ -261,11 +260,13 @@ def bitstream_mode(ld, board, target, elf):
         #Битовый поток как есть, программа - отладчиком
         rc = ld.run([str(fs)])
         return rc or load_by_debugger(board, elf)
-    prog = board.build / "riscv.bin" if elf == board.build / "riscv.elf" else flat_bin(elf)
     out = board.build / "riscv.fs"
-    sys.stdout.flush()
-    rc = subprocess.run([str(ROOT / "sw" / "mergetool" / "mergetool.exe"), str(prog),
-                         str(board.pnr / "riscv.posp"), str(fs), str(out)], cwd=board.build).returncode
+    with TemporaryDirectory(prefix="askorv32-fpgaload-") as tmp:
+        prog = Path(tmp) / "riscv.bin"
+        flat_bin(elf, prog)
+        sys.stdout.flush()
+        rc = subprocess.run([str(ROOT / "sw" / "mergetool" / "mergetool.exe"), str(prog),
+                             str(board.pnr / "riscv.posp"), str(fs), str(out)], cwd=board.build).returncode
     if rc:
         print(f"mergetool завершился с ошибкой ({rc}), ПЛИС не загружалась", file=sys.stderr)
         return rc
@@ -336,7 +337,7 @@ def main():
                          "flash или всю внешнюю флеш; describe - сведения о плате (JSON)")
     ap.add_argument("--config", help="плата по конфигурации сборки Eclipse (TangNano9K, TangPrimer20K) или id платы")
     ap.add_argument("--gwsoc", help="плата по файлу конфигурации ПЛИС fw/boards/<плата>/<плата>.gwsoc")
-    ap.add_argument("--elf", help="программа (по умолчанию <каталог сборки>/riscv.elf и riscv.bin сборки Eclipse)")
+    ap.add_argument("--elf", help="программа (по умолчанию <каталог сборки>/riscv.elf)")
     ap.add_argument("--force", action="store_true", help="spiflash: писать битовый поток, даже если он не менялся")
     ap.add_argument("--oss", help="openFPGALoader из OSS CAD Suite в этом каталоге (вместо sdk/openfpgaloader/bin)")
     a = ap.parse_args()

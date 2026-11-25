@@ -5,7 +5,7 @@
 			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="ilg.gnumcueclipse.managedbuild.cross.riscv.config.elf.debug.1517686873" moduleId="org.eclipse.cdt.core.settings" name="TangNano9K">
 				<macros>
 					<stringMacro name="in_fpga" type="VALUE_PATH_ANY" value="../../hw/boards/tangnano9k/impl/pnr/riscv.fs"/>
-					<stringMacro name="MERGETOOL" type="VALUE_TEXT" value="../../sw/mergetool/mergetool.exe ${in_mcu} ${in_bsram_location} ${in_fpga} ${out_fpga}"/>
+					<stringMacro name="MERGETOOL" type="VALUE_TEXT" value="${cross_prefix}objcopy${cross_suffix} -O binary -j .text -j .data &quot;${ProjName}.elf&quot; &quot;${in_mcu}&quot; &amp;&amp; ../../sw/mergetool/mergetool.exe ${in_mcu} ${in_bsram_location} ${in_fpga} ${out_fpga}"/>
 					<stringMacro name="in_mcu" type="VALUE_PATH_ANY" value="riscv.bin"/>
 					<stringMacro name="out_imem" type="VALUE_TEXT" value="../../hw/src/mem_init/imem.mi"/>
 					<stringMacro name="in_bsram_location" type="VALUE_PATH_ANY" value="../../hw/boards/tangnano9k/impl/pnr/riscv.posp"/>
@@ -126,7 +126,7 @@
 			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="ilg.gnumcueclipse.managedbuild.cross.riscv.config.elf.debug.2044846388" moduleId="org.eclipse.cdt.core.settings" name="TangPrimer20K">
 				<macros>
 					<stringMacro name="in_fpga" type="VALUE_PATH_ANY" value="../../hw/boards/tangprimer20k/impl/pnr/riscv.fs"/>
-					<stringMacro name="MERGETOOL" type="VALUE_TEXT" value="../../sw/mergetool/mergetool.exe ${in_mcu} ${in_bsram_location} ${in_fpga} ${out_fpga}"/>
+					<stringMacro name="MERGETOOL" type="VALUE_TEXT" value="${cross_prefix}objcopy${cross_suffix} -O binary -j .text -j .data &quot;${ProjName}.elf&quot; &quot;${in_mcu}&quot; &amp;&amp; ../../sw/mergetool/mergetool.exe ${in_mcu} ${in_bsram_location} ${in_fpga} ${out_fpga}"/>
 					<stringMacro name="in_mcu" type="VALUE_PATH_ANY" value="riscv.bin"/>
 					<stringMacro name="out_imem" type="VALUE_TEXT" value="../../hw/src/mem_init/imem.mi"/>
 					<stringMacro name="in_bsram_location" type="VALUE_PATH_ANY" value="../../hw/boards/tangprimer20k/impl/pnr/riscv.posp"/>
