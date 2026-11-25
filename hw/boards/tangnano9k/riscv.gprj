@@ -28,7 +28,7 @@
         <File path="../../src/periph/spiflash/spiflash.sv" type="file.verilog" enable="1"/>
         <File path="../../src/periph/sifu/sifu.sv" type="file.verilog" enable="1"/>
         <File path="../../src/periph/sifu/matlab/Filter_Neg.sv" type="file.verilog" enable="1"/>
-        <File path="../../src/periph/sifu/matlab/Phase_window.sv" type="file.verilog" enable="1"/>
+        <File path="../../src/periph/sifu/matlab/Phase_timer.sv" type="file.verilog" enable="1"/>
         <File path="../../src/periph/sifu/matlab/Phase_AB.sv" type="file.verilog" enable="1"/>
         <File path="../../src/periph/sifu/matlab/HDL_DUT.sv" type="file.verilog" enable="1"/>
         <File path="../../src/periph/sifu/matlab/sifu_matlab.sv" type="file.verilog" enable="1"/>

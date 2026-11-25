@@ -195,6 +195,18 @@ module tb_sifu #(parameter bit MATLAB_EN = 1'b0);
         bus_rd(GATE, v);
         check(v[5:0] == 6'(vs) , "GATE[5:0] = выходы", v, 32'(vs));
 
+        // At a small angle the old timer could wrap before the optocoupler closed.
+        if (MATLAB_EN) begin
+            bus_wr(DELAY, 0);
+            bus_wr(ALPHA, 100);
+            halfwaves(2);
+            clear_pulses();
+            halfwaves(2);
+            for (int k = 1; k <= 6; k++)
+                check(n_pulse[k] == 2, $sformatf("MATLAB VS%0d: no pulse after timer limit", k), n_pulse[k], 2);
+            bus_wr(DELAY, 400);
+        end
+
         //#7 Угол за пределом пилы (ALPHA + DELAY >= 4095) - импульсов нет
         bus_wr(ALPHA, 3700);
         halfwaves(2);

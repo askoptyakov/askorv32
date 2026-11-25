@@ -169,7 +169,7 @@ module top #(
     //    регистры с 32'h1600_0000; входы - плата синхронизации NSB (0 - оптрон открыт), выходы - тиристоры VS1..VS6; есть имитатор сети
     logic irq_sifu;
     sifu_top #(.MEMORY_TYPE(DMEM_TYPE), .DIV_INIT(16'd80), .DELAY_INIT(12'd400), .WIDTH_INIT(12'd150), .SIM_EN(1),
-               .AMAX_INIT(12'd3333), .UEXT_EN(1'b0)) sifu
+               .AMAX_INIT(12'd3333), .UEXT_EN(1'b0), .MATLAB_EN(1'b1)) sifu
                 (.clk(clk_per), .rst(rst_per),
                  .Write(sifu_Write), .Addr(sifu_Addr), .WData(sifu_WriteData), .RData(sifu_ReadData),
                  .sync_ab(NSB_AB), .sync_ba(NSB_BA), .sync_bc(NSB_BC), .sync_cb(NSB_CB), .sync_ca(NSB_CA), .sync_ac(NSB_AC),

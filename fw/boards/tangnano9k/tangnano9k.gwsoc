@@ -44,6 +44,7 @@
     {
       "type": "sifu",
       "name": "SIFU",
+      "generator": "SIFU_MATLAB",
       "base": "auto",
       "ab": 10,
       "ba": 16,
